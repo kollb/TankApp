@@ -49,6 +49,7 @@ import { LineChart } from "../components/LineChart";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
+import { SeriesChart, SPANS, spanLabel } from "../components/SeriesChart";
 import { StationMap } from "../components/StationMap";
 import { Empty, panel } from "../components/ui";
 import {
@@ -128,17 +129,6 @@ export interface StationenViewProps {
   searchFocusSignal: number;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
-}
-
-/** Zeitraum-Umschalter des Verlaufs — Wortlaut aus einer Quelle (V5). */
-const SPANS: Array<{ hours: number; label: string }> = [
-  { hours: 24, label: timeSpanLabel(24) },
-  { hours: 72, label: timeSpanLabel(72) },
-  { hours: 168, label: timeSpanLabel(168) },
-];
-
-function spanLabel(hours: number): string {
-  return SPANS.find((span) => span.hours === hours)?.label ?? `${hours} Stunden`;
 }
 
 export function StationenView(props: StationenViewProps) {
@@ -995,67 +985,5 @@ export function StationenView(props: StationenViewProps) {
         onClose={() => setSheetOpen(false)}
       />
     </section>
-  );
-}
-
-/**
- * Verlauf der gewählten Station — derselbe Baustein wie im Stations-Labor
- * (`LineChart`): Achsen, beschriftete Zeitmarken und der Tagesmedian als
- * gestrichelte „üblich“-Linie. Vorher stand hier eine gequetschte Minigrafik
- * ohne Achsen (Nutzer-Feedback 14.09.2026).
- */
-function SeriesChart({
-  points,
-  spanHours,
-}: {
-  points: Point[];
-  spanHours: number;
-}) {
-  const c = useChartPalette();
-  const known = points
-    .filter((p) => p.price !== null && Number.isFinite(Date.parse(p.timestamp)))
-    .map((p) => ({ x: Date.parse(p.timestamp), y: p.price as number }));
-  if (known.length < 2) {
-    return (
-      <Empty>
-        Zu wenige offene Meldungen im gewählten Zeitraum — der Verlauf
-        entsteht aus den Collector-Läufen, geschätzt wird nichts.
-      </Empty>
-    );
-  }
-  const xs = known.map((p) => p.x);
-  const ys = known.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const band = dayMedianPoints(points);
-  const last = known[known.length - 1];
-  return (
-    <div>
-      <LineChart
-        series={[
-          { name: "Offene Meldungen (€/L)", color: c.accent, pts: known },
-          {
-            name: "Tagesmedian (üblich)",
-            color: c.text,
-            dash: "4 3",
-            pts: band,
-          },
-        ]}
-        marks={[{ x: last.x, color: c.positive, label: "jetzt" }]}
-        xDomain={[minX, maxX]}
-        xTicks={autoTimeTicks(minX, maxX)}
-        yFmt={(value) => euro(value, 3)}
-        ariaLabel="Preisverlauf der Station"
-        ariaDescription={`Preisverlauf der letzten ${spanLabel(spanHours)} in €/L: Linie = offene Meldungen (${countLabel(known.length)} Punkte), gestrichelte Linie = Tagesmedian, grüne Marke = jüngste Meldung (${euroPerLiter(last.y)}), Spanne ${euroPerLiter(minY)} bis ${euroPerLiter(maxY)}.`}
-      />
-      <p className="mt-2 text-xs leading-relaxed text-slate-500">
-        Durchgezogen = offene Meldungen · gestrichelt = Tagesmedian
-        („üblich“) · grüne Marke = jüngste Meldung{" "}
-        {timeLabel(new Date(last.x).toISOString())}. Leere Stunden bleiben
-        leer — nichts wird interpoliert.
-      </p>
-    </div>
   );
 }

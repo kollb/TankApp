@@ -14,6 +14,7 @@ import type { DecideResult, Station } from "../data";
 import { OverviewProvider, type OverviewState } from "../state/overview";
 import { V3Guide } from "./Guide";
 import { V3Shell } from "./Shell";
+import { V3Stations } from "./Stations";
 import { V3Week } from "./Week";
 
 // Feste Uhrzeit: Die Seite liest `Date.now()` (Gültigkeit, Frische,
@@ -142,6 +143,28 @@ function state(overrides: Partial<OverviewState> = {}): OverviewState {
     ],
     stripBand: null,
     nowPricesAt: minutesAgo(4),
+    // Stationen: Verlauf, Merkzettel, Zeitraum und Umweg-Zeitwert.
+    elapsed: 0,
+    pinnedIds: [],
+    togglePin: () => {},
+    pinNote: null,
+    searchFocusSignal: 0,
+    stationsSpanHours: 24,
+    setStationsSpanHours: () => {},
+    timeValueUsed: 12,
+    series7d: {
+      data: {
+        points: [
+          { timestamp: minutesAgo(120), price: 1.759 },
+          { timestamp: minutesAgo(60), price: 1.749 },
+        ],
+        error_code: null,
+      },
+      error: false,
+      errorCode: null,
+      pending: false,
+      receivedAt: 0,
+    },
     nowForecastAt: minutesAgo(35),
     browserOnline: true,
     refreshNow: () => {},
@@ -318,5 +341,52 @@ describe("GUI v3 — „Woche“ im neuen Raster", () => {
       },
     });
     expect(empty).toContain("Kein Fenster mit Vorsprung");
+  });
+});
+
+describe("GUI v3 — „Stationen“ im neuen Raster", () => {
+  it("zeigt Karte, Liste und die sichtbare Referenz", () => {
+    const html = renderToStaticMarkup(
+      <OverviewProvider value={state({ stations: [station("aral"), station("esso", { price: 1.789 })] })}>
+        <V3Stations />
+      </OverviewProvider>,
+    );
+    expect(html).toContain("Wo ist es am günstigsten?");
+    expect(html).toContain("Suchen und filtern");
+    // Sortierung und Filter sind bedienbar, nicht nur beschrieben.
+    expect(html).toContain("Sortierung der Liste");
+    expect(html).toContain("alle Stationen");
+    expect(html).toContain("Nach Marke filtern");
+    // Die Referenz ist der Bezugspunkt aller Netto-Zahlen.
+    expect(html).toContain("Referenz");
+    expect(html).toContain("1,749 €/L");
+  });
+
+  it("gibt Verlauf und Vergleich die volle Breite", () => {
+    const html = renderToStaticMarkup(
+      <OverviewProvider value={state()}>
+        <V3Stations />
+      </OverviewProvider>,
+    );
+    expect(html).toContain("Verlauf · letzte 24 Stunden");
+    // Derselbe Umschalter wie im Stations-Labor (Wortlaut aus einer Quelle).
+    expect(html).toContain("3 Tage");
+    expect(html).toContain("7 Tage");
+    // Das Diagramm trägt seine Textalternative.
+    expect(html).toContain("Preisverlauf der Station");
+    // A gegen B mit Vorauswahl der zwei günstigsten.
+    expect(html).toContain("A gegen B");
+    expect(html).toContain("Top 1 gegen Top 2");
+    expect(html).toContain("Station A für den Vergleich wählen");
+  });
+
+  it("richtet erst ein, statt eine leere Fläche zu zeigen", () => {
+    const html = renderToStaticMarkup(
+      <OverviewProvider value={state({ stations: [] })}>
+        <V3Stations />
+      </OverviewProvider>,
+    );
+    expect(html).toContain("Erst Stationen einrichten, dann der Atlas");
+    expect(html).toContain("Einrichtung ansehen");
   });
 });

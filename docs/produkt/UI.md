@@ -304,10 +304,16 @@ Steuerpanel und Beispieldaten ist entfernt
   das Raster der sieben Tage, die Wochenlinie und die Liste aller Fenster
   nach Ersparnis; rechts die Tankstand-Pflege und der Datenstand. Tage 5–7
   bleiben „noch unsicher“, Sterne gibt es nur mit messbarem P.
-- **Bereiche außer „Jetzt“ und „Woche“** laufen in der bisherigen Gestaltung
-  weiter und werden über `views/Sections.tsx` für beide Hüllen einmal
-  gerendert. Der Neubau sagt offen, wo das noch so ist; jeder migrierte
-  Bereich ersetzt dort einen Block.
+- **Stationen** ist der Preis-Atlas im neuen Raster: Steuerleiste (Suche,
+  „nur offene“, Marke, Zeitwert, Sortierung), darunter Karte und Liste, rechts
+  die sichtbare **Referenz** mit Datenstand. Detail und Verlauf sowie „A gegen
+  B“ liegen über die **volle** Breite — ein Diagramm mit Achsen und
+  Zeitmarken (`components/SeriesChart.tsx`, von beiden Hüllen genutzt) hat in
+  einer 360-px-Seitspalte nichts zu suchen.
+- **Bereiche außer „Jetzt“, „Woche“ und „Stationen“** laufen in der
+  bisherigen Gestaltung weiter und werden über `views/Sections.tsx` für beide
+  Hüllen einmal gerendert. Der Neubau sagt offen, wo das noch so ist; jeder
+  migrierte Bereich ersetzt dort einen Block.
 
 ## Darstellung und Themen
 

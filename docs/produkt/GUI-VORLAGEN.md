@@ -74,7 +74,8 @@ keine eigenen Schreibwege. Konkret:
 |---|---|
 | Jetzt | im neuen Raster neu gebaut (`v3/Guide.tsx`) |
 | Woche | im neuen Raster neu gebaut (`v3/Week.tsx`): Antwortkarte = gewähltes Fenster, Raster der sieben Tage, Wochenlinie, Liste nach Ersparnis; Tankstand in der Seitspalte |
-| Stationen, Labor, Ich, System, Glossar | voll bedienbar in der bisherigen Gestaltung, eingehängt über `views/Sections.tsx`; der Neubau sagt das sichtbar an |
+| Stationen | im neuen Raster neu gebaut (`v3/Stations.tsx`): Steuerleiste, Karte und Liste zweispaltig mit der Referenz, Detail mit Verlauf und „A gegen B“ über die volle Breite |
+| Labor, Ich, System, Glossar | voll bedienbar in der bisherigen Gestaltung, eingehängt über `views/Sections.tsx`; der Neubau sagt das sichtbar an |
 
 `views/Sections.tsx` rendert diese sechs Bereiche für **beide** Hüllen
 einmal. Eine zweite Verdrahtung der Props wäre eine zweite Wahrheit: Bei jeder

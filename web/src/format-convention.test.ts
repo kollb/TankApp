@@ -40,9 +40,12 @@ const CLEAN = [
   "v3/App.tsx",
   "v3/Guide.tsx",
   "v3/Shell.tsx",
-  // Woche: `deTrimmed`/`euro`/`euroPerLiter` wie in der klassischen Ansicht.
+  // Woche und Stationen: `deTrimmed`/`euro`/`euroPerLiter` wie in der
+  // klassischen Ansicht; der Verlauf liegt in components/SeriesChart.tsx.
   "v3/Week.tsx",
+  "v3/Stations.tsx",
   "v3/parts.tsx",
+  "components/SeriesChart.tsx",
   "Dashboard.tsx",
   "components/AppHeader.tsx",
   "components/CellError.tsx",

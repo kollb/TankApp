@@ -43,6 +43,11 @@ entfernt.
   die Liste aller Fenster nach Ersparnis; in der Seitspalte die
   Tankstand-Pflege. Horizonte-Honesty unverändert: Tage 5–7 „noch unsicher“,
   Sterne nur mit messbarem P, Kalibrierhinweis an jedem Fenster.
+- **„Stationen“ im neuen Raster:** Karte und Liste zweispaltig mit der
+  sichtbaren Referenz, Suche/Filter/Sortierung als eigene Steuerleiste,
+  Detail mit Verlauf und „A gegen B“ über die volle Breite. Der
+  Verlaufs-Baustein liegt jetzt in `components/SeriesChart.tsx` — beide
+  Hüllen nutzen denselben; die klassische Ansicht verliert nichts.
 - **Entfernt:** `web/src/concept/**` (Prototyp mit Demo-Daten) und
   `web/e2e/concept.spec.ts`. `sample/good gui` bleibt als Design-Basis
   unangetastet.

@@ -5,11 +5,12 @@
 // Freigabegates, dieselben Formatter — nur die Gestaltung und die Anordnung
 // kommen aus dem Konzept. Kein Beispiel-Handy, keine Demo-Preise.
 //
-// Bereiche: „Jetzt“ (`v3/Guide.tsx`) und „Woche“ (`v3/Week.tsx`) sind neu
-// gebaut. Die übrigen fünf Bereiche rendert `views/Sections.tsx` — derselbe
-// Code wie in der alten Hülle, damit beide Oberflächen nie auseinanderlaufen.
-// Ein Hinweisstreifen sagt offen, wo noch die bisherige Gestaltung steht;
-// sobald ein Bereich migriert ist, verschwindet der Streifen für ihn.
+// Bereiche: „Jetzt“ (`v3/Guide.tsx`), „Woche“ (`v3/Week.tsx`) und
+// „Stationen“ (`v3/Stations.tsx`) sind neu gebaut. Die übrigen vier Bereiche
+// rendert `views/Sections.tsx` — derselbe Code wie in der alten Hülle, damit
+// beide Oberflächen nie auseinanderlaufen. Ein Hinweisstreifen sagt offen, wo
+// noch die bisherige Gestaltung steht; sobald ein Bereich migriert ist,
+// verschwindet der Streifen für ihn.
 //
 // Der Bereich reist in der Adresse (`?tab=…`); `konzept=1` bleibt erhalten,
 // weil `gotoTab` (state/overview) die übrigen Parameter unverändert lässt.
@@ -22,13 +23,12 @@ import { OverviewProvider, useOverview } from "../state/overview";
 import { SectionContent, SectionFallback } from "../views/Sections";
 import { V3Guide } from "./Guide";
 import { V3Shell } from "./Shell";
+import { V3Stations } from "./Stations";
 import { V3Week } from "./Week";
 import "./v3.css";
 
 /** Bereiche, die noch in der bisherigen Gestaltung laufen. */
 const LEGACY_NOTE: Partial<Record<TabId, string>> = {
-  stations:
-    "„Stationen“ läuft noch in der bisherigen Gestaltung — dieselben Meldungen, dieselbe Karte.",
   labor:
     "„Labor“ läuft noch in der bisherigen Gestaltung — dieselben Modelle, dieselben Messungen.",
   ich: "„Ich“ läuft noch in der bisherigen Gestaltung — dieselben Belege, dieselbe Bilanz.",
@@ -63,6 +63,8 @@ function Routes() {
           <V3Guide />
         ) : ov.tab === "week" ? (
           <V3Week />
+        ) : ov.tab === "stations" ? (
+          <V3Stations />
         ) : (
           <>
             <LegacyNote tab={ov.tab} />
