@@ -2,12 +2,16 @@ import { useEffect, useState } from "react";
 import { Fuel, RefreshCw } from "lucide-react";
 import {
   ageLabel,
-  applyAppTheme,
   clockLabel,
   countLabel,
   euroPerLiter,
 } from "../src/data";
 import { BottomSheet } from "../src/components/BottomSheet";
+import {
+  THEME_CHOICES,
+  THEME_CHOICE_LABEL,
+  useAppTheme,
+} from "../src/theme";
 
 // Deliberately a separate contract: no NAS decision hooks, writes or service
 // worker. A Pi tab stays pi-v1 even after the NAS becomes ready again.
@@ -81,10 +85,11 @@ export function ReadEdition() {
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now);
   const [switching, setSwitching] = useState(false);
-  const [light, setLight] = useState(false);
-  useEffect(() => {
-    applyAppTheme(light ? "light" : "dark");
-  }, [light]);
+  // Dieselben Regeln wie in der Hauptansicht (src/theme.ts): „System“ ist
+  // die Voreinstellung, ohne Angabe des Geräts bleibt es dunkel. Die
+  // Leseausgabe bringt dafür keine eigene Logik mit — sonst würden die
+  // beiden Oberflächen bei der nächsten Änderung auseinanderlaufen.
+  const { choice: themeChoice, setChoice: setThemeChoice } = useAppTheme();
   useEffect(() => {
     const controller = new AbortController();
     setPending(true);
@@ -392,13 +397,29 @@ export function ReadEdition() {
           <h1 className="text-xl font-bold">
             Mehr — Modellstand und Darstellung
           </h1>
-          <button
-            className={button}
-            aria-pressed={light}
-            onClick={() => setLight((v) => !v)}
-          >
-            Helle Darstellung
-          </button>
+          <div>
+            <p className="mb-2 text-sm font-semibold">Darstellung</p>
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label="Darstellung (System, dunkel oder hell)"
+            >
+              {THEME_CHOICES.map((value) => (
+                <button
+                  key={value}
+                  className={button}
+                  aria-pressed={themeChoice === value}
+                  onClick={() => setThemeChoice(value)}
+                >
+                  {THEME_CHOICE_LABEL[value]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-sm text-slate-400">
+              „System“ folgt dem Gerät. Ohne Angabe des Geräts bleibt die
+              Ansicht dunkel — auch hier.
+            </p>
+          </div>
           <h2 className="font-bold">
             Letzter Modellstand — seither keine neue Berechnung.
           </h2>
