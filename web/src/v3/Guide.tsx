@@ -8,9 +8,16 @@
 //   Kopfzeile   die Frage („Soll ich jetzt tanken?“) + Datenstand
 //   Stufe       Banner nur auf Stufe 2/3 (GuideBanner, kein Modal)
 //   Hauptspalte eine Karte mit der Antwort, darunter drei Fakten und die
-//               nächsten Schritte, darunter die Ersparnis-Zeile
-//   Seitspalte  Tagesverlauf (Streifen + Stundenbalken), Was-wäre-wenn,
-//               Tankstand-Schnellwahl
+//               nächsten Schritte
+//   Zeile 2     „Heute im Blick“ über die **ganze** Breite (Streifen,
+//               Abdeckung, Stundenbalken) — 19 Zellen brauchen je rund 36 px
+//   Seitspalte  Was-wäre-wenn, Tankstand-Schnellwahl, was Warten bringt
+//
+// Der Tagesverlauf steht bewusst über die volle Breite: `.daystrip-cells`
+// staffelt seine Spalten nach der Viewport-Breite (5/10/19 in `styles.css`),
+// nicht nach dem Container. In der 360 px breiten Seitspalte stünden 19
+// Stundenspalten in rund 300 px, in der halben Zeile wären es 30 px je Zelle
+// — die Zahlen liefen ineinander (Befund 28.09.2026: „sieht gequetscht aus“).
 //
 // Am Handy bleibt die Reihenfolge gleich, die Seitspalte rutscht unter die
 // Antwort. Der Tagesstreifen liegt dort hinter einem Knopf („einen Tipp
@@ -497,14 +504,132 @@ function DayStrip({ cells }: { cells: StripCell[] }) {
   );
 }
 
-/** Seitspalte: Tagesverlauf, Was-wäre-wenn, Tankstand. */
-function SideColumn() {
+/**
+ * „Heute im Blick“ — Tagesstreifen und Stundenbalken.
+ *
+ * Steht in der **Hauptspalte**, nicht in der Seitspalte: `.daystrip-cells`
+ * staffelt seine Spalten nach der Viewport-Breite (5/10/19 in `styles.css`),
+ * nicht nach dem Container — in 360 px liefen die Stundenzahlen ineinander.
+ * Am Handy bleibt der Streifen hinter „Tag ansehen“ (Blatt: dort greift
+ * `dialog .daystrip-cells` mit `auto-fit minmax(42px, 1fr)`); die drei
+ * Kennzahlen stehen auch dort, verdichtet zu Zeilen.
+ */
+function DayPanel() {
   const ov = useOverview();
   const [dayOpen, setDayOpen] = useState(false);
+  const { decideRes, stripCells, stripBand, browserOnline } = ov;
+  const now = Date.now();
+  const decide = decideRes.data ?? null;
+  const level = guideLevel({
+    online: browserOnline,
+    decisionReady: decide?.decision_ready ?? null,
+  });
+  const panel = nowDayPanel(stripCells);
+  const outlook =
+    level === "full"
+      ? hourlyOutlook({ windows: decide?.windows_today, now })
+      : null;
+  const noteClass = "hidden text-xs leading-snug text-on-surface-variant sm:mt-0.5 sm:block";
+
+  return (
+    <>
+      <SectionCard>
+        <CardTitle
+          icon={Clock}
+          right={
+            <button
+              type="button"
+              onClick={() => setDayOpen(true)}
+              aria-haspopup="dialog"
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Tag ansehen
+            </button>
+          }
+        >
+          Heute im Blick
+        </CardTitle>
+        <p className="text-sm font-semibold">{panel.headline}</p>
+        {/* Ein Block für beide Raster: am Handy je Zeile „Bezeichnung …
+            Wert“ (die Karte bleibt so schmal wie ihre Antwort), ab sm die
+            drei Spalten mit der Einordnung darunter. */}
+        <dl className="mt-3 grid grid-cols-1 gap-1 text-xs leading-snug sm:grid-cols-3 sm:gap-3">
+          <div className="flex items-baseline justify-between gap-3 sm:block">
+            <dt className="text-on-surface-variant">
+              {panel.tied ? "Günstigste Stunden" : "Günstigste Stunde"}
+            </dt>
+            <dd className="font-mono font-semibold tabular-nums text-primary">
+              {panel.best
+                ? `${panel.bestLabel} · ${euroPerLiter(panel.best.value)}`
+                : "—"}
+            </dd>
+            <span className={noteClass}>
+              {panel.best
+                ? euroPerLiter(panel.best.value)
+                : "keine offene Meldung"}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 sm:block">
+            <dt className="text-on-surface-variant">Tagesmedian</dt>
+            <dd className="font-mono font-semibold tabular-nums">
+              {panel.median !== null ? euroPerLiter(panel.median) : "—"}
+            </dd>
+            <span className={noteClass}>
+              {panel.spreadCt !== null
+                ? `Spanne ${centPerLiter(panel.spreadCt)} zwischen bester und teuerster Stunde`
+                : "noch kein Verlauf"}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 sm:block">
+            <dt className="text-on-surface-variant">Jetzt</dt>
+            <dd className="font-mono font-semibold tabular-nums">
+              {panel.nowValue !== null ? euroPerLiter(panel.nowValue) : "—"}
+            </dd>
+            <span className={noteClass}>
+              {panel.nowVsMedianCt === null
+                ? "noch kein Vergleich"
+                : Math.abs(panel.nowVsMedianCt) < 0.05
+                  ? "auf Höhe des Tagesmedians"
+                  : panel.nowVsMedianCt < 0
+                    ? `${centPerLiter(Math.abs(panel.nowVsMedianCt))} unter dem Tagesmedian`
+                    : `${centPerLiter(panel.nowVsMedianCt)} über dem Tagesmedian`}
+            </span>
+          </div>
+        </dl>
+        <div className="mt-3 hidden lg:block">
+          <DayStrip cells={stripCells} />
+          <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
+            {panel.coverage} Zahl = €/L (Stunden-Minimum) · Balken = Höhe im
+            Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
+          </p>
+          <div className="mt-4 border-t border-outline-variant pt-3">
+            <HourBars outlook={outlook} />
+          </div>
+        </div>
+      </SectionCard>
+
+      <BottomSheet
+        open={dayOpen}
+        title="Heute im Blick — Tagesstreifen"
+        onClose={() => setDayOpen(false)}
+      >
+        <DayStrip cells={stripCells} />
+        <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
+          {panel.coverage} {stripBandNote(stripBand)}
+        </p>
+        <div className="mt-4 border-t border-outline-variant pt-3">
+          <HourBars outlook={outlook} />
+        </div>
+      </BottomSheet>
+    </>
+  );
+}
+
+/** Seitspalte: Was-wäre-wenn, Tankstand, was Warten bringt. */
+function SideColumn() {
+  const ov = useOverview();
   const {
     decideRes,
-    stripCells,
-    stripBand,
     stations,
     nowPricesAt,
     nowForecastAt,
@@ -515,7 +640,6 @@ function SideColumn() {
     setAssumptions,
     tankPercent,
     setTankPercent,
-    browserOnline,
   } = ov;
   const now = Date.now();
   const decide = decideRes.data ?? null;
@@ -529,16 +653,7 @@ function SideColumn() {
     latestBy: assumptions.latestBy,
     timeValue: effTimeValue,
   };
-  const level = guideLevel({
-    online: browserOnline,
-    decisionReady: decide?.decision_ready ?? null,
-  });
-  const panel = nowDayPanel(stripCells);
   const freshness = nowFreshness({ pricesAt: nowPricesAt, forecastAt: nowForecastAt, now });
-  const outlook =
-    level === "full"
-      ? hourlyOutlook({ windows: decide?.windows_today, now })
-      : null;
   const window =
     decide?.windows_today?.[0] ?? decide?.primary?.recommended_window ?? null;
   const priceNow = nowBestNow(input).price ?? decide?.primary?.station?.price_now ?? null;
@@ -601,69 +716,6 @@ function SideColumn() {
 
   return (
     <>
-      <SectionCard>
-        <CardTitle
-          icon={Clock}
-          right={
-            <button
-              type="button"
-              onClick={() => setDayOpen(true)}
-              aria-haspopup="dialog"
-              className="text-xs font-semibold text-primary hover:underline"
-            >
-              Tag ansehen
-            </button>
-          }
-        >
-          Heute im Blick
-        </CardTitle>
-        <p className="text-sm font-semibold">{panel.headline}</p>
-        <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-          <div>
-            <dt className="text-on-surface-variant">Günstigste Stunde</dt>
-            <dd className="font-mono font-semibold tabular-nums">
-              {panel.best ? panel.bestLabel : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-on-surface-variant">Tagesmedian</dt>
-            <dd className="font-mono font-semibold tabular-nums">
-              {panel.median !== null ? euroPerLiter(panel.median) : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-on-surface-variant">Jetzt</dt>
-            <dd className="font-mono font-semibold tabular-nums">
-              {panel.nowValue !== null ? euroPerLiter(panel.nowValue) : "—"}
-            </dd>
-          </div>
-        </dl>
-        <div className="mt-3 hidden lg:block">
-          <DayStrip cells={stripCells} />
-          <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
-            {panel.coverage} Zahl = €/L (Stunden-Minimum) · Balken = Höhe im
-            Tagesverlauf · Rahmen = jetzt. {stripBandNote(stripBand)}
-          </p>
-          <div className="mt-4 border-t border-outline-variant pt-3">
-            <HourBars outlook={outlook} />
-          </div>
-        </div>
-      </SectionCard>
-
-      <BottomSheet
-        open={dayOpen}
-        title="Heute im Blick — Tagesstreifen"
-        onClose={() => setDayOpen(false)}
-      >
-        <DayStrip cells={stripCells} />
-        <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
-          {panel.coverage} {stripBandNote(stripBand)}
-        </p>
-        <div className="mt-4 border-t border-outline-variant pt-3">
-          <HourBars outlook={outlook} />
-        </div>
-      </BottomSheet>
-
       <SectionCard>
         <CardTitle icon={Clock}>Was wäre wenn</CardTitle>
         <p className="text-xs leading-relaxed text-on-surface-variant">
@@ -844,6 +896,7 @@ export function V3Guide() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-6">
+        {/* Zeile 1 links: die Antwort und ihre Belege. */}
         <div className="space-y-4">
           <VerdictCard />
           <Facts />
@@ -857,7 +910,18 @@ export function V3Guide() {
             />
           </div>
         </div>
-        <div className="space-y-4">
+        {/* Zeile 2: der Tagesverlauf über die **ganze** Breite. 19 Zellen
+            brauchen je rund 36 px (Ratchet U2b); in einer 360-px-Seitspalte
+            oder in der halben Zeile wären es 30 — die Zahlen liefen
+            ineinander („sieht gequetscht aus“, 28.09.2026). Am Handy bleibt
+            die Reihenfolge: direkt nach den Schritten, vor den Annahmen. */}
+        <div className="lg:order-3 lg:col-span-2">
+          <DayPanel />
+        </div>
+        {/* Zeile 1 rechts: Annahmen und Werkzeuge. `lg:order-2` hält sie
+            neben der Antwort, damit der Tagesverlauf darunter die volle
+            Breite behält. */}
+        <div className="space-y-4 lg:order-2">
           <SideColumn />
         </div>
       </div>

@@ -288,8 +288,13 @@ Steuerpanel und Beispieldaten ist entfernt
   das Studio (Labor, Ich, System, Glossar). Am Handy trägt die untere Leiste
   dieselben Einträge, Studio hinter „Mehr“.
 - **Jetzt** beantwortet weiter genau eine Frage. Die Antwort steht in der
-  einzigen Karte mit Elevation; darunter drei Fakten, höchstens drei
-  Schritte, rechts der Tagesverlauf, das Was-wäre-wenn und der Tankstand.
+  einzigen Karte mit Elevation; darunter drei Fakten und höchstens drei
+  Schritte. Rechts stehen die Annahmen (Was wäre wenn, Tankstand, was Warten
+  bringt), darunter „Heute im Blick“ über die **volle** Breite: der
+  Tagesstreifen braucht je Stundenzelle rund 36 px (Ratchet U2b) — in einer
+  360-px-Seitspalte wären es 30, und die Zahlen liefen ineinander. Am Handy
+  liegen dieselben Kennzahlen als Zeilen in der Karte, der Streifen hinter
+  „Tag ansehen“.
 - **Stufe 2 und 3** bleiben unverändert ehrlich: ein Inline-Banner über der
   Antwort erklärt, was fehlt und was trotzdem geht, mit genau einer Handlung
   („Erneut versuchen“). Ohne Verbindung nennt die Karte den Stand und die

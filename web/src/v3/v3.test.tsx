@@ -216,6 +216,20 @@ describe("GUI v3 — „Jetzt“ auf echten Daten", () => {
     expect(html).toContain("Zum Inhalt springen");
   });
 
+  it("gibt dem Tagesverlauf die volle Breite statt einer gequetschten Seitspalte", () => {
+    const html = render();
+    // `.daystrip-cells` staffelt seine Spalten nach der **Viewport**-Breite
+    // (5/10/19 in styles.css), nicht nach dem Container. In der 360 px
+    // breiten Seitspalte stünden 19 Stundenspalten in rund 300 px und die
+    // Zahlen liefen ineinander (Befund 28.09.2026). „Heute im Blick“ gehört
+    // deshalb in die Hauptspalte — im Markup heißt das: vor die Seitspalte.
+    expect(html).toContain("Heute im Blick");
+    expect(html).toContain("Tagesmedian");
+    expect(html.indexOf("Heute im Blick")).toBeLessThan(
+      html.indexOf("Was wäre wenn"),
+    );
+  });
+
   it("zeigt Tankstand-Schnellwahl und Was-wäre-wenn als bedienbare Annahmen", () => {
     const html = render();
     expect(html).toContain("Tankstand");
