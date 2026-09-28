@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // B4 (Befund UX/Mathe 19.09.2026, §1.3): Die Studio-Bereiche liegen mobil
 // einen Tipper tiefer — hinter dem „Mehr“-Blatt der Bottom-Leiste.
@@ -37,4 +37,25 @@ export async function clickArea(page: Page, label: string): Promise<void> {
     return;
   }
   await page.getByRole("button", { name: label, exact: true }).click();
+}
+
+/** Name der Gruppe, die System · Dunkel · Hell anbietet (Settings.tsx). */
+export const THEME_GROUP = "Darstellung (System, dunkel oder hell)";
+
+/**
+ * „Ich → Einstellungen → Darstellung“ öffnen und die Knopfgruppe liefern.
+ *
+ * Nach einem Reload baut sich die Ansicht neu auf: Der erste Tipp auf die
+ * Unterseiten-Steuerung kann dabei ins Leere gehen, weil die Ansicht noch
+ * ihren Chunk lädt. Statt einer festen Pause wird so lange getippt, bis die
+ * Gruppe wirklich sichtbar ist — dieselbe Zusage, nur robuster geprüft.
+ */
+export async function openThemeChoices(page: Page): Promise<Locator> {
+  const tab = page.getByRole("tab", { name: "Einstellungen", exact: true });
+  const group = page.getByRole("group", { name: THEME_GROUP });
+  await expect(async () => {
+    await tab.click();
+    await expect(group).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20000 });
+  return group;
 }

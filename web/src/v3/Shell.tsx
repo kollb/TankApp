@@ -424,6 +424,16 @@ function BottomNav({
             </li>
           ))}
         </ul>
+        {/* Der Link in der Kopfzeile ist ab xl sichtbar; am Handy führt
+            dieser Weg zurück — sonst gäbe es aus der neuen Ansicht keinen
+            sichtbaren Ausgang mehr. */}
+        <a
+          href="/"
+          className={`tap-44 mt-4 flex items-center justify-between border-t border-outline-variant px-1 pt-4 text-sm font-semibold text-on-surface-variant hover:text-on-surface ${radius.chip}`}
+        >
+          Klassische Ansicht
+          <ArrowUpRight size={15} aria-hidden="true" />
+        </a>
       </BottomSheet>
       <nav aria-label="Bereiche" className="v3-bottomnav">
         {PRIMARY.map((item) => (

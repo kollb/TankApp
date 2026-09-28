@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { clickArea } from "./nav";
+import { clickArea, openThemeChoices } from "./nav";
 
 // GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“. Die alten Tabs
 // „Alltag“ und „Einstellungen“ sind ersetzt — Stationen, Woche und Ich
@@ -209,9 +209,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Darstellung: „System“ ist die Voreinstellung und folgt dem Gerät
   // (Playwright meldet hell), „Dunkel“ und „Hell“ sind ausdrückliche
   // Wahlen — sie überstehen einen Reload (Bootstrap-Script, localStorage).
-  const themeGroup = page.getByRole("group", {
-    name: "Darstellung (System, dunkel oder hell)",
-  });
+  const themeGroup = await openThemeChoices(page);
   await themeGroup.getByRole("button", { name: "Dunkel", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
@@ -225,7 +223,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // dieser Ansicht ab. Nach dem Reload startet die App in „Jetzt“ — der
   // Theme-Bereich liegt unter „Ich → Einstellungen“.
   await clickArea(page, "Ich");
-  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
+  await openThemeChoices(page);
   await themeGroup.getByRole("button", { name: "System", exact: true }).click();
   expect(
     await page.evaluate(() => localStorage.getItem("tankapp.theme")),

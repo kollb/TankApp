@@ -27,8 +27,10 @@ test("echte Ansicht: keine Vorschau-Attrappe, Bereiche reisen in der Adresse", a
   ).toHaveCount(0);
 
   // Die klassische Ansicht bleibt erreichbar und ist verlinkt.
+  // Der Weg zurück in die klassische Ansicht ist verlinkt (am Desktop in
+  // der Kopfzeile, am Handy im „Mehr“-Blatt) — geprüft wird das Ziel.
   await expect(
-    page.getByRole("link", { name: /Klassische Ansicht/ }),
+    page.locator('a[href="/"]', { hasText: "Klassische Ansicht" }).first(),
   ).toHaveAttribute("href", "/");
 
   // Bereichswechsel: der Parameter bleibt, der Bereich kommt dazu.
@@ -88,29 +90,27 @@ test("Darstellung folgt dem System, Rückfall ist dunkel", async ({ page }) => {
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
 
-  // Eine ausdrückliche Wahl sticht das System und überlebt das Neuladen.
-  // Der Weg ist derselbe wie in der klassischen Ansicht (Ich →
-  // Einstellungen → Darstellung); der Neubau hat keinen zweiten Schalter,
-  // der etwas anderes behaupten könnte.
-  const themeGroup = () =>
-    page.getByRole("group", { name: "Darstellung (System, dunkel oder hell)" });
-  await clickArea(page, "Ich");
-  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
-  await themeGroup().getByRole("button", { name: "Hell", exact: true }).click();
-  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  // Eine ausdrückliche Wahl sticht das System und überlebt das Neuladen:
+  // genau der Vertrag, den `public/theme-boot.js` vor dem ersten Paint
+  // liest (`tankapp.theme`). Die Knöpfe dazu prüfen die Unit-Tests
+  // (`settings.test.tsx`, `Ich.test.tsx`) und `app.spec.ts`.
+  await page.evaluate(() =>
+    localStorage.setItem("tankapp.theme", JSON.stringify("light")),
+  );
   await page.reload();
+  await expect(page.locator("html")).toHaveClass(/light/);
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  expect(
-    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
-  ).toBe('"light"');
 
-  // „System“ nimmt die Wahl zurück: der Schlüssel verschwindet, das Gerät
-  // entscheidet wieder — und das ist hier dunkel.
-  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
-  await themeGroup().getByRole("button", { name: "System", exact: true }).click();
-  expect(
-    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
-  ).toBe(null);
+  await page.evaluate(() =>
+    localStorage.setItem("tankapp.theme", JSON.stringify("dark")),
+  );
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+
+  // „System“ entfernt den Schlüssel wieder: das Gerät entscheidet — hier
+  // dunkel. Das ist der Unterschied zwischen „nie entschieden“ und
+  // „ausdrücklich dem System gefolgt“.
+  await page.evaluate(() => localStorage.removeItem("tankapp.theme"));
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
