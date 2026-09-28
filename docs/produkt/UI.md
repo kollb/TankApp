@@ -299,10 +299,15 @@ Steuerpanel und Beispieldaten ist entfernt
   Antwort erklärt, was fehlt und was trotzdem geht, mit genau einer Handlung
   („Erneut versuchen“). Ohne Verbindung nennt die Karte den Stand und die
   Faustregel — keine zwischengespeicherte Prognose als Prognose.
-- **Bereiche außer „Jetzt“** laufen in der bisherigen Gestaltung weiter und
-  werden über `views/Sections.tsx` für beide Hüllen einmal gerendert. Der
-  Neubau sagt offen, wo das noch so ist; jeder migrierte Bereich ersetzt dort
-  einen Block.
+- **Woche** folgt demselben Muster: die Antwortkarte ist das gewählte Fenster
+  (Preis, Ersparnis, Sicherheit, Kalibrierungs- und Tank-Hinweis), darunter
+  das Raster der sieben Tage, die Wochenlinie und die Liste aller Fenster
+  nach Ersparnis; rechts die Tankstand-Pflege und der Datenstand. Tage 5–7
+  bleiben „noch unsicher“, Sterne gibt es nur mit messbarem P.
+- **Bereiche außer „Jetzt“ und „Woche“** laufen in der bisherigen Gestaltung
+  weiter und werden über `views/Sections.tsx` für beide Hüllen einmal
+  gerendert. Der Neubau sagt offen, wo das noch so ist; jeder migrierte
+  Bereich ersetzt dort einen Block.
 
 ## Darstellung und Themen
 

@@ -40,6 +40,9 @@ const CLEAN = [
   "v3/App.tsx",
   "v3/Guide.tsx",
   "v3/Shell.tsx",
+  // Woche: `deTrimmed`/`euro`/`euroPerLiter` wie in der klassischen Ansicht.
+  "v3/Week.tsx",
+  "v3/parts.tsx",
   "Dashboard.tsx",
   "components/AppHeader.tsx",
   "components/CellError.tsx",

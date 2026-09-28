@@ -38,6 +38,11 @@ entfernt.
 - **Eine Verdrahtung für beide Hüllen:** `views/Sections.tsx` rendert die
   übrigen sechs Bereiche einmal für die klassische Oberfläche **und** für den
   Neubau; der Neubau sagt sichtbar, wo noch die bisherige Gestaltung steht.
+- **„Woche“ im neuen Raster:** Die zweite Seite steht — Antwortkarte ist das
+  gewählte Fenster, darunter die sieben Tage als Raster, die Wochenlinie und
+  die Liste aller Fenster nach Ersparnis; in der Seitspalte die
+  Tankstand-Pflege. Horizonte-Honesty unverändert: Tage 5–7 „noch unsicher“,
+  Sterne nur mit messbarem P, Kalibrierhinweis an jedem Fenster.
 - **Entfernt:** `web/src/concept/**` (Prototyp mit Demo-Daten) und
   `web/e2e/concept.spec.ts`. `sample/good gui` bleibt als Design-Basis
   unangetastet.

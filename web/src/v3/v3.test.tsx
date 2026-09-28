@@ -14,6 +14,7 @@ import type { DecideResult, Station } from "../data";
 import { OverviewProvider, type OverviewState } from "../state/overview";
 import { V3Guide } from "./Guide";
 import { V3Shell } from "./Shell";
+import { V3Week } from "./Week";
 
 // Feste Uhrzeit: Die Seite liest `Date.now()` (Gültigkeit, Frische,
 // Tagesfenster) — mit gestellter Zeit sind die Aussagen reproduzierbar.
@@ -124,6 +125,10 @@ function state(overrides: Partial<OverviewState> = {}): OverviewState {
     decideRes: { data, error: false, errorCode: null, pending: false, receivedAt: 0 },
     stations: [station("aral")],
     selectedId: "aral",
+    selected: station("aral"),
+    // Der Oberflächen-Preis der Auswahl (Vorrang: frischer Messwert, sonst
+    // die Auswahl) — als Stub, damit die Woche dieselbe Basis rechnet.
+    price: () => 1.749,
     effLiters: 40,
     effTimeValue: 10,
     autoZ: { z: 10, isPeak: false },
@@ -151,6 +156,39 @@ function render(overrides: Partial<OverviewState> = {}) {
   return renderToStaticMarkup(
     <OverviewProvider value={state(overrides)}>
       <V3Guide />
+    </OverviewProvider>,
+  );
+}
+
+/** Wochenfenster: heute (mit Sicherheit) und Tag 5 („noch unsicher“). */
+function weekWindows(): DecideResult["windows_week"] {
+  const today = "2026-09-14";
+  const later = "2026-09-19";
+  return [
+    {
+      start: `${today}T18:00:00+02:00`,
+      end: `${today}T20:00:00+02:00`,
+      expected_price: 1.709,
+      expected_saving_eur: 1.6,
+      expected_saving_median_eur: 1.6,
+      p: 0.82,
+    },
+    {
+      start: `${later}T19:00:00+02:00`,
+      end: `${later}T21:00:00+02:00`,
+      expected_price: 1.689,
+      expected_saving_eur: 2.2,
+      expected_saving_median_eur: 2.2,
+      p: 0.4,
+    },
+  ] as DecideResult["windows_week"];
+}
+
+function renderWeek(overrides: Partial<OverviewState> = {}) {
+  const data = decide("wait", { windows_week: weekWindows() });
+  return renderToStaticMarkup(
+    <OverviewProvider value={state({ decideRes: { data, error: false, errorCode: null, pending: false, receivedAt: 0 }, ...overrides })}>
+      <V3Week />
     </OverviewProvider>,
   );
 }
@@ -236,5 +274,49 @@ describe("GUI v3 — „Jetzt“ auf echten Daten", () => {
     expect(html).toContain("Was wäre wenn");
     // Eine gesetzte Annahme bekommt einen Rückweg auf die Profilwerte.
     expect(html).toContain("Auf Profilwerte zurück");
+  });
+});
+
+describe("GUI v3 — „Woche“ im neuen Raster", () => {
+  it("zeigt das gewählte Fenster als Antwort, darüber die Herkunft", () => {
+    const html = renderWeek();
+    expect(html).toContain("Wann tanken in den nächsten Tagen?");
+    expect(html).toContain("Ausgewählt");
+    // Preis, Fensterzeit und Kalibrierhinweis kommen aus `week.ts`.
+    expect(html).toContain("1,709 €/L");
+    expect(html).toContain("18–20 Uhr");
+    expect(html).toContain("24-h-Fenster");
+    // Die Liste nennt jedes Fenster mit Ersparnis — dieselbe Zahl wie im Kopf.
+    expect(html).toContain("Alle Fenster nach Ersparnis");
+    expect(html).toContain("1,689 €/L");
+    // Die Wochenlinie erklärt ihre Richtung (höher = günstiger).
+    expect(html).toContain("höherer Balken ist der günstigere Tag");
+  });
+
+  it("hält die Horizont-Ehrlichkeit: sieben Tage, Tage 5–7 unsicher", () => {
+    const html = renderWeek();
+    // Sieben Tagesziele im Raster (Auswahl), leere Tage ohne Erfindung.
+    expect(html).toContain("Beste Fenster (7 Tage)");
+    expect(html).toContain("noch unsicher");
+    expect(html).toContain("Leere Tage: kein Fenster mit Vorsprung");
+    // Kein Wecker-Versprechen: die Seite sagt, was sie ist.
+    expect(html).toContain("Nachschlagewerk, kein Wecker");
+  });
+
+  it("nimmt die Tankstand-Pflege mit (die Annahme, die das Warten trägt)", () => {
+    const html = renderWeek();
+    expect(html).toContain("Tankstand");
+    expect(html).toContain("Ändern");
+    // Ohne Fenster sagt die Seite das statt einer Empfehlung.
+    const empty = renderWeek({
+      decideRes: {
+        data: decide("wait", { windows_week: [] }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+    expect(empty).toContain("Kein Fenster mit Vorsprung");
   });
 });

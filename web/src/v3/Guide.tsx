@@ -85,6 +85,7 @@ import {
   type NowTarget,
 } from "../now";
 import { useOverview } from "../state/overview";
+import { CardTitle, PageHeader, SectionCard } from "./parts";
 import { stripBandNote, type StripCell } from "../strip";
 
 /**
@@ -132,43 +133,6 @@ const TONE: Record<
     label: "Ohne Zeiturteil",
   },
 };
-
-function SectionCard({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={`border border-outline-variant bg-sc-lowest p-5 ${radius.card} ${className}`}
-    >
-      {children}
-    </section>
-  );
-}
-
-/** Überschrift einer Karte: klein, ruhig, nie lauter als die Antwort. */
-function CardTitle({
-  icon: Icon,
-  children,
-  right,
-}: {
-  icon?: LucideIcon;
-  children: ReactNode;
-  right?: ReactNode;
-}) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
-        {Icon && <Icon size={15} aria-hidden="true" />}
-        {children}
-      </h2>
-      {right}
-    </div>
-  );
-}
 
 /** Die eine Antwort — die einzige Karte der Seite mit Elevation. */
 function VerdictCard() {
@@ -871,18 +835,16 @@ export function V3Guide() {
 
   return (
     <div className="v3-page">
-      <div className="mb-4">
-        <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-          Tank-Guide
-        </p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
-          Soll ich jetzt tanken?
-        </h1>
-        <p className="mt-1 max-w-prose text-sm leading-relaxed text-on-surface-variant">
-          Eine Frage, eine Antwort — {ov.activeCity || "ohne Stadt"} ·{" "}
-          {ov.fuel === "diesel" ? "Diesel" : ov.fuel.toUpperCase()}
-        </p>
-      </div>
+      <PageHeader
+        kicker="Tank-Guide"
+        title="Soll ich jetzt tanken?"
+        subtitle={
+          <>
+            Eine Frage, eine Antwort — {ov.activeCity || "ohne Stadt"} ·{" "}
+            {ov.fuel === "diesel" ? "Diesel" : ov.fuel.toUpperCase()}
+          </>
+        }
+      />
 
       {level !== "full" && (
         <GuideBanner

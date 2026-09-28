@@ -5,11 +5,11 @@
 // Freigabegates, dieselben Formatter — nur die Gestaltung und die Anordnung
 // kommen aus dem Konzept. Kein Beispiel-Handy, keine Demo-Preise.
 //
-// Bereiche: „Jetzt“ ist neu gebaut (`v3/Guide.tsx`). Die übrigen sechs
-// Bereiche rendert `views/Sections.tsx` — derselbe Code wie in der alten
-// Hülle, damit beide Oberflächen nie auseinanderlaufen. Ein Hinweisstreifen
-// sagt offen, wo noch die bisherige Gestaltung steht; sobald ein Bereich
-// migriert ist, verschwindet der Streifen für ihn.
+// Bereiche: „Jetzt“ (`v3/Guide.tsx`) und „Woche“ (`v3/Week.tsx`) sind neu
+// gebaut. Die übrigen fünf Bereiche rendert `views/Sections.tsx` — derselbe
+// Code wie in der alten Hülle, damit beide Oberflächen nie auseinanderlaufen.
+// Ein Hinweisstreifen sagt offen, wo noch die bisherige Gestaltung steht;
+// sobald ein Bereich migriert ist, verschwindet der Streifen für ihn.
 //
 // Der Bereich reist in der Adresse (`?tab=…`); `konzept=1` bleibt erhalten,
 // weil `gotoTab` (state/overview) die übrigen Parameter unverändert lässt.
@@ -22,11 +22,11 @@ import { OverviewProvider, useOverview } from "../state/overview";
 import { SectionContent, SectionFallback } from "../views/Sections";
 import { V3Guide } from "./Guide";
 import { V3Shell } from "./Shell";
+import { V3Week } from "./Week";
 import "./v3.css";
 
 /** Bereiche, die noch in der bisherigen Gestaltung laufen. */
 const LEGACY_NOTE: Partial<Record<TabId, string>> = {
-  week: "„Woche“ läuft noch in der bisherigen Gestaltung — dieselben Preise, dieselben Fenster.",
   stations:
     "„Stationen“ läuft noch in der bisherigen Gestaltung — dieselben Meldungen, dieselbe Karte.",
   labor:
@@ -61,6 +61,8 @@ function Routes() {
       <Suspense fallback={<SectionFallback />}>
         {ov.tab === "jetzt" ? (
           <V3Guide />
+        ) : ov.tab === "week" ? (
+          <V3Week />
         ) : (
           <>
             <LegacyNote tab={ov.tab} />
