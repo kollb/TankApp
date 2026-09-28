@@ -4,14 +4,17 @@ import { Dashboard } from "./Dashboard";
 import { registerServiceWorker } from "./service-worker";
 import "./styles.css";
 
-const ConceptApp = lazy(() => import("./concept/App"));
+// Der Konzept-Neubau („GUI v3“): echte Daten, echte Gates — dieselbe
+// App, andere Gestaltung. Eigener Chunk, damit die klassische Ansicht
+// nichts davon mitlädt.
+const ConceptApp = lazy(() => import("./v3/App"));
 const isConcept =
   new URLSearchParams(window.location.search).get("konzept") === "1";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {isConcept ? (
-      <Suspense fallback={<p className="p-8">Konzept wird geladen …</p>}>
+      <Suspense fallback={<p className="p-8">Ansicht wird geladen …</p>}>
         <ConceptApp />
       </Suspense>
     ) : (

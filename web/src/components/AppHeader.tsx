@@ -87,7 +87,9 @@ export function AppHeader({
             (e2e-Check `scrollWidth <= innerWidth`). relative: hält
             absolut positionierte Kinder (sr-only-Status) im Clip der
             Zeile, sonst erweitern sie die Dokument-Breite. */}
-        <a href="/?konzept=1" className="tap-44 hidden shrink-0 items-center rounded-full border border-outline-variant px-3 py-2 text-xs font-semibold text-primary lg:inline-flex">Neue GUI ↗</a>
+        {/* Der Neubau ist die echte Ansicht (dieselben Endpunkte, dieselben
+            Gates) — deshalb heißt der Einstieg „Neue Ansicht“, nicht „Demo“. */}
+        <a href="/?konzept=1" title="Neue Ansicht mit denselben Daten und Freigaben öffnen" className="tap-44 hidden shrink-0 items-center rounded-full border border-outline-variant px-3 py-2 text-xs font-semibold text-primary lg:inline-flex">Neue Ansicht ↗</a>
         {ready && (
         <div className="relative flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <button onClick={() => setContextOpen(true)} aria-label="Stadt und Kraftstoff auswählen"

@@ -37,12 +37,9 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 
 /** Dateien, die sichtbar formatieren und deshalb sauber sein müssen. */
 const CLEAN = [
-  "concept/App.tsx",
-  "concept/ConceptPanel.tsx",
-  "concept/ExploreScreens.tsx",
-  "concept/LabScreen.tsx",
-  "concept/PhoneApp.tsx",
-  "concept/ui.tsx",
+  "v3/App.tsx",
+  "v3/Guide.tsx",
+  "v3/Shell.tsx",
   "Dashboard.tsx",
   "components/AppHeader.tsx",
   "components/CellError.tsx",

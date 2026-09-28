@@ -22,6 +22,12 @@ import { reduceNotices, type NoticeItem } from "./components/Notices";
 import { NoticesView } from "./components/NoticesView";
 import { SkeletonPanel } from "./components/Skeleton";
 import {
+  JetztView,
+  SECTION_MODULES,
+  SectionContent,
+  SectionFallback,
+} from "./views/Sections";
+import {
   clockLabel,
   dataAgeNote,
   freshCountLabel,
@@ -37,34 +43,6 @@ import { OverviewProvider, useOverview } from "./state/overview";
 // das View-Modul als auch der Inhalt bereit — der frühere Tausch
 // „Skeleton → View“ mitten im sichtbaren Bereich war die Hauptquelle für
 // Layout-Verschiebungen (Lighthouse-Gate `cumulative-layout-shift`).
-const jetztModule = import("./views/Jetzt");
-const stationenModule = import("./views/Stationen");
-const wocheModule = import("./views/Woche");
-const ichModule = import("./views/Ich");
-const laborModule = import("./views/Labor");
-const systemModule = import("./views/System");
-const glossaryModule = import("./views/Glossary");
-const JetztView = lazy(() =>
-  jetztModule.then((m) => ({ default: m.JetztView })),
-);
-const StationenView = lazy(() =>
-  stationenModule.then((m) => ({ default: m.StationenView })),
-);
-const WocheView = lazy(() =>
-  wocheModule.then((m) => ({ default: m.WocheView })),
-);
-const IchView = lazy(() =>
-  ichModule.then((m) => ({ default: m.IchView })),
-);
-const LaborView = lazy(() =>
-  laborModule.then((m) => ({ default: m.LaborView })),
-);
-const SystemView = lazy(() =>
-  systemModule.then((m) => ({ default: m.SystemView })),
-);
-const GlossaryView = lazy(() =>
-  glossaryModule.then((m) => ({ default: m.GlossaryView })),
-);
 
 export function Dashboard() {
   return (
@@ -343,20 +321,7 @@ function DashboardShell() {
   // die View — ein sichtbarer Tausch, den das Lighthouse-Gate als Layout-
   // Shift zählt. Die Importe laufen seit Modulstart (oben), hier wartet das
   // Gate nur noch auf das Ergebnis.
-  const tabModule =
-    tab === "jetzt"
-      ? jetztModule
-      : tab === "stations"
-        ? stationenModule
-        : tab === "week"
-          ? wocheModule
-          : tab === "ich"
-            ? ichModule
-            : tab === "labor"
-              ? laborModule
-              : tab === "system"
-                ? systemModule
-                : glossaryModule;
+  const tabModule = SECTION_MODULES[tab];
   const [chunkReady, setChunkReady] = useState(false);
   useEffect(() => {
     let active = true;
@@ -423,14 +388,7 @@ function DashboardShell() {
         {/* Bereich-Inhalt (U7: die Views laden als eigene Chunks —       */}
         {/* Suspense zeigt derweil ein Skeleton statt einer weißen Fläche) */}
         {/* ============================================================ */}
-        <Suspense
-          fallback={
-            <div className="space-y-6" aria-busy="true" aria-live="polite">
-              <SkeletonPanel />
-              <SkeletonPanel />
-            </div>
-          }
-        >
+        <Suspense fallback={<SectionFallback />}>
         {tab === "jetzt" && (
           <JetztView
             activeCity={activeCity}
@@ -474,159 +432,11 @@ function DashboardShell() {
           />
         )}
 
-        {/* ============================================================ */}
-        {/* TAB STATIONEN (GUI-Neuentwurf, Phase 2)                      */}
-        {/* ============================================================ */}
-        {tab === "stations" && (
-          <StationenView
-            activeCity={activeCity}
-            data={data}
-            stations={stations}
-            price={price}
-            elapsed={elapsed}
-            online={online}
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            pinnedIds={pinnedIds}
-            togglePin={togglePin}
-            pinNote={pinNote}
-            decideRes={decideRes}
-            stripCells={stripCells}
-            series7d={series7d}
-            seriesSpan={stationsSpanHours}
-            onSeriesSpan={setStationsSpanHours}
-            liters={effLiters}
-            timeValue={effTimeValue}
-            timeValueUsed={timeValueUsed}
-            autoZ={autoZ}
-            onTimeValue={(value) =>
-              setAssumptions((current) => ({ ...current, timeValue: value }))
-            }
-            pricesAt={nowPricesAt}
-            onRetry={refreshNow}
-            onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section)}
-            searchFocusSignal={searchFocusSignal}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB WOCHE (GUI-Neuentwurf, Phase 2)                          */}
-        {/* ============================================================ */}
-        {tab === "week" && (
-          <WocheView
-            activeCity={activeCity}
-            stationsCount={stations.length}
-            decideRes={decideRes}
-            priceNow={price(selected)}
-            tankPercent={tankPercent}
-            setTankPercent={setTankPercent}
-            tankCapacity={tankCapacity}
-            consumption={consumption}
-            forecastAt={nowForecastAt}
-            pricesAt={nowPricesAt}
-            onRetry={refreshNow}
-            onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section)}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB ICH (GUI-Neuentwurf, Phase 2)                            */}
-        {/* ============================================================ */}
-        {tab === "ich" && (
-          <IchView
-            initialSection={ichSection}
-            vehicle={{
-              liters,
-              setLiters,
-              consumption,
-              setConsumption,
-              tankCapacity,
-              setTankCapacity,
-              activeProfileName: activeProfile?.name ?? null,
-              speed,
-              setSpeed,
-              timeValue,
-              setTimeValue,
-              timeValueUsed,
-              autoZ,
-              detourMode,
-              setDetourMode,
-              profilesRes,
-              activeProfileId,
-              onActivateProfile: handleActivateProfile,
-              profilesBusy,
-              onOpenProfileManager: () => setProfileManagerOpen(true),
-            }}
-            settings={{
-              data,
-              activeCity,
-              setCity,
-              fuel,
-              setFuel,
-              statsSummaryRes,
-              refreshNow,
-              theme,
-              setTheme,
-              themeChoice,
-              setThemeChoice,
-              pinnedStations: pinnedFirstStations
-                .filter((row) => pinnedIds.includes(row.station_id))
-                .map((station) => ({ station })),
-              togglePin,
-              version: h?.version ?? null,
-              onOpenGlossary: () => gotoTab("glossary"),
-            }}
-            pinnedFirstStations={pinnedFirstStations}
-            quickStationId={quickStationId}
-            setQuickStationId={setQuickStationId}
-            quickLitersStr={quickLitersStr}
-            setQuickLitersStr={setQuickLitersStr}
-            quickPriceStr={quickPriceStr}
-            setQuickPriceStr={setQuickPriceStr}
-            quickDraft={quickDraft}
-            priceOf={price}
-            freshPrices={freshPrices}
-            fillSubmitting={fillSubmitting}
-            onQuickFill={handleQuickFill}
-            actionFeedback={actionFeedback}
-            fillList={fillList}
-            visibleFills={visibleFills}
-            voidedCount={voidedCount}
-            showVoidedFills={showVoidedFills}
-            setShowVoidedFills={setShowVoidedFills}
-            voidNote={voidNote}
-            voidBusy={voidBusy}
-            onVoidFill={handleVoidFill}
-            fillsSummary={fillsSummary}
-            onRetry={refreshNow}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB LABOR — holt sich Daten und Modell aus dem Context (U8)   */}
-        {/* ============================================================ */}
-        {tab === "labor" && (
-          <LaborView
-            focusSection={laborFocus}
-            onFocusHandled={() => setLaborFocus(null)}
-            onNavigate={handleNowNavigate}
-            onOpenGlossary={() => gotoTab("glossary")}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB SYSTEM — Terminal-Zustand besitzt die View selbst (U8)   */}
-        {/* ============================================================ */}
-        {tab === "system" && (
-          <SystemView onDeepen={(section) => openLabor(section)} />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB GLOSSAR — C7 „Was heißt das?“                             */}
-        {/* ============================================================ */}
-        {tab === "glossary" && <GlossaryView />}
+        {/* Die sechs übrigen Bereiche liegen in `views/Sections.tsx` —
+            dieselbe Verdrahtung, die auch der Konzept-Neubau (v3) nutzt.
+            „Jetzt“ bleibt oben in dieser Datei, weil die alte Oberfläche
+            dort ihre eigene View rendert. */}
+        <SectionContent ov={ov} tab={tab} />
         </Suspense>
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-xs text-slate-600">
