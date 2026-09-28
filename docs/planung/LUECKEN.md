@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 27.09.2026 · App-Version 0.71.0
+> Stand: 27.09.2026 · App-Version 0.72.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -135,6 +135,13 @@ Ergebnisse und Grenzen im [Regime-Plan](REGIME.md#messstand).
 Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 
 ## Bewusste Grenzen
+
+**M3-Prototyp (0.72.0):** `/?konzept=1` ist das bedienbare Design-Lab,
+keine neue Live-Datenoberfläche. Die bisherigen Funktionen bleiben unter `/`
+erhalten und werden aus dem Prototyp verlinkt. Die Übertragung der echten
+API-Zustände, Profil-/Belegmutationen und Freigabegates in das Smartphone-Layout
+ist noch nicht erfolgt. Beispiel-MAE, Gradient Boosting, Treffsicherheit und
+Sparbeträge sind keine Aussagen über die produktive Engine.
 
 | Thema | Entscheidung |
 |---|---|

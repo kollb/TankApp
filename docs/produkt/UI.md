@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 27.09.2026 · App-Version 0.71.0
+> Stand: 27.09.2026 · App-Version 0.72.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
@@ -265,3 +265,12 @@ bleiben Microcopy-Ratchet, mobile Layout-Prüfungen und die
 Für das Labor bleiben alle sechs historischen Abschnittssprünge sowie der
 Umbruch langer Bezeichner in den Parameterkarten Teil der Demo-Browser-Suite.
 Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
+
+## Interaktives Design-Lab (0.72.0)
+
+`/?konzept=1` öffnet den M3-Prototyp aus `sample/good gui`: Smartphone links,
+UX-Panel rechts. Mobil schaltet „Konzept & Steuerung“ die Ansicht um. Der
+Desktop-Link „Neue GUI“ sitzt in der Live-Kopfzeile. Die Live-App bleibt unter
+`/` und den bisherigen Tab-URLs; deren Funktionen werden nicht durch Demo-Daten
+ersetzt. Karte/Alarme im Prototyp sind ausdrücklich Demo-Interaktionen. Bedienung und
+Funktionsabdeckung stehen in [GUI-VORLAGEN](GUI-VORLAGEN.md).

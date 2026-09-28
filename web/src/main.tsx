@@ -1,12 +1,22 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { Dashboard } from "./Dashboard";
 import { registerServiceWorker } from "./service-worker";
 import "./styles.css";
 
+const ConceptApp = lazy(() => import("./concept/App"));
+const isConcept =
+  new URLSearchParams(window.location.search).get("konzept") === "1";
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Dashboard />
+    {isConcept ? (
+      <Suspense fallback={<p className="p-8">Konzept wird geladen …</p>}>
+        <ConceptApp />
+      </Suspense>
+    ) : (
+      <Dashboard />
+    )}
   </React.StrictMode>,
 );
 
@@ -15,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
 // die Ansicht zeigt dann „Neue Version verfügbar“ samt eigener Version.
 // webdriver = automatisierter Test: dort kein Cache zwischen App und Assertions.
 if (
+  !isConcept &&
   "serviceWorker" in navigator &&
   !import.meta.env.DEV &&
   !navigator.webdriver
