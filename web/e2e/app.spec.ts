@@ -207,23 +207,25 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   await expect(table.locator("input")).toHaveCount(0);
 
   // Darstellung: „System“ ist die Voreinstellung und folgt dem Gerät
-  // (Playwright meldet hell), „Dunkel“ und „Hell“ sind ausdrückliche
-  // Wahlen — sie überstehen einen Reload (Bootstrap-Script, localStorage).
+  // (Playwright meldet hell), „Dunkel“ und „Hell“ sind ausdrückliche Wahlen.
+  // Der Reload-Pfad (wer sticht wen, was steht in `tankapp.theme`) wird in
+  // `konzept.spec.ts` geprüft; hier zählt die Bedienung.
   const themeGroup = await openThemeChoices(page);
   await themeGroup.getByRole("button", { name: "Dunkel", exact: true }).click();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
   expect(
     await page.evaluate(() => localStorage.getItem("tankapp.theme")),
   ).toBe('"dark"');
 
+  await themeGroup.getByRole("button", { name: "Hell", exact: true }).click();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  expect(
+    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
+  ).toBe('"light"');
+
   // Zurück auf den Default („System“): die Wahl verschwindet wieder, das
   // Gerät entscheidet — hier hell. Damit hängen andere Tests nicht von
-  // dieser Ansicht ab. Nach dem Reload startet die App in „Jetzt“ — der
-  // Theme-Bereich liegt unter „Ich → Einstellungen“.
-  await clickArea(page, "Ich");
-  await openThemeChoices(page);
+  // dieser Ansicht ab.
   await themeGroup.getByRole("button", { name: "System", exact: true }).click();
   expect(
     await page.evaluate(() => localStorage.getItem("tankapp.theme")),
