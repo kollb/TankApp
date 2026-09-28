@@ -33,10 +33,21 @@ test("echte Ansicht: keine Vorschau-Attrappe, Bereiche reisen in der Adresse", a
     page.locator('a[href="/"]', { hasText: "Klassische Ansicht" }).first(),
   ).toHaveAttribute("href", "/");
 
-  // Bereichswechsel: der Parameter bleibt, der Bereich kommt dazu.
+  // Bereichswechsel: der Parameter bleibt, der Bereich kommt dazu — und die
+  // migrierte Seite hat ihre eigene Überschrift.
   await page.getByRole("button", { name: "Woche", exact: true }).click();
   await expect(page).toHaveURL(/konzept=1/);
   await expect(page).toHaveURL(/tab=woche/);
+  const weekTitle = page.getByRole("heading", {
+    level: 1,
+    name: "Wann tanken in den nächsten Tagen?",
+  });
+  await expect(weekTitle).toBeVisible();
+
+  // Ein noch nicht migrierter Bereich sagt offen, wo er steht (der Hinweis
+  // verschwindet Bereich für Bereich — hier am Beispiel „Labor“).
+  await clickArea(page, "Labor");
+  await expect(page).toHaveURL(/tab=labor/);
   await expect(
     page.getByText("läuft noch in der bisherigen Gestaltung", {
       exact: false,
@@ -45,10 +56,8 @@ test("echte Ansicht: keine Vorschau-Attrappe, Bereiche reisen in der Adresse", a
 
   // Zurück über den Browser — die Adresse ist die Wahrheit (U4).
   await page.goBack();
-  await expect(page).toHaveURL(/tab=jetzt|konzept=1$/);
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Soll ich jetzt tanken?" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/tab=woche/);
+  await expect(weekTitle).toBeVisible();
 });
 
 test("Handy: eine Spalte, untere Leiste, Studio hinter „Mehr“", async ({
