@@ -206,27 +206,31 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   // Read-only: kein einziges Eingabefeld in der Schwellen-Tabelle.
   await expect(table.locator("input")).toHaveCount(0);
 
-  // Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
-  // einen Reload (Bootstrap-Script in index.html, localStorage).
-  // Seit GUI v2 ist „Hell (Standard)“ der Default, „Dunkel“ die Option —
-  // die Prüfung läuft spiegelbildlich zur früheren dunklen Basis.
-  await page
-    .getByRole("button", { name: "Dunkel", exact: true })
-    .click();
+  // Darstellung: „System“ ist die Voreinstellung und folgt dem Gerät
+  // (Playwright meldet hell), „Dunkel“ und „Hell“ sind ausdrückliche
+  // Wahlen — sie überstehen einen Reload (Bootstrap-Script, localStorage).
+  const themeGroup = page.getByRole("group", {
+    name: "Darstellung (System, dunkel oder hell)",
+  });
+  await themeGroup.getByRole("button", { name: "Dunkel", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  // Zurück auf den Default (hell), damit andere Tests nicht
-  // von dieser Ansicht abhängen. Nach dem Reload startet die App in
-  // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
+  expect(
+    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
+  ).toBe('"dark"');
+
+  // Zurück auf den Default („System“): die Wahl verschwindet wieder, das
+  // Gerät entscheidet — hier hell. Damit hängen andere Tests nicht von
+  // dieser Ansicht ab. Nach dem Reload startet die App in „Jetzt“ — der
+  // Theme-Bereich liegt unter „Ich → Einstellungen“.
   await clickArea(page, "Ich");
-  await page
-    .getByRole("tab", { name: "Einstellungen", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Hell (Standard)", exact: true })
-    .click();
-  await expect(page.locator("html")).toHaveClass(/light/);
+  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
+  await themeGroup.getByRole("button", { name: "System", exact: true }).click();
+  expect(
+    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
+  ).toBe(null);
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
 });
 
 // ---------------------------------------------------------------------------

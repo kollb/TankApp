@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { clickArea } from "./nav";
+
 // Der Konzept-Neubau (`/?konzept=1`) — die **echte** Oberfläche:
 // dieselben Endpunkte, dieselben Freigabegates, aber die Gestaltung aus dem
 // Konzept und der Desktop als Grundform.
@@ -18,7 +20,7 @@ test("echte Ansicht: keine Vorschau-Attrappe, Bereiche reisen in der Adresse", a
   // Die Frage der Startseite steht als Überschrift — und der frühere
   // Handy-Rahmen samt Steuerpanel existiert nicht mehr.
   await expect(
-    page.getByRole("heading", { name: "Soll ich jetzt tanken?" }),
+    page.getByRole("heading", { level: 1, name: "Soll ich jetzt tanken?" }),
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Interaktive Smartphone-Vorschau" }),
@@ -43,7 +45,7 @@ test("echte Ansicht: keine Vorschau-Attrappe, Bereiche reisen in der Adresse", a
   await page.goBack();
   await expect(page).toHaveURL(/tab=jetzt|konzept=1$/);
   await expect(
-    page.getByRole("heading", { name: "Soll ich jetzt tanken?" }),
+    page.getByRole("heading", { level: 1, name: "Soll ich jetzt tanken?" }),
   ).toBeVisible();
 });
 
@@ -53,7 +55,7 @@ test("Handy: eine Spalte, untere Leiste, Studio hinter „Mehr“", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?konzept=1");
   await expect(
-    page.getByRole("heading", { name: "Soll ich jetzt tanken?" }),
+    page.getByRole("heading", { level: 1, name: "Soll ich jetzt tanken?" }),
   ).toBeVisible();
 
   // Kein Querlauf in schmalen Rastern.
@@ -74,12 +76,11 @@ test("Handy: eine Spalte, untere Leiste, Studio hinter „Mehr“", async ({
   await expect(sheet).toHaveCount(0);
 });
 
-test("Darstellung folgt dem System, Rückfall ist dunkel", async ({
-  page,
-}) => {
+test("Darstellung folgt dem System, Rückfall ist dunkel", async ({ page }) => {
   // Ausdrückliche Systemeinstellung „hell“.
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/?konzept=1");
+  await expect(page.locator("html")).toHaveClass(/light/);
   await expect(page.locator("html")).not.toHaveClass(/dark/);
 
   // Ohne Angabe des Geräts bleibt es dunkel (der Rückfall).
@@ -88,15 +89,30 @@ test("Darstellung folgt dem System, Rückfall ist dunkel", async ({
   await expect(page.locator("html")).toHaveClass(/dark/);
 
   // Eine ausdrückliche Wahl sticht das System und überlebt das Neuladen.
-  await page.getByRole("button", { name: /Darstellung umschalten/ }).click();
+  // Der Weg ist derselbe wie in der klassischen Ansicht (Ich →
+  // Einstellungen → Darstellung); der Neubau hat keinen zweiten Schalter,
+  // der etwas anderes behaupten könnte.
+  const themeGroup = () =>
+    page.getByRole("group", { name: "Darstellung (System, dunkel oder hell)" });
+  await clickArea(page, "Ich");
+  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
+  await themeGroup().getByRole("button", { name: "Hell", exact: true }).click();
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  await page.reload();
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  expect(
+    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
+  ).toBe('"light"');
+
+  // „System“ nimmt die Wahl zurück: der Schlüssel verschwindet, das Gerät
+  // entscheidet wieder — und das ist hier dunkel.
+  await page.getByRole("tab", { name: "Einstellungen", exact: true }).click();
+  await themeGroup().getByRole("button", { name: "System", exact: true }).click();
+  expect(
+    await page.evaluate(() => localStorage.getItem("tankapp.theme")),
+  ).toBe(null);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  const stored = await page.evaluate(() =>
-    localStorage.getItem("tankapp.theme"),
-  );
-  expect(stored === null || stored === '"dark"' || stored === '"light"').toBe(
-    true,
-  );
 });
 
 test("Stufen des Guides: ohne Verbindung erklärt die Seite den Ausfall", async ({
@@ -105,7 +121,7 @@ test("Stufen des Guides: ohne Verbindung erklärt die Seite den Ausfall", async 
 }) => {
   await page.goto("/?konzept=1");
   await expect(
-    page.getByRole("heading", { name: "Soll ich jetzt tanken?" }),
+    page.getByRole("heading", { level: 1, name: "Soll ich jetzt tanken?" }),
   ).toBeVisible();
   // Gerät offline: Stufe 3 — Banner statt erfundener Empfehlung.
   await context.setOffline(true);

@@ -222,9 +222,10 @@ function VerdictCard() {
   if (!verdict) {
     return (
       <SectionCard>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Soll ich jetzt tanken?
-        </h1>
+        {/* Die Frage steht einmal auf der Seite — als Seitenüberschrift.
+            Die Karte antwortet; solange sie das nicht kann, sagt sie das
+            statt die Frage zu wiederholen. */}
+        <h2 className="text-lg font-bold tracking-tight">Noch keine Antwort</h2>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-on-surface-variant">
           {stations.length === 0
             ? "Für eine Antwort fehlen noch Stationen: Stadt wählen, dann füllt der Collector die Preise. Alles Weitere zeigt dieser Bereich, sobald die erste Meldung da ist."
