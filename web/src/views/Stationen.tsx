@@ -323,7 +323,12 @@ export function StationenView(props: StationenViewProps) {
       </p>
 
       {/* ① Suche + Filter */}
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+      {/* Mobil stehen Suche, Filter, Marke und Zeitwert als gleich breite
+          Boxen untereinander (vorher: Suche über die volle Breite, die drei
+          Filter darunter nur so breit wie ihr Inhalt, nebeneinander und
+          umbrechend). Ab `sm` eine Zeile. */}
+      <div className="mt-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs">
           <Search size={14} className="shrink-0 text-slate-500" aria-hidden="true" />
           <span className="sr-only">Station durchsuchen (Strg+K)</span>
@@ -346,12 +351,12 @@ export function StationenView(props: StationenViewProps) {
             </button>
           )}
         </label>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={() => setOpenOnly((value) => !value)}
             aria-pressed={openOnly}
-            className={`rounded-lg border px-2.5 py-2 text-xs transition-colors ${
+            className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-colors sm:w-auto sm:text-center ${
               openOnly
                 ? "border-emerald-500/60 bg-emerald-900/40 text-emerald-200"
                 : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200"
@@ -360,13 +365,13 @@ export function StationenView(props: StationenViewProps) {
           >
             {openOnly ? "nur offene" : "alle Stationen"}
           </button>
-          <label className="flex items-center gap-2 text-xs text-slate-400">
+          <label className="flex w-full items-center gap-2 text-xs text-slate-400 sm:w-auto">
             <span className="sr-only">Marke filtern</span>
             <select
               aria-label="Nach Marke filtern"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100 sm:w-auto"
             >
               <option value="">Alle Marken</option>
               {brands.map((b) => (
@@ -377,7 +382,7 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
           <label
-            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300"
+            className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-300 sm:w-auto"
             title="Zeitwert für die Umweg-Rechnung"
           >
             <span className="sr-only">Zeitwert für die Umweg-Rechnung</span>
@@ -389,7 +394,7 @@ export function StationenView(props: StationenViewProps) {
                 const value = Number(e.target.value);
                 onTimeValue(Number.isFinite(value) ? value : null);
               }}
-              className="bg-slate-950 pr-1 text-slate-100"
+              className="min-w-0 flex-1 bg-slate-950 pr-1 text-slate-100 sm:flex-none"
             >
               {/* 0.55.0: Stand hier `timeValueUsed` — das ist bei gesetztem
                   Zeitwert der manuelle Wert. Die Auto-Option warb damit für
@@ -408,6 +413,7 @@ export function StationenView(props: StationenViewProps) {
             </select>
           </label>
         </div>
+      </div>
         {/* V2: Die beiden Filter-Regeln standen nur im Tooltip (V1–V5, V2) —
             ohne Maus oder Tastaturfokus waren sie unsichtbar. */}
         <p className="mt-2 text-xs leading-relaxed text-slate-500">

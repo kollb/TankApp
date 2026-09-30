@@ -25,6 +25,11 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   und Fenster hinter dem Stichtag tragen keinen Abstand „günstiger als jetzt“.
   Gates, Kohorten und Sperrgründe bleiben unverändert (A14 bleibt die
   menschliche Bestätigung).
+- **Stationen: einheitliche Filter-Boxen.** Mobil stehen Suche, „alle
+  Stationen“, Marke und Zeitwert als gleich breite Boxen untereinander
+  (vorher: Suche über die volle Breite, die Filter darunter nur so breit wie
+  ihr Inhalt). Der Hinweistext steht unter der Zeile statt als dritte Spalte
+  daneben.
 - **Stationen: Standard-Sortierung nach Preis.** Die Liste öffnet mit der
   günstigsten Station zuerst; `Netto-€` steht als zweiter Knopf. Die
   Vorauswahl „Top 1 gegen Top 2“ folgt derselben Reihenfolge.
