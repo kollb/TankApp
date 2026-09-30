@@ -259,3 +259,61 @@ describe("Woche: Kalibrierungsstand (A70, M2)", () => {
     expect(html).toContain("Szenarioprognose (unkalibriert)");
   });
 });
+
+describe("Woche: Tankrabatt am Stichtag (01.10.)", () => {
+  // Dienstag 29.09. 12:00 — morgen um 00:00 gilt der Rabatt.
+  const RABATT_NOW = Date.parse("2026-09-30T12:00:00+02:00");
+  const windowMorning = {
+    start: "2026-10-01T06:10:00+02:00",
+    end: "2026-10-01T07:55:00+02:00",
+    expected_price: 2.272,
+    expected_saving_eur: 0.3,
+    expected_saving_median_eur: 0.29,
+    p: 0.6,
+  };
+  const notice = {
+    at: "2026-09-30T22:00:00+00:00",
+    announced_local: "2026-10-01T00:00",
+    announced_ct: -17,
+    status: "announced",
+    phase: "upcoming" as const,
+    days: 0,
+  };
+  const rabatt = (regime_notice: typeof notice | null) =>
+    render({
+      now: RABATT_NOW,
+      priceNow: 2.279,
+      decideRes: {
+        data: decide({ windows_week: [windowMorning], regime_notice }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+
+  it("Uhrzeit steht mit Minuten, nicht als „06–07 Uhr“ und nie als Dezimalzahl", () => {
+    const html = rabatt(notice);
+    expect(html).toContain("06:10–07:55 Uhr");
+    expect(html).not.toContain("06–07 Uhr");
+    expect(html).not.toMatch(/\d\.\d{6,}/);
+  });
+
+  it("zeigt den Hinweis vor den Fenstern und rechnet keinen Abstand über den Stichtag", () => {
+    const html = rabatt(notice);
+    expect(html).toContain("Tankrabatt ab 01.10.: bis zu 17 ct/L weniger");
+    expect(html.indexOf("Tankrabatt ab 01.10.")).toBeLessThan(
+      html.indexOf("Beste Fenster (7 Tage)"),
+    );
+    expect(html).toContain("Abstand zu jetzt nicht belastbar");
+    expect(html).not.toContain("ct/L günstiger als jetzt");
+    // Liste „nach Ersparnis“: keine Ersparnis-Zahl für das Fenster hinter dem Stichtag.
+    expect(html).not.toContain("0,29 € günstiger");
+  });
+
+  it("ohne Termin bleibt alles wie vorher", () => {
+    const html = rabatt(null);
+    expect(html).not.toContain("Tankrabatt");
+    expect(html).toContain("ct/L günstiger als jetzt");
+  });
+});

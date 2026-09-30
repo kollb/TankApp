@@ -71,6 +71,7 @@ import {
 import {
   atlasEur,
   ATLAS_SORTS,
+  DEFAULT_ATLAS_SORT,
   atlasMatchesFilter,
   atlasRows,
   atlasExplanation,
@@ -176,7 +177,7 @@ export function StationenView(props: StationenViewProps) {
   // aktuellem Preis für den gewählten Kraftstoff — „—“-Zeilen bleiben
   // andernfalls sichtbar und sortieren nach hinten.
   const [openOnly, setOpenOnly] = useState(false);
-  const [sort, setSort] = useState<AtlasSort>("net");
+  const [sort, setSort] = useState<AtlasSort>(DEFAULT_ATLAS_SORT);
   // Vergleichs-Modus: B-Station (A = die gewählte Station).
   // A gegen B: "" heißt „Vorauswahl Top 1 gegen Top 2 der Sortierung“.
   const [compareA, setCompareA] = useState<string>("");

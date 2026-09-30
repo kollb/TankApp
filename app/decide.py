@@ -35,6 +35,7 @@ from .feedback import (
 from .gate_context import (
     forecast_calibration_mode,
     normalize_gate_context,
+    regime_notice_for,
     statistical_gate_context,
 )
 from .quantity import QUANTITY_MODES, resolve_quantity
@@ -1978,6 +1979,14 @@ def evaluate_decide(
         # Verwendbarkeit (``blocking_reasons``/``decision_ready``).
         "gate_context": normalize_gate_context(gate_context),
         "gate_context_source": "requested",
+        # Preisniveau-Termin im Sichtfeld der Prognose (z. B. Tankrabatt): die
+        # Engine kennt den angekündigten Betrag nicht — die GUI warnt, dass
+        # „günstiger als jetzt“ über die Kante hinweg kein Modellurteil ist.
+        "regime_notice": regime_notice_for(
+            fuel,
+            clock_now,
+            getattr(live_data.settings, "regimes", ()) or (),
+        ),
         # A21-B1.4: Bereitschaft = freigegebene Handlung; die maschinenlesbaren
         # Sperrgründe und die Gültigkeitsgrenze der Freigabe stehen daneben
         # (API-/UI-Vertrag, Issue 201).

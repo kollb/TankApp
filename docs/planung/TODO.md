@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 27.09.2026 · App-Version 0.72.0
+> Stand: 30.09.2026 · App-Version 0.72.1
 
 ## Inhaltsverzeichnis
 
@@ -36,6 +36,10 @@ Betriebsnachweise, die nur Zeit oder Feldmessung brauchen, stehen in
   Preisanstieg um 00:00 Uhr von der 12-Uhr-Regel ausgenommen ist.
 - [ ] Quelle und Ergebnis in `REGIME.md` festhalten und die im Betrieb
   verwendeten `TANKAPP_REGIMES` mit dem bestätigten Stand abgleichen.
+- [ ] Rabatt vom 01.10.2026 (Bundestag/Bundesrat laut Presse beschlossen, noch
+  kein amtlicher Beleg im Repo): nach der Kante prüfen, ob die Stationspreise
+  den Schritt zeigen, und erst dann den Eintrag auf `in_force` setzen. Bis dahin
+  warnt die GUI nur (`regime_notice`, [BETRIEB](../betrieb/BETRIEB.md)).
 
 **Abnahme:** Bestätigte Regeln sind von bloßen Szenarien getrennt; ungeklärte
 Termine werden nicht als geltendes Recht oder feste Entwicklungsfrist

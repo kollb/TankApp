@@ -32,9 +32,15 @@ import {
 
 export type AtlasSort = "net" | "price" | "distance";
 
+// Die Frage der Seite ist „Wo ist es am günstigsten?“ — die Liste öffnet
+// deshalb nach Preis (günstigste zuerst). Netto-€ mischt Server-Zahlen mit
+// Umweg und reine Preisdifferenzen je Zeile und ist der bewusste zweite
+// Blick, nicht der Einstieg.
+export const DEFAULT_ATLAS_SORT: AtlasSort = "price";
+
 export const ATLAS_SORTS: Array<{ value: AtlasSort; label: string }> = [
-  { value: "net", label: "Netto-€" },
   { value: "price", label: "Preis (€/L)" },
+  { value: "net", label: "Netto-€" },
   { value: "distance", label: "Entfernung" },
 ];
 

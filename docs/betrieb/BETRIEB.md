@@ -517,6 +517,16 @@ Kennzahl ändert sich. Der Spritpreisdeckel ist **kein** eigener Eintrag,
 solange seine Ausgestaltung offen ist (A15) — bekannt ist nur das
 Rabatt-Ende.
 
+**Stichtag-Hinweis in der GUI (0.72.1):** Liegt ein Termin aus dem Kalender
+höchstens 7 Tage voraus oder 14 Tage zurück, meldet `decide` ihn als
+`regime_notice`; Woche und Jetzt zeigen dazu ein Banner, und Fenster hinter
+einem bevorstehenden Stichtag tragen keinen Abstand „günstiger als jetzt“. Das
+ändert **nichts** an Gates und Kohorten. Ob der Eintrag `announced` bleibt oder
+auf `in_force` springt, ist die menschliche Bestätigung A14: `in_force` setzt
+ab der Kante einen neuen `regime_ref` — die M7-Evidenz davor öffnet das Gate
+danach nicht mehr. Erst setzen, wenn die Preise an den Stationen den Schritt
+tatsächlich zeigen (`TANKAPP_REGIMES` mit dem Eintrag `status: "in_force"`).
+
 Kontrolle nach dem Lauf: je Station steht `regime_breaks_in_window` in der
 Veröffentlichung (`runtime/engine/forecasts/*.json`, [API.md](../referenz/API.md#forecast-messfelder-b0-seit-0560)),
 dazu `ar_shrink_events`, `pit` und `pava_pool_stats`.

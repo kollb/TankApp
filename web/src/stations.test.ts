@@ -16,6 +16,8 @@ import {
   dayRhythmLine,
   referenceStation,
   sortAtlasRows,
+  ATLAS_SORTS,
+  DEFAULT_ATLAS_SORT,
   stationContextLines,
   stationsFreshness,
   type AtlasRow,
@@ -193,6 +195,23 @@ describe("atlasRows", () => {
     expect(
       rs.find((row) => row.station.station_id === "c")!.ageMinutes,
     ).toBeNull();
+  });
+});
+
+describe("Standard-Sortierung: Wo ist es am günstigsten?", () => {
+  it("öffnet nach Preis, und der Preis-Knopf steht vor Netto-€", () => {
+    expect(DEFAULT_ATLAS_SORT).toBe("price");
+    expect(ATLAS_SORTS.map((option) => option.value)).toEqual([
+      "price",
+      "net",
+      "distance",
+    ]);
+    // Die günstigste Station steht vorn — auch wenn sie nicht die Referenz ist.
+    const cheaper = rows({ serverAlts: [serverAlt({})] });
+    const ordered = sortAtlasRows(cheaper, DEFAULT_ATLAS_SORT);
+    const prices = ordered.map((row) => row.price).filter((p) => p !== null);
+    expect(prices).toEqual([...prices].sort((a, b) => a! - b!));
+    expect(ordered[ordered.length - 1].price).toBeNull();
   });
 });
 

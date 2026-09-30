@@ -934,6 +934,23 @@ export type DecideResult = {
   calibrated: boolean;
   decision_ready: boolean;
   /**
+   * Nächster Preisniveau-Termin im Sichtfeld der Prognose (Tankrabatt u. ä.,
+   * 7 Tage voraus bis 14 Tage zurück) — `null`/fehlt ohne Termin. Die Engine
+   * rechnet nicht mit dem Betrag; `regime.ts` macht daraus den Hinweis.
+   */
+  regime_notice?: {
+    /** Kante als UTC-ISO. */
+    at: string;
+    /** Lokaler Kalendereintrag („2026-10-01T00:00“). */
+    announced_local: string;
+    /** Betrag in ct/L, Vorzeichen = Richtung (−17 = Senkung). */
+    announced_ct: number;
+    status: string;
+    /** `upcoming`: Kante liegt voraus · `recent`: höchstens 14 Tage zurück. */
+    phase: "upcoming" | "recent";
+    days: number;
+  } | null;
+  /**
    * A21-B1.4/A70: maschinenlesbare Sperrgründe der Freigabekette (stabile
    * Codes: `price_missing`, `price_stale`, `station_unusable`, `data_stale`,
    * `forecast_missing`, `forecast_expired`, `origin_unknown`,
@@ -3408,8 +3425,11 @@ export function countLabel(value: number | null | undefined) {
 }
 
 /**
- * Uhrzeit-**Bereich** über ganze Stunden: „18–20 Uhr“ (Konzept-Sprechweise der
- * Entscheidung). Einzelne Rasterzellen heißen dagegen `hourBucketLabel`.
+ * Uhrzeit-**Bereich** aus Dezimalstunden (Berlin): „18–20 Uhr“ bei vollen
+ * Stunden, „06:10–07:55 Uhr“ sobald Minuten im Spiel sind — nie „6.1666…“
+ * und nie eine abgeschnittene Stunde. Aufrufer reichen die Dezimalstunde
+ * unverändert durch (`berlinHour`), sie runden nicht selbst. Einzelne
+ * Rasterzellen heißen dagegen `hourBucketLabel`.
  */
 export function hourRangeLabel(
   fromHour: number | null | undefined,
@@ -3417,20 +3437,25 @@ export function hourRangeLabel(
 ) {
   if (fromHour == null || toHour == null) return "—";
   if (!Number.isFinite(fromHour) || !Number.isFinite(toHour)) return "—";
-  // B6: Engine-Fenster haben 5-Minuten-Granularität — ein Fenster 22:00–22:55
-  // floor-t beide Seiten auf 22 und renderte „22–22 Uhr“. Liegt eine End-
-  // zeit innerhalb der Stunde, wird sie mit Minuten angegeben (22–22:55 Uhr),
-  // ein entartetes Null-Fenster als Einzelschicht („22 Uhr“).
-  const frac = (hour: number) => Math.floor((hour - Math.floor(hour)) * 60);
-  const from = ((Math.floor(fromHour) % 24) + 24) % 24;
-  const to = ((Math.floor(toHour) % 24) + 24) % 24;
-  if (frac(fromHour) === 0 && frac(toHour) === 0) {
-    if (from === to) return `${String(from).padStart(2, "0")} Uhr`;
-    return `${String(from).padStart(2, "0")}–${String(to).padStart(2, "0")} Uhr`;
+  // Engine-Fenster haben 5-Minuten-Granularität und kommen als Dezimalstunde
+  // (6,1666… = 06:10). Minuten werden **gerundet**, nie abgeschnitten — sonst
+  // wird aus 06:10 ein „06–07 Uhr“ (Ende 07:55 → 07) oder aus 6,35 h ein
+  // 06:20 statt 06:21. Volle Stunden stehen ohne Minuten („18–20 Uhr“), sobald
+  // eine Seite Minuten trägt, stehen beide als „HH:MM“; ein entartetes
+  // Null-Fenster ist ein Zeitpunkt („22 Uhr“, „22:30 Uhr“).
+  const minutesOf = (hour: number) =>
+    ((Math.round(hour * 60) % 1440) + 1440) % 1440;
+  const two = (value: number) => String(value).padStart(2, "0");
+  const hours = (minutes: number) => two(Math.floor(minutes / 60));
+  const clock = (minutes: number) => `${hours(minutes)}:${two(minutes % 60)}`;
+  const from = minutesOf(fromHour);
+  const to = minutesOf(toHour);
+  if (from % 60 === 0 && to % 60 === 0) {
+    if (from === to) return `${hours(from)} Uhr`;
+    return `${hours(from)}–${hours(to)} Uhr`;
   }
-  const full = (hour: number, base: number) =>
-    `${String(base).padStart(2, "0")}:${String(frac(hour)).padStart(2, "0")}`;
-  return `${full(fromHour, from)}–${full(toHour, to)} Uhr`;
+  if (from === to) return `${clock(from)} Uhr`;
+  return `${clock(from)}–${clock(to)} Uhr`;
 }
 /**
  * B4 (GUI): Ein Satz zum Zustand der Alarm-Zustellung für den System-Tab.

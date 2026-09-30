@@ -30,6 +30,7 @@ import {
 import { BenefitWidget } from "../components/BenefitWidget";
 import { BottomSheet } from "../components/BottomSheet";
 import { GuideBanner } from "../components/GuideBanner";
+import { RegimeNotice } from "../components/RegimeNotice";
 import { GuideConfidence } from "../components/GuideConfidence";
 import { HourBars } from "../components/HourBars";
 import { FreshnessLine } from "../components/FreshnessLine";
@@ -554,6 +555,7 @@ export function JetztView(props: JetztViewProps) {
           retrying={decideRes.pending}
           onRetry={onRetry}
         />
+        <RegimeNotice notice={decide?.regime_notice} className="mb-3" />
         {decideRes.pending && !decide && !setup ? (
           <SkeletonPanel lines={3} label="Empfehlung wird berechnet" />
         ) : setup ? (

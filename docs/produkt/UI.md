@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 27.09.2026 · App-Version 0.72.0
+> Stand: 30.09.2026 · App-Version 0.72.1
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
@@ -104,6 +104,13 @@ Inline-Banner sitzt über der Karte und lässt die Preise sichtbar.
 | 1 · Voller Guide | Verbindung und `decision_ready` | Urteilston wie oben | Stundenbalken (nächste 8 Stunden, aus `windows_today`) |
 | 2 · Ohne Prognose | `decision_ready=false`, Preise live | Neutral (Outlined Card) mit „Jetzt am günstigsten: <Station>“ — ein Ort, kein Urteil über die Zeit | Faustregel: vier Tageszeiten, typischer Verlauf |
 | 3 · Offline | keine Verbindung | Neutral, gedämpfte Preise mit Stand | Faustregel |
+
+Die Faustregel folgt der 12-Uhr-Regel (seit 01.04.2026 darf der Preis nur um
+12:00 Uhr steigen): `Vormittag` tief, `Nach 12` hoch, `Nachmittag` und `Abend`
+mittel — nie „abends am günstigsten“. Liegt ein Preisniveau-Termin (Tankrabatt)
+im Sichtfeld der Prognose, steht in Woche und Jetzt ein Inline-Banner
+(`regime_notice`); Fenster hinter dem bevorstehenden Stichtag tragen keinen
+Abstand zu „jetzt“. Die Stationenliste öffnet nach Preis, günstigste zuerst.
 
 Der Tagesverlauf liegt **einen Tipp entfernt**, nicht offen unter der Karte:
 Die Startseite trägt eine Frage und eine Antwort (B4 aus dem Befund

@@ -190,7 +190,7 @@ export const PARAM_CARDS: ParamCard[] = [
     title: "Strukturmodell (Huber-IRLS)",
     chain: "Kalender → Huber-β → Tagesform",
     sentence:
-      "Das Strukturmodell beschreibt den üblichen Tages- und Wochenrhythmus — morgens teuer, abends billig, Sonntag anders — robust geschätzt mit Huber-IRLS, damit Ausreißer die Form nicht verbiegen.",
+      "Das Strukturmodell beschreibt den üblichen Tages- und Wochenrhythmus — Sprung um 12 Uhr, danach fallend, Sonntag anders — robust geschätzt mit Huber-IRLS, damit Ausreißer die Form nicht verbiegen.",
     anchor: "karte-1-struktur",
   },
   {

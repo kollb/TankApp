@@ -354,15 +354,21 @@ export function guideBenefit(input: {
 // ---------------------------------------------------------------------------
 export type DayPartLevel = "low" | "mid" | "high";
 
+// Seit dem 01.04.2026 darf der Preis nur noch um 12:00 Uhr steigen, Senkungen
+// sind jederzeit erlaubt (`app/law.py`). Der Tag hat deshalb ein festes Muster:
+// bis 12 Uhr fällt der Preis, um 12 Uhr springt er, danach schmilzt er wieder.
+// Das alte „abends ist es am günstigsten“ beschrieb die Zeit davor — belegt in
+// `analysis/noon_rule_check.py`. Die Faustregel behauptet nur dieses
+// gesetzlich erzwungene Muster, keine gemessene Zahl.
 export const RULE_OF_THUMB = {
   title: "Faustregel für heute",
-  text: "Abends zwischen 18 und 22 Uhr ist Tanken meist am günstigsten, morgens am teuersten.",
-  note: "Typischer Verlauf der letzten 8 Wochen. Keine Prognose für heute — gilt auch ohne Verbindung.",
+  text: "Kurz vor 12 Uhr ist Tanken meist am günstigsten, direkt nach 12 Uhr am teuersten — danach sinken die Preise wieder.",
+  note: "Seit 01.04.2026 dürfen Tankstellen nur noch um 12 Uhr erhöhen. Typischer Verlauf. Keine Prognose für heute — gilt auch ohne Verbindung.",
   parts: [
-    { label: "Morgens", level: "high" as DayPartLevel },
-    { label: "Mittags", level: "mid" as DayPartLevel },
-    { label: "Nachmittags", level: "mid" as DayPartLevel },
-    { label: "Abends", level: "low" as DayPartLevel },
+    { label: "Vormittag", level: "low" as DayPartLevel },
+    { label: "Nach 12", level: "high" as DayPartLevel },
+    { label: "Nachmittag", level: "mid" as DayPartLevel },
+    { label: "Abend", level: "mid" as DayPartLevel },
   ],
 };
 
@@ -617,7 +623,7 @@ export function priceDrivers(input: {
         position === null
           ? NO_MEASUREMENT_NOTE
           : position >= 66
-            ? "Oben im Tagesspielraum — abends war es an vergleichbaren Tagen günstiger."
+            ? "Oben im Tagesspielraum — nach dem 12-Uhr-Sprung sinken die Preise meist wieder."
             : position <= 33
               ? "Unten im Tagesspielraum — viel tiefer ging es heute selten."
               : "Mitten im Tagesspielraum — die Uhrzeit allein bewegt gerade wenig.",

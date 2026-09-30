@@ -40,6 +40,7 @@ import {
   type DecideResult,
   type Station,
 } from "./data";
+import { windowPastRegimeEdge } from "./regime";
 import { labHint, type LabHint } from "./lab";
 import type { StripCell } from "./strip";
 
@@ -604,7 +605,13 @@ export function nowSteps(input: NowInput): NowStep[] {
   const later =
     nowStage(decide) === "C" ? null : (decide.windows_week?.[0] ?? null);
   // O45: auch hier die Ersparnis aus der Basis des angezeigten Fensterpreises.
-  const laterSaving = later ? windowSavingEur(later) : null;
+  // Liegt der Stichtag eines Preisniveau-Termins (Tankrabatt) zwischen jetzt und
+  // dem Fenster, vergleicht die Ersparnis zwei Niveaus, die das Modell nicht
+  // kennt — dann steht hier keine Zahl (`regime.ts`).
+  const laterSaving =
+    later && !windowPastRegimeEdge(later, decide.regime_notice)
+      ? windowSavingEur(later)
+      : null;
   if (later && laterSaving != null && laterSaving > 0) {
     steps.push({
       id: "later-window",

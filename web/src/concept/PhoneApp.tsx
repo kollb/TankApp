@@ -660,17 +660,18 @@ export default function PhoneApp({
                         Faustregel für heute
                       </p>
                       <p className="text-sm leading-5 text-on-surface-variant">
-                        Abends zwischen 18 und 22 Uhr ist Tanken meist am
-                        günstigsten. Morgens am teuersten.
+                        Kurz vor 12 Uhr ist Tanken meist am günstigsten, direkt
+                        nach 12 Uhr am teuersten — danach sinken die Preise
+                        wieder.
                       </p>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-4 gap-1.5">
                     {[
-                      { t: "Morgens", c: "bg-error/70", h: "h-10" },
-                      { t: "Mittags", c: "bg-[#d9a400]/70", h: "h-7" },
-                      { t: "Nachmittags", c: "bg-[#d9a400]/70", h: "h-8" },
-                      { t: "Abends", c: "bg-primary", h: "h-4" },
+                      { t: "Vormittag", c: "bg-primary", h: "h-4" },
+                      { t: "Nach 12", c: "bg-error/70", h: "h-10" },
+                      { t: "Nachmittag", c: "bg-[#d9a400]/70", h: "h-8" },
+                      { t: "Abend", c: "bg-[#d9a400]/70", h: "h-7" },
                     ].map((x) => (
                       <div
                         key={x.t}
@@ -680,7 +681,7 @@ export default function PhoneApp({
                           <span className={`w-full rounded-md ${x.c} ${x.h}`} />
                         </div>
                         <span
-                          className={`text-xs ${x.t === "Abends" ? "font-semibold text-primary" : "text-on-surface-variant"}`}
+                          className={`text-xs ${x.t === "Vormittag" ? "font-semibold text-primary" : "text-on-surface-variant"}`}
                         >
                           {x.t}
                         </span>
@@ -688,7 +689,7 @@ export default function PhoneApp({
                     ))}
                   </div>
                   <p className="mt-3 text-xs text-outline">
-                    Typischer Tagesverlauf. Funktioniert auch ohne Verbindung.
+                    Typischer Verlauf seit der 12-Uhr-Regel. Funktioniert auch ohne Verbindung.
                   </p>
                 </section>
               )}

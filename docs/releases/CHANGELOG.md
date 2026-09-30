@@ -4,6 +4,31 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.72.1] – 2026-09-30
+
+- **Faustregel folgt der 12-Uhr-Regel.** „Abends zwischen 18 und 22 Uhr ist
+  Tanken meist am günstigsten, morgens am teuersten“ beschrieb die Zeit vor dem
+  01.04.2026 und war seitdem falsch. Jetzt: `Kurz vor 12 Uhr ist Tanken meist am
+  günstigsten, direkt nach 12 Uhr am teuersten — danach sinken die Preise
+  wieder.` mit den Balken Vormittag (tief) · Nach 12 (hoch) · Nachmittag ·
+  Abend (mittel). Dieselbe Korrektur in den Erklärtexten von Labor und
+  Design-Lab (`morgens teuer, abends billig` entfällt).
+- **Uhrzeiten von Fenstern mit Minuten, nie als Dezimalzahl.** `hourRangeLabel`
+  rundet Dezimalstunden auf Minuten (`06:10–07:55 Uhr`); Woche und
+  Auswahl-Detail schnitten beide Seiten auf die Stunde ab (`06–07 Uhr`, das
+  Ende 07:55 wurde zu 07). Die Aufrufer geben die Dezimalstunde unverändert
+  durch.
+- **Tankrabatt-Hinweis (`regime_notice`).** `decide` meldet den nächsten
+  Preisniveau-Termin im Sichtfeld der Prognose (7 Tage voraus bis 14 Tage
+  zurück; `app/gate_context.py::regime_notice_for`). Die Engine rechnet nicht
+  mit dem angekündigten Betrag — Woche und Jetzt zeigen deshalb ein Inline-Banner,
+  und Fenster hinter dem Stichtag tragen keinen Abstand „günstiger als jetzt“.
+  Gates, Kohorten und Sperrgründe bleiben unverändert (A14 bleibt die
+  menschliche Bestätigung).
+- **Stationen: Standard-Sortierung nach Preis.** Die Liste öffnet mit der
+  günstigsten Station zuerst; `Netto-€` steht als zweiter Knopf. Die
+  Vorauswahl „Top 1 gegen Top 2“ folgt derselben Reihenfolge.
+
 ## [0.72.0] – 2026-09-27
 
 - **Interaktives M3-Design-Lab:** `/?konzept=1` übernimmt `sample/good gui`
