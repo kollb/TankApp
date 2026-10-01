@@ -2,6 +2,7 @@
 
 import datetime as dt
 import hashlib
+import html
 import json
 import math
 import os
@@ -1040,11 +1041,19 @@ def _build_station_metadata(settings, cache_file):
                 and -180 <= lon <= 180
             )
             identity = (city, uid)
+            # Tankerkönig-Metadaten können HTML-Entities enthalten (z. B.
+            # ``GmbH &amp; Co. KG``). JSON/React escapen Ausgaben selbst; bleibt
+            # die Entity hier kodiert, sieht der Nutzer dagegen buchstäblich
+            # „&amp;“. Deshalb genau an der öffentlichen Metadaten-Grenze
+            # dekodieren, bevor derselbe Name in Karten, Listen und
+            # Empfehlungen weitergereicht wird.
+            station_name = html.unescape(str(item.get("name") or uid))
+            station_brand = html.unescape(str(item.get("brand") or ""))
             stations[identity] = {
                 "station_id": uid,
                 "city": city,
-                "name": item.get("name") or uid,
-                "brand": item.get("brand") or "",
+                "name": station_name,
+                "brand": station_brand,
                 "lat": lat if coordinates else None,
                 "lon": lon if coordinates else None,
                 "dist_km": None,

@@ -3545,6 +3545,10 @@ export function triggerSkipLabel(skip?: string | null) {
 // Berliner Stunde als Dezimalzahl (z. B. 18,5) — für Peak-Erkennung und
 // Tagesraster, unabhängig von der Zeitzone des Browsers.
 export function berlinHour(when: Date = new Date()) {
+  // Ungültige Server-Zeitstempel dürfen die ganze Ansicht nicht durch einen
+  // RangeError in formatToParts() lahmlegen. Aufrufer behandeln NaN bereits
+  // als fehlende Uhrzeit und zeigen ehrlich „—“.
+  if (Number.isNaN(when.getTime())) return Number.NaN;
   const parts = new Intl.DateTimeFormat("de-DE", {
     timeZone: "Europe/Berlin",
     hour: "numeric",

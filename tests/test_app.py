@@ -238,6 +238,35 @@ def test_anchor_distance_derived_metas_clean_anchor_exposed_separately(tmp_path)
     assert live.stations(city="Gütersloh")["anchors"] == {}
 
 
+def test_station_metadata_decodes_html_entities_for_display(tmp_path):
+    polling = tmp_path / "polling.json"
+    polling.write_text(
+        json.dumps(
+            {
+                "sets": {
+                    "Frankfurt": {
+                        "label": "Frankfurt",
+                        "batch": [UID],
+                        "stations": [
+                            {
+                                "uuid": UID,
+                                "name": "Globus GmbH &amp; Co. KG",
+                                "brand": "Marke &amp; Partner",
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+    )
+
+    metas, error = metadata(Settings(data=tmp_path / "data", polling=polling))
+
+    assert error is None
+    assert metas[("Frankfurt", UID)]["name"] == "Globus GmbH & Co. KG"
+    assert metas[("Frankfurt", UID)]["brand"] == "Marke & Partner"
+
+
 def test_discover_format_anchor_lat_lon_also_derives_distances(tmp_path):
     """discover_stations schreibt lat/lon auf Set-Ebene; add-city nutzt 'anchor'.
 
