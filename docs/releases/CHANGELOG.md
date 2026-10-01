@@ -25,6 +25,9 @@ Version folgt [Semantic Versioning](https://semver.org/lang/de/).
   und Fenster hinter dem Stichtag tragen keinen Abstand „günstiger als jetzt“.
   Gates, Kohorten und Sperrgründe bleiben unverändert (A14 bleibt die
   menschliche Bestätigung).
+  Das Banner zählt – wie das Fensterende-Feedback – nicht zur Scrolltiefe-Messung
+  von „Jetzt“ (B4-Ratchet in `web/e2e/mobile.spec.ts`, ≤ 1,5 Viewports), weil
+  es zeitlich begrenzt ist.
 - **Stationen: einheitliche Filter-Boxen.** Mobil stehen Suche, „alle
   Stationen“, Marke und Zeitwert als gleich breite Boxen untereinander
   (vorher: Suche über die volle Breite, die Filter darunter nur so breit wie

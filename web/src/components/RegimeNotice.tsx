@@ -18,6 +18,7 @@ export function RegimeNotice({ notice, className = "" }: RegimeNoticeProps) {
   return (
     <section
       aria-label={copy.title}
+      data-regime-notice="true"
       className={`flex items-start gap-3 p-3 ${radius.card} m3-banner-neutral ${className}`}
     >
       <Info size={20} aria-hidden="true" className="mt-0.5 shrink-0" />

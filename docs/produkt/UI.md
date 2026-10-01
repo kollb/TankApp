@@ -110,7 +110,10 @@ Die Faustregel folgt der 12-Uhr-Regel (seit 01.04.2026 darf der Preis nur um
 mittel — nie „abends am günstigsten“. Liegt ein Preisniveau-Termin (Tankrabatt)
 im Sichtfeld der Prognose, steht in Woche und Jetzt ein Inline-Banner
 (`regime_notice`); Fenster hinter dem bevorstehenden Stichtag tragen keinen
-Abstand zu „jetzt“. Die Stationenliste öffnet nach Preis, günstigste zuerst.
+Abstand zu „jetzt“. Das Banner ist zeitlich begrenzt (Termin höchstens 7 Tage
+voraus oder 14 Tage zurück) und zählt wie das Fensterende-Feedback nicht zur
+Scrolltiefe-Messung von „Jetzt“ (Ratchet ≤ 1,5 Viewports, `data-regime-notice`).
+Die Stationenliste öffnet nach Preis, günstigste zuerst.
 
 Der Tagesverlauf liegt **einen Tipp entfernt**, nicht offen unter der Karte:
 Die Startseite trägt eine Frage und eine Antwort (B4 aus dem Befund
