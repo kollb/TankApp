@@ -59,6 +59,7 @@ VERIFY_RESTORE = ROOT / "ops" / "nas" / "verify_restore.py"
 UID = "00000000-0000-0000-0000-000000000001"
 NOW = dt.datetime(2026, 9, 21, 12, 0, tzinfo=dt.timezone.utc)
 BACKUP_NAME = f"tankapp-runtime-{dt.date.today().isoformat()}.tar.gz"
+MONTHLY_NAME = f"tankapp-runtime-monthly-{dt.date.today():%Y-%m}.tar.gz"
 OLD = NOW - dt.timedelta(days=120)
 # Restore-Skripte rufen ``python3`` — in der Testumgebung ist das der
 # Interpreter mit den App-Abhängigkeiten (CI: setup-python; lokal: venv).
@@ -327,7 +328,7 @@ def test_backup_sh_validiert_und_publiziert(tmp_path):
     assert manifest["sha256"] == hashlib.sha256(tar.read_bytes()).hexdigest()
     # Keine Temporärdatei, kein Monat ohne Tag.
     assert not list(target.glob(".tankapp-runtime-*.tmp"))
-    assert (target / "tankapp-runtime-monthly-2026-09.tar.gz").is_file()
+    assert (target / MONTHLY_NAME).is_file()
     # Geordnete Mitglieder: Store vor Archiv — die dokumentierte Leserichtung.
     with tarfile.open(tar, "r:gz") as archive:
         names = archive.getnames()
