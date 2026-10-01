@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 27.09.2026 · App-Version 0.72.0
+> Stand: 30.09.2026 · App-Version 0.72.1
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -149,6 +149,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Preis-Ticker | Kein zusätzlicher Kursalarm; vorhandene System- und Empfehlungsfenster-Meldungen bleiben |
 | Markenrabatte, E5/E10-Verbrauchsfaktor | Ohne echte Fahrzeug-/Rabattdaten kein verlässlicher Ranking-Eingriff |
 | Freie Standortsuche | Kuratiertes Polling-Set statt zusätzlicher API-Requests ohne Kontingentmodell |
+| Tankrabatt und andere Preisniveau-Sprünge | Die Engine rechnet nicht mit dem angekündigten Betrag (nur Marker, [Regime-Plan](REGIME.md)). Seit 0.72.1 warnt `regime_notice` in Woche und Jetzt und unterdrückt den Abstand „günstiger als jetzt“ über einen bevorstehenden Stichtag; Gates und Kohorten ändert das nicht (A14 bleibt menschliche Bestätigung) |
 | Top-3-Trefferquote | Keine Kennzahl über nicht veröffentlichte Kandidatenfenster |
 | OpenAPI | Markdown-API bleibt der Vertrag; Generator erst bei weiterem API-Verbraucher neu bewerten |
 | Ensemble-Gewichte | Horizontgewichte nicht geschätzt; das optionale Ensemble erhält keine unbelegte zweite Mischung |

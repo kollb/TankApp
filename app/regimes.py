@@ -70,7 +70,9 @@ DEFAULT_REGIMES: tuple[dict, ...] = (
         "status": "announced",
         "source": (
             "Einigung der Koalition, Meldung 19.09.2026: Tankrabatt −17 ct/L "
-            "(14 ct Energiesteuer + 3 ct USt-Effekt), befristet bis 31.12.2026"
+            "(14 ct Energiesteuer + 3 ct USt-Effekt), befristet bis 31.12.2026; "
+            "laut Presse (25.09.2026) von Bundestag und Bundesrat beschlossen — "
+            "Status bleibt „announced“, bis der Betreiber die Kante bestätigt (A14)"
         ),
     },
     {

@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -195,6 +196,75 @@ def regime_ref_for(
         if stamp <= now and (best is None or stamp > best[0]):
             best = (stamp, str(entry.get("announced_local")))
     return (best[1] if best else None), scenario_pending
+
+
+# Wie weit voraus / zurück ein Regime-Termin in der Oberfläche auftaucht: die
+# Wochenprognose reicht 7 Tage, nach der Kante braucht das Modell Tage bis
+# Wochen, bis sein Trainingsbestand das neue Niveau trägt (Detektionsfenster
+# der Regime-Messung: ±14 Tage, docs/planung/REGIME.md).
+REGIME_NOTICE_AHEAD_DAYS = 7
+REGIME_NOTICE_BEHIND_DAYS = 14
+
+
+def regime_notice_for(
+    fuel: Any,
+    now: dt.datetime,
+    regimes: Any,
+    *,
+    ahead_days: int = REGIME_NOTICE_AHEAD_DAYS,
+    behind_days: int = REGIME_NOTICE_BEHIND_DAYS,
+) -> dict[str, Any] | None:
+    """Nächster Preisniveau-Termin im Sichtfeld der Prognose — oder ``None``.
+
+    Die Engine **rechnet** nicht mit dem angekündigten Betrag (nur Marker,
+    ``engine/regimes.py``). Eine Prognose, die eine Kante überspannt, trägt
+    deshalb das alte Niveau weiter, und „günstiger als jetzt“ über die Kante
+    hinweg ist kein Modellurteil. Dieser Hinweis macht das für die GUI
+    sichtbar, ohne an Gates oder Kohorten etwas zu ändern (A14 bleibt die
+    menschliche Bestätigung).
+
+    Rückgabe: ``at`` (UTC-ISO), ``announced_local``, ``announced_ct`` (ct/L,
+    Vorzeichen = Richtung), ``status``, ``phase`` (``upcoming``/``recent``)
+    und ``days`` (Tage bis zur bzw. seit der Kante, ganzzahlig, ≥ 0). Bei
+    mehreren Terminen gewinnt der Termin, der der Gegenwart am nächsten liegt
+    — ein bevorstehender vor einem zurückliegenden.
+    """
+    best: tuple[tuple[int, float], dict[str, Any]] | None = None
+    for entry in regimes or ():
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status") or "").strip().lower()
+        if status not in CONFIRMED_REGIME_STATUSES and status != "announced":
+            continue
+        if not _fuel_matches(entry.get("fuel"), fuel):
+            continue
+        value = entry.get("announced_value")
+        if type(value) not in (int, float) or not math.isfinite(value) or value == 0:
+            continue
+        stamp = _regime_stamp(entry)
+        if stamp is None:
+            continue
+        delta = stamp - now
+        if delta >= dt.timedelta(0):
+            if delta > dt.timedelta(days=ahead_days):
+                continue
+            phase, rank = "upcoming", 0
+        else:
+            if -delta > dt.timedelta(days=behind_days):
+                continue
+            phase, rank = "recent", 1
+        item = {
+            "at": stamp.astimezone(dt.timezone.utc).isoformat(),
+            "announced_local": str(entry.get("announced_local")),
+            "announced_ct": float(value),
+            "status": status,
+            "phase": phase,
+            "days": int(abs(delta) / dt.timedelta(days=1)),
+        }
+        key = (rank, abs(delta.total_seconds()))
+        if best is None or key < best[0]:
+            best = (key, item)
+    return best[1] if best else None
 
 
 def normalize_gate_context(raw: Any) -> dict[str, Any]:

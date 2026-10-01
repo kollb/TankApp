@@ -261,15 +261,34 @@ describe("Sicherheit: drei Balken statt einer Prozentzahl", () => {
 describe("Faustregel (Stufe 2 und 3)", () => {
   it("nennt sich typisch, nicht Prognose", () => {
     expect(RULE_OF_THUMB.note).toContain("Keine Prognose");
-    expect(RULE_OF_THUMB.text.toLowerCase()).toContain("abends");
+  });
+
+  it("folgt der 12-Uhr-Regel: tief vor 12, teuer direkt danach — nicht mehr „abends“", () => {
+    const text = RULE_OF_THUMB.text;
+    expect(text).toContain("vor 12 Uhr");
+    expect(text).toContain("am günstigsten");
+    expect(text).toContain("nach 12 Uhr am teuersten");
+    expect(text.toLowerCase()).not.toContain("abends");
+    expect(text).not.toMatch(/18 und 22/);
+    const level = (label: string) =>
+      RULE_OF_THUMB.parts.find((part) => part.label === label)?.level;
+    expect(level("Vormittag")).toBe("low");
+    expect(level("Nach 12")).toBe("high");
+    // Der Sprung ist das Maximum, der Vormittag das Minimum — nichts dazwischen
+    // darf beides überbieten.
+    const order = { low: 0, mid: 1, high: 2 } as const;
+    const levels = RULE_OF_THUMB.parts.map((part) => order[part.level]);
+    expect(Math.min(...levels)).toBe(order.low);
+    expect(Math.max(...levels)).toBe(order.high);
+    expect(RULE_OF_THUMB.note).toContain("01.04.2026");
   });
 
   it("vier Tageszeiten, je eine Ampelstufe", () => {
     expect(RULE_OF_THUMB.parts.map((p) => p.label)).toEqual([
-      "Morgens",
-      "Mittags",
-      "Nachmittags",
-      "Abends",
+      "Vormittag",
+      "Nach 12",
+      "Nachmittag",
+      "Abend",
     ]);
     expect(ampelClass("low")).toBe("m3-bar-low");
     expect(ampelClass("high")).toBe("m3-bar-high");

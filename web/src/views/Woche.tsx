@@ -24,6 +24,7 @@ import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { PrecisionSlider } from "../components/PrecisionSlider";
+import { RegimeNotice } from "../components/RegimeNotice";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
 import {
@@ -196,7 +197,7 @@ export function WocheView(props: WocheViewProps) {
       selectedIdx !== null && days[selectedIdx] ? selectedIdx : defaultIdx
     ] ?? days[0];
   const summary = weekWindowSummary(selected, decide, props.priceNow, now);
-  const list = weekWindowList(days);
+  const list = weekWindowList(days, decide?.regime_notice ?? null);
   const line = weekLine(days);
   const tankLine = weekTankLine(decide?.tank ?? null, tankPercent, tankCapacity);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
@@ -293,6 +294,10 @@ export function WocheView(props: WocheViewProps) {
           </div>
         )}
       </div>
+
+      {/* Preisniveau-Termin (Tankrabatt): steht vor den Fenstern, weil er
+          ihre Zahlen einordnet — sichtbar auch ohne Fenster. */}
+      <RegimeNotice notice={decide?.regime_notice} className="mt-4" />
 
       {/* ② Beste Fenster (7-Tage-Raster) */}
       <div className="mt-4">
@@ -538,7 +543,7 @@ function formatWindowRange(window: { start: string; end: string }): string {
   const from = berlinHour(new Date(window.start));
   const to = berlinHour(new Date(window.end));
   if (!Number.isFinite(from) || !Number.isFinite(to)) return "—";
-  return hourRangeLabel(Math.floor(from), Math.floor(to));
+  return hourRangeLabel(from, to);
 }
 
 function dayShort(day: WeekDay): string {

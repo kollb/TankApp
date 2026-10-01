@@ -1396,6 +1396,25 @@ describe("Formatierer (C9)", () => {
     // Mitternachtsüberlauf mit Minuten: beide Enden mit Minuten.
     expect(hourRangeLabel(22, 2 + 30 / 60)).toBe("22:00–02:30 Uhr");
   });
+
+  it("Dezimalstunden der Engine: gerundet auf Minuten, nie „6.1666…“ und nie abgeschnitten", () => {
+    // Fenster 06:10–07:55 kommt als 6,1666… und 7,9166… — vorher stand dort
+    // „06–07 Uhr“ (beide Seiten auf die Stunde abgeschnitten).
+    expect(hourRangeLabel(6.166666666666667, 7.916666666666667)).toBe(
+      "06:10–07:55 Uhr",
+    );
+    expect(hourRangeLabel(6.166666666666667, 7.916666666666667)).not.toMatch(
+      /\d\.\d/,
+    );
+    // Gleitkomma-Fuß: 6,35 h × 60 = 380,99999… → 06:21, nicht 06:20.
+    expect(hourRangeLabel(6.35, 8)).toBe("06:21–08:00 Uhr");
+    // Aufrunden über die Stunde: 7,9999 h ist 08:00, nicht 07:59.
+    expect(hourRangeLabel(6, 7.9999)).toBe("06–08 Uhr");
+    // 24 ist Mitternacht.
+    expect(hourRangeLabel(22, 24)).toBe("22–00 Uhr");
+    // Null-Fenster mit Minuten ist ein Zeitpunkt.
+    expect(hourRangeLabel(11 + 55 / 60, 11 + 55 / 60)).toBe("11:55 Uhr");
+  });
 });
 
 describe("B11: Fehlercode für belegten Feedback-Store", () => {

@@ -144,6 +144,26 @@ describe("Stationen: Aufbau", () => {
     );
   });
 
+  it("Filter-Boxen sind mobil gleich breit — Suche, Filter, Marke, Zeitwert", () => {
+    const html = render();
+    // Jede Steuer-Box füllt mobil die Zeile (`w-full`) und wird erst ab `sm`
+    // inhaltsbreit; sonst stand die Suche voll breit über Filtern halber Breite.
+    const controls = [
+      'title="Filter: nur offene Stationen"',
+      'aria-label="Nach Marke filtern"',
+      'title="Zeitwert für die Umweg-Rechnung"',
+    ];
+    for (const marker of controls) {
+      const at = html.indexOf(marker);
+      expect(at, marker).toBeGreaterThanOrEqual(0);
+      const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at));
+      const classes = /class="([^"]*)"/.exec(tag)?.[1] ?? "";
+      // Der Marker steht am Element selbst (Knopf, Zeitwert-Label) oder im
+      // `select` darin (Marke) — dann trägt das select die Breite.
+      expect(classes, marker).toContain("w-full");
+    }
+  });
+
   it("trägt keinen Mini-Verlauf in der Zeile — der Verlauf ist ein Knopf", () => {
     // 0.53.0: Die Mini-Sparkline der gewählten Zeile ist entfallen
     // (Nutzer-Urteil 18.09.2026: „niemand kann was mit dem Graphen

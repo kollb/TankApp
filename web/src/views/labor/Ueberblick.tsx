@@ -248,7 +248,7 @@ export function UeberblickView({
       >
         <ThreeSentences
           sentences={[
-            "Die App kombiniert das Muster deiner Stadt — morgens teuer, abends billig, Sonntag anders — mit der aktuellen Lage.",
+            "Die App kombiniert das Muster deiner Stadt — Sprung um 12 Uhr, danach fallend, Sonntag anders — mit der aktuellen Lage.",
             "Was sie nicht weiß, sagt sie als Band: innen „meistens drin“ (80 %), außen „fast immer drin“ (95 %).",
             "Je weiter der Blick nach vorn geht, desto breiter wird das Band — Tage 5 bis 7 sind sichtbar unsicher.",
           ]}

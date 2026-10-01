@@ -20,6 +20,7 @@ import {
   type TankInfo,
 } from "./data";
 import { labHint, type LabHint } from "./lab";
+import { regimeDateLabel, windowPastRegimeEdge, type RegimeNotice } from "./regime";
 import {
   dayLabel,
   nowStage,
@@ -145,6 +146,7 @@ export type WeekListEntry = {
  */
 export function weekWindowList(
   days: WeekDay[],
+  notice: RegimeNotice | null = null,
 ): WeekListEntry[] {
   const entries: WeekListEntry[] = [];
   for (const day of days) {
@@ -152,7 +154,11 @@ export function weekWindowList(
     entries.push({
       day,
       window: day.window,
-      savingEur: windowSavingEur(day.window),
+      // Hinter einem bevorstehenden Stichtag (Tankrabatt) vergleicht die
+      // Ersparnis zwei Preisniveaus, die das Modell nicht kennt — keine Zahl.
+      savingEur: windowPastRegimeEdge(day.window, notice)
+        ? null
+        : windowSavingEur(day.window),
     });
   }
   entries.sort((a, b) => {
@@ -242,8 +248,8 @@ export function weekWindowSummary(
   if (!window) return null;
   const stage = nowStage(decide);
   const range = hourRangeLabel(
-    Math.floor(berlinHour(new Date(window.start))),
-    Math.floor(berlinHour(new Date(window.end))),
+    berlinHour(new Date(window.start)),
+    berlinHour(new Date(window.end)),
   );
   const saving =
     priceNow !== null
@@ -255,8 +261,12 @@ export function weekWindowSummary(
   // „günstiger erwartet“ stand „erwartet“ zweimal in einem Satz, ohne dass
   // der zweite Auftritt etwas hinzufügte. Stattdessen sagt die Zeile jetzt,
   // woher der Vorsprung kommt: der Vergleich läuft gegen den Preis von jetzt.
-  const savingLine =
-    saving !== null
+  const pastEdge = windowPastRegimeEdge(window, decide?.regime_notice);
+  const savingLine = pastEdge
+    ? `Abstand zu jetzt nicht belastbar — der Stichtag ${
+        decide?.regime_notice ? regimeDateLabel(decide.regime_notice) : ""
+      } liegt dazwischen`
+    : saving !== null
       ? saving >= 0.05
         ? `${centPerLiter(saving)} günstiger als jetzt ≈ ${
             medianSaving !== null
@@ -306,11 +316,17 @@ export function weekExplanation(
   const sentences: string[] = [];
   sentences.push(
     `Um ${hourRangeLabel(
-      Math.floor(berlinHour(new Date(window.start))),
-      Math.floor(berlinHour(new Date(window.end))),
+      berlinHour(new Date(window.start)),
+      berlinHour(new Date(window.end)),
     )} erwartet das Modell ${euroPerLiter(window.expected_price)} — das günstigste Fenster dieses Tages.`,
   );
-  if (priceNow !== null) {
+  if (windowPastRegimeEdge(window, decide?.regime_notice)) {
+    sentences.push(
+      `Zwischen jetzt und diesem Fenster liegt der Stichtag ${
+        decide?.regime_notice ? regimeDateLabel(decide.regime_notice) : ""
+      } — das Modell kennt das neue Preisniveau nicht, ein Abstand zum aktuellen Preis wäre nicht belastbar.`,
+    );
+  } else if (priceNow !== null) {
     const deltaCt = (priceNow - window.expected_price) * 100;
     sentences.push(
       deltaCt >= 0.05

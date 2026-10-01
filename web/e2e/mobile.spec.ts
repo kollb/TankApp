@@ -398,8 +398,18 @@ test.describe("Mobil: kein Querlauf", () => {
       const promptH = prompt
         ? prompt.getBoundingClientRect().height + 16 // + `mb-4`
         : 0;
+      // Der Preisniveau-Hinweis (Tankrabatt, `regime_notice`) ist ebenfalls
+      // zeitlich begrenzt: Er erscheint nur, solange ein Termin höchstens
+      // 7 Tage voraus oder 14 Tage zurück liegt, und ist keine feste Ansicht.
+      // Er steht mobil ~195 px hoch; die feste Ansicht misst ~1,47 Viewports.
+      const notice = section
+        ? section.querySelector("[data-regime-notice]")
+        : null;
+      const noticeH = notice
+        ? notice.getBoundingClientRect().height + 12 // + `mb-3`
+        : 0;
       const h = section
-        ? section.getBoundingClientRect().height - promptH
+        ? section.getBoundingClientRect().height - promptH - noticeH
         : Math.max(
             document.documentElement.scrollHeight,
             document.body.scrollHeight,

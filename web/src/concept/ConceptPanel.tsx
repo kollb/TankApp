@@ -331,7 +331,7 @@ export default function ConceptPanel({
             ["Überschrift", "Günstigste Tankstelle gerade"],
             [
               "Faustregel",
-              "Abends zwischen 18 und 22 Uhr ist Tanken meist am günstigsten.",
+              "Kurz vor 12 Uhr ist Tanken meist am günstigsten, direkt nach 12 Uhr am teuersten.",
             ],
             [
               "Snackbar (Rückkehr)",

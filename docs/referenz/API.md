@@ -456,7 +456,14 @@ Antwort. `calibrated` = statistisches Urteil (`statistical_verdict`) **und**
 vollständige Herkunft (`gate_provenance_complete`); Altbestand ohne
 Vertragsangaben ist „historische Güte“ und öffnet keine Aktionsfreigabe
 (`gate_status` nennt das ausdrücklich). `regime_scenario_pending` weist
-angekündigte Regime-Termine als reinen Szenario-Hinweis aus. Ein
+angekündigte Regime-Termine als reinen Szenario-Hinweis aus.
+`regime_notice` (seit 0.72.1) nennt den **nächsten** Preisniveau-Termin im
+Sichtfeld der Prognose — 7 Tage voraus bis 14 Tage zurück, sonst `null`:
+`at` (UTC-ISO), `announced_local`, `announced_ct` (ct/L, Vorzeichen =
+Richtung), `status`, `phase` (`upcoming`|`recent`) und `days` (ganze Tage bis
+bzw. seit der Kante). Reiner Anzeige-Hinweis: Die Engine rechnet nicht mit dem
+Betrag, die GUI warnt damit vor „günstiger als jetzt“ über die Kante hinweg;
+Gates, Kohorten und `blocking_reasons` bleiben unberührt. Ein
 Vertragswechsel braucht eine eigens belegte Freigabe; das GUI nennt den
 Gültigkeitsbereich (Labor „Ueberblick“, Microcopy: keine rohen IDs/Daten).
 
