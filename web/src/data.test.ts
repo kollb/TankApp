@@ -264,6 +264,10 @@ describe("automatic axis ticks", () => {
 });
 
 describe("berlinHour/autoTimeValue", () => {
+  it("liefert bei ungültigen Zeitstempeln NaN statt die Ansicht zu crashen", () => {
+    expect(berlinHour(new Date("kein-zeitstempel"))).toBeNaN();
+  });
+
   it("meldet Berliner Stunde und Peak-Fenster", () => {
     // 18:00 UTC = 20:00 CEST (Sommerzeit) → Peak; 12:00 UTC = 14:00 CEST → offpeak.
     expect(berlinHour(new Date("2026-07-01T18:00:00Z"))).toBeCloseTo(20, 0);
