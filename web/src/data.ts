@@ -3427,8 +3427,9 @@ export function countLabel(value: number | null | undefined) {
 /**
  * Uhrzeit-**Bereich** aus Dezimalstunden (Berlin): „18–20 Uhr“ bei vollen
  * Stunden, „06:10–07:55 Uhr“ sobald Minuten im Spiel sind — nie „6.1666…“
- * und nie eine abgeschnittene Stunde. Aufrufer reichen die Dezimalstunde
- * unverändert durch (`berlinHour`), sie runden nicht selbst. Einzelne
+ * und nie eine abgeschnittene Stunde. Für echte Dezimalstunden (z. B.
+ * Berechnungswerte) werden Minuten gerundet; ISO-Fensterstempel im UI laufen
+ * über `windowTimeRangeLabel`, ohne Float-Zwischenschritt. Einzelne
  * Rasterzellen heißen dagegen `hourBucketLabel`.
  */
 export function hourRangeLabel(
@@ -3455,6 +3456,53 @@ export function hourRangeLabel(
     return `${hours(from)}–${hours(to)} Uhr`;
   }
   if (from === to) return `${clock(from)} Uhr`;
+  return `${clock(from)}–${clock(to)} Uhr`;
+}
+
+/**
+ * Fenstergrenzen aus ISO-Zeitstempeln direkt als Berliner Wanduhrzeit
+ * ausgeben. Zeitstempel nicht erst in Dezimalstunden umwandeln: Werte wie
+ * 7.666666666666667 sind intern korrekt (07:40), aber keine Anzeige.
+ */
+const BERLIN_WINDOW_CLOCK = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+type ClockParts = { hour: number; minute: number };
+
+function berlinClockParts(stamp: string | null | undefined): ClockParts | null {
+  if (!stamp) return null;
+  const date = new Date(stamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = BERLIN_WINDOW_CLOCK.formatToParts(date);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  const hour = value("hour");
+  const minute = value("minute");
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return { hour: ((hour % 24) + 24) % 24, minute };
+}
+
+export function windowTimeRangeLabel(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string {
+  const from = berlinClockParts(start);
+  const to = berlinClockParts(end);
+  if (!from || !to) return "—";
+
+  const sameTime = from.hour === to.hour && from.minute === to.minute;
+  const wholeHours = from.minute === 0 && to.minute === 0;
+  const two = (value: number) => String(value).padStart(2, "0");
+  const clock = (value: ClockParts) =>
+    wholeHours
+      ? two(value.hour)
+      : `${two(value.hour)}:${two(value.minute)}`;
+
+  if (sameTime) return `${clock(from)} Uhr`;
   return `${clock(from)}–${clock(to)} Uhr`;
 }
 /**

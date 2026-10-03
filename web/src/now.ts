@@ -27,7 +27,7 @@ import {
   euro,
   euroPerLiter,
   freshness,
-  hourRangeLabel,
+  windowTimeRangeLabel,
   hourRunsLabel,
   hourRunsOf,
   kilometersLabel,
@@ -377,10 +377,7 @@ export function nowVerdict(input: NowInput): NowVerdict | null {
   if (p.action === "wait") {
     const window = p.recommended_window;
     const range = window
-      ? hourRangeLabel(
-          berlinHour(new Date(window.start)),
-          berlinHour(new Date(window.end)),
-        )
+      ? windowTimeRangeLabel(window.start, window.end)
       : null;
     const deltaCt = window
       ? savingPerLiterCt(p.station.price_now, window.expected_price)
@@ -526,10 +523,7 @@ export function nowFacts(input: NowInput): NowFact[] {
   // Label nicht „heute“, der Tag steht stattdessen im Wert.
   const windowDay = window ? dayLabel(window.start, input.now) : null;
   const windowRange = window
-    ? hourRangeLabel(
-        berlinHour(new Date(window.start)),
-        berlinHour(new Date(window.end)),
-      )
+    ? windowTimeRangeLabel(window.start, window.end)
     : null;
   const best: NowFact =
     stage === "C" || !window
@@ -617,10 +611,7 @@ export function nowSteps(input: NowInput): NowStep[] {
       id: "later-window",
       text:
         `${dayLabel(later.start, input.now)} ` +
-        `${hourRangeLabel(
-          berlinHour(new Date(later.start)),
-          berlinHour(new Date(later.end)),
-        )} wäre noch besser (${euro(laterSaving)} € weniger bei ${deTrimmed(
+        `${windowTimeRangeLabel(later.start, later.end)} wäre noch besser (${euro(laterSaving)} € weniger bei ${deTrimmed(
           decide?.quantity?.used_liters ?? input.liters,
           0,
         )} L)`,
@@ -738,10 +729,7 @@ export function nowExplanation(
 
   if (window) {
     sentences.push(
-      `Um ${hourRangeLabel(
-        berlinHour(new Date(window.start)),
-        berlinHour(new Date(window.end)),
-      )} war der Preis an dieser Station bisher am niedrigsten.`,
+      `Um ${windowTimeRangeLabel(window.start, window.end)} war der Preis an dieser Station bisher am niedrigsten.`,
     );
   } else {
     sentences.push(

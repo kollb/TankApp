@@ -7,13 +7,12 @@
 // ganze Woche, verspricht aber nur, was die Engine liefert.
 
 import {
-  berlinHour,
   centPerLiter,
   countLabel,
   deTrimmed,
   euro,
   euroPerLiter,
-  hourRangeLabel,
+  windowTimeRangeLabel,
   kilometersLabel,
   percentLabel,
   type DecideResult,
@@ -247,10 +246,7 @@ export function weekWindowSummary(
   const window = day.window;
   if (!window) return null;
   const stage = nowStage(decide);
-  const range = hourRangeLabel(
-    berlinHour(new Date(window.start)),
-    berlinHour(new Date(window.end)),
-  );
+  const range = windowTimeRangeLabel(window.start, window.end);
   const saving =
     priceNow !== null
       ? (priceNow - window.expected_price) * 100
@@ -315,10 +311,7 @@ export function weekExplanation(
   const stage = nowStage(decide);
   const sentences: string[] = [];
   sentences.push(
-    `Um ${hourRangeLabel(
-      berlinHour(new Date(window.start)),
-      berlinHour(new Date(window.end)),
-    )} erwartet das Modell ${euroPerLiter(window.expected_price)} — das günstigste Fenster dieses Tages.`,
+    `Um ${windowTimeRangeLabel(window.start, window.end)} erwartet das Modell ${euroPerLiter(window.expected_price)} — das günstigste Fenster dieses Tages.`,
   );
   if (windowPastRegimeEdge(window, decide?.regime_notice)) {
     sentences.push(

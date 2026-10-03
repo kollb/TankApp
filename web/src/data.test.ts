@@ -46,6 +46,7 @@ import {
   HEATMAP_WEEKS,
   hourBucketLabel,
   hourRangeLabel,
+  windowTimeRangeLabel,
   timeSpanLabel,
   hourRunsLabel,
   hourRunsOf,
@@ -1418,6 +1419,30 @@ describe("Formatierer (C9)", () => {
     expect(hourRangeLabel(22, 24)).toBe("22–00 Uhr");
     // Null-Fenster mit Minuten ist ein Zeitpunkt.
     expect(hourRangeLabel(11 + 55 / 60, 11 + 55 / 60)).toBe("11:55 Uhr");
+  });
+
+  it("formatiert Wochen-Fenster direkt aus ISO-Zeitstempeln als Berliner Wanduhrzeit", () => {
+    // Produktiv-Beispiel vom Samstag, 03.10.: keine Dezimalstunden in der
+    // Anzeige, obwohl 07:40 intern 7.666666666666667 h entspricht.
+    expect(
+      windowTimeRangeLabel(
+        "2026-10-03T05:40:00Z",
+        "2026-10-03T05:55:00Z",
+      ),
+    ).toBe("07:40–07:55 Uhr");
+    expect(
+      windowTimeRangeLabel(
+        "2026-10-03T16:00:00+02:00",
+        "2026-10-03T18:00:00+02:00",
+      ),
+    ).toBe("16–18 Uhr");
+    expect(
+      windowTimeRangeLabel(
+        "2026-10-03T05:40:00Z",
+        "2026-10-03T05:40:00Z",
+      ),
+    ).toBe("07:40 Uhr");
+    expect(windowTimeRangeLabel("invalid", "2026-10-03T05:55:00Z")).toBe("—");
   });
 });
 

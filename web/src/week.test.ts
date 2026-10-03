@@ -314,6 +314,24 @@ describe("weekExplanation", () => {
     expect(result!.sentences.join(" ")).toContain("noch unsicher");
   });
 
+  it("Warum-Text zeigt Berliner Uhrzeit statt Dezimalstunden", () => {
+    const sampleNow = Date.parse("2026-10-03T06:00:00+02:00");
+    const sampleDay = weekDays(
+      [
+        window("2026-10-03T05:40:00Z", {
+          end: "2026-10-03T05:55:00Z",
+          expected_price: 2.269,
+        }),
+      ],
+      sampleNow,
+    )[0];
+    const result = weekExplanation(sampleDay, decide(), 2.119, sampleNow);
+    expect(result?.sentences[0]).toContain(
+      "Um 07:40–07:55 Uhr erwartet das Modell 2,269 €/L",
+    );
+    expect(result?.sentences[0]).not.toMatch(/7\.666666666666667|7\.916666666666667/);
+  });
+
   it("ohne Fenster: null", () => {
     const empty = weekDays([], NOW)[0];
     expect(weekExplanation(empty, decide(), 1.759, NOW)).toBeNull();

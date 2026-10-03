@@ -235,6 +235,41 @@ describe("Woche: Zustände", () => {
   });
 });
 
+describe("Woche: Zeitstempel werden als Uhrzeit statt Dezimalstunden angezeigt", () => {
+  it("zeigt das Samstag-Fenster 07:40–07:55 in Auswahl, Raster und Liste", () => {
+    const now = Date.parse("2026-10-03T06:00:00+02:00");
+    const html = render({
+      now,
+      priceNow: 2.119,
+      decideRes: {
+        data: decide({
+          windows_week: [
+            {
+              start: "2026-10-03T05:40:00Z",
+              end: "2026-10-03T05:55:00Z",
+              expected_price: 2.269,
+              expected_saving_eur: null,
+              p: null,
+            },
+          ],
+        }),
+        error: false,
+        errorCode: null,
+        pending: false,
+        receivedAt: 0,
+      },
+    });
+
+    expect(html).toContain("Heute 07:40–07:55 Uhr");
+    expect(html).toContain("Sa · heute");
+    expect(html).toContain("07:40–07:55 Uhr");
+    expect(html).toContain("2,269 €/L");
+    expect(html).toContain("15,0 ct/L über dem aktuellen Preis");
+    expect(html).not.toContain("7.666666666666667");
+    expect(html).not.toContain("7.916666666666667");
+  });
+});
+
 describe("Woche: Kalibrierungsstand (A70, M2)", () => {
   it("spätere Tage heißen Szenarioprognose, nicht kalibriert", () => {
     const html = render({

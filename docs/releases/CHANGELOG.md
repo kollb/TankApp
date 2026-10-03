@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.72.2] – 2026-10-03
+
+- **Wochenfenster immer als Uhrzeit.** Raster, Auswahl, Ersparnisliste und
+  Erklärung formatieren die ISO-Zeitstempel direkt in `Europe/Berlin` —
+  `07:40–07:55 Uhr` statt der internen Dezimalstunden `7.6666…–7.9166…`.
+  Eine Regression deckt den Samstag-Fall aus der Nutzeransicht in allen
+  sichtbaren Wochenbereichen ab.
+- **Aktualisierbare PWA-Shell.** Die Patch-Version ändert den Service-Worker-
+  Cache-Namen, damit installierte Ansichten den aktualisierten Frontend-Stand
+  erkennen und übernehmen können.
+
 ## [0.72.1] – 2026-09-30
 
 - **Faustregel folgt der 12-Uhr-Regel.** „Abends zwischen 18 und 22 Uhr ist
