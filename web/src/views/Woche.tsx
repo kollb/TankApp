@@ -28,10 +28,9 @@ import { RegimeNotice } from "../components/RegimeNotice";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
 import {
-  berlinHour,
   deTrimmed,
   euro,
-  hourRangeLabel,
+  windowTimeRangeLabel,
   type DecideResult,
   type ResourceState,
 } from "../data";
@@ -540,10 +539,7 @@ export function WocheView(props: WocheViewProps) {
 }
 
 function formatWindowRange(window: { start: string; end: string }): string {
-  const from = berlinHour(new Date(window.start));
-  const to = berlinHour(new Date(window.end));
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return "—";
-  return hourRangeLabel(from, to);
+  return windowTimeRangeLabel(window.start, window.end);
 }
 
 function dayShort(day: WeekDay): string {

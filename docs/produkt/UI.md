@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 30.09.2026 · App-Version 0.72.1
+> Stand: 03.10.2026 · App-Version 0.72.2
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
