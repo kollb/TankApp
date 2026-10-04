@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 03.10.2026 · App-Version 0.72.2
+> Stand: 04.10.2026 · App-Version 0.73.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | Datenerhebung | Mehrstadt-Collector, RAM-Ring, Heartbeat, Upload mit Ack und Wiederholung | [Architektur](../architektur/ARCHITEKTUR.md) |
 | NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup | [Betrieb](../betrieb/BETRIEB.md) |
-| Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe | [UI](../produkt/UI.md) |
+| Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe. **Seit 0.73.0 (Batch 1 des Neuentwurfs):** „Jetzt“ antwortet (fünf Ausgänge, eine Zahl, eine Handlung), „Woche“ zeigt eine Bestenliste (≤ 3 Einträge). Batch 2 (Stationen, Ich, Labor/System) ist noch offen | [UI](../produkt/UI.md) |
 | Labor | Vier Sub-Tabs, acht Parameterkarten, Beta-Intervall, CSV/API-Rohdatenraum; Layout-Regressionsschutz für lange Bezeichner bei 320/390 px | [UI](../produkt/UI.md#labor-unterbereiche) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
@@ -34,6 +34,12 @@ kein offener Codepunkt mehr. Die Referenzmessung auf dem echten Bestand bleibt V
 eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 ## Offene Arbeit
+
+**UX-Neuentwurf Batch 2 (nach 0.73.0).** „Stationen“, „Ich“, „Labor“ und
+„System“ sind noch im alten Stand: dieselbe Sache ist dort teils an mehreren
+Orten erklärt (§6). Die Verdichtung der globalen Kopfzeile (C13) steht aus —
+sie ist der Grund, warum die KPI „Antwort im ersten Viewport“ bei 320 px
+übersprungen wird.
 
 In [TODO](TODO.md) stehen unmittelbar ausführbare Korrekturen:
 **A14** klärt die Rechts-/Terminbasis vor weiteren Regime-Eingriffen.
@@ -157,6 +163,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
 | Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
+| UX-Neuentwurf, Batch 1 (0.73.0) | Umgesetzt für **Jetzt** und **Woche** (§3/§4/§9). Gestrichen und bewusst nicht zurückgeholt: Was-wäre-wenn-Annahmen, Feedback-Intents, Fällig-Prompt, „Nächste Schritte“, drei Fakten, 19-Zellen-Raster „Heute im Blick“, Benefit-Block, Konfidenz-Balken/Sterne, Frische-Fußzeile. Der **Serververtrag bleibt unverändert**: Intents, Fenster, p-Felder und `regime_notice` werden weiter geliefert, die GUI zeigt weniger. Offen: Batch 2 (Stationen, Ich, Labor, System) und die Verdichtung der globalen Kopfzeile (C13) — bis dahin zählt die KPI „Antwort im ersten Viewport“ nur bei 390 px, nicht bei 320 px |
 | ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt jetzt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der Vorlage `sample/good gui`. Die namentlich vorbereiteten `GUIDE_TONE_CLASS`-Sätze in `views/guide.ts` bleiben bestehen; sie sind mit den styles.css-Klassen deckungsgleich |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte

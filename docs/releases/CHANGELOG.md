@@ -4,6 +4,47 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.73.0] – 2026-10-04
+
+**UX-Neuentwurf, Batch 1 — „Jetzt“ und „Woche“ antworten statt zu berichten**
+([Planung](../planung/UX-NEUENTWURF.md) §3, §4, §9; Entscheidungen vom
+04.10.2026).
+
+- **„Jetzt“: eine Frage, eine Antwort.** Die Karte trägt einen von fünf
+  Chips (`Jetzt tanken` · `Warten` · `Kaum Unterschied` · `Preisvergleich` ·
+  `Offline`), eine Überschrift von höchstens 25 Wörtern, **eine** Zahl in
+  Euro (`spart ca. 1,60 €`) und genau eine Handlung („Route“). Daneben
+  „Warum?“ — höchstens **fünf** Zeilen (Fenster, Ersparnis, Sicherheit,
+  Tank, Stand), danach der Weg ins Labor.
+- **„Jetzt“: Streichliste.** Was-wäre-wenn-Annahmen, Feedback-Intents
+  („Ich warte“), Fällig-Prompt („Ja, wie empfohlen“), „Nächste Schritte“,
+  die drei Fakten, das 19-Zellen-Raster „Heute im Blick“ mit Stundenbalken,
+  der Benefit-Block, der Konfidenz-Balken und die Frische-Fußzeile sind
+  entfernt. Die Tageszeile (Mini-Kurve + Tief) ist der einzige Weg in die
+  Tiefe; die große Kurve liegt einen Tipp entfernt im Blatt.
+- **Frische als Chip im Kopf** (`vor 4 Min` · `alt` · `kein Stand`) statt
+  einer Fußzeile unter der Antwort; **höchstens ein Banner** gleichzeitig
+  (Rangfolge offline → keine Prognose → Tankrabatt). Die Gültigkeit steht
+  klein daneben (`bis 17:45`, in den letzten 30 Minuten `· noch 12 min`);
+  eine abgelaufene Freigabe fällt auf die graue Tatsachenkarte
+  (`Günstigste gerade: …`) statt auf eine eigene „abgelaufen“-Karte.
+- **„Woche“: Bestenliste statt Raster.** Höchstens drei Einträge, sortiert
+  nach Ersparnis — je Tag und Uhrzeit, erwarteter Preis, Ersparnis in Euro
+  und die Sicherheit als **ein Wort** (keine Sterne, keine Prozentwerte).
+  Ein Satz statt Kalibrierungs-Etiketten: `Ab Tag 5 wird die Prognose
+  unsicher.` 7-Tage-Raster, Detailkarte, zweite Fensterliste und
+  Wochenlinie („höher = günstiger“) sind entfernt.
+- **Ein Ort je Sache (§6).** Der Tankstand wird nur in **„Ich“ → Fahrzeug**
+  gepflegt (Schnellauswahl + Feineinstellung); „Woche“ zeigt ihn als Chip
+  mit „Ändern“, „Jetzt“ gar nicht.
+- **Kein API-Vertragsbruch.** Der Server liefert Intents, Fenster, p-Felder
+  und `regime_notice` weiter — die GUI zeigt weniger davon. RP2-Leseausgabe
+  und Python-Notausgabe bleiben unberührt.
+- **Abnahme:** Unit-Tests für die neue Antwortlogik (`now.ts`, `week.ts`),
+  Streichlisten in den View-Tests, verschärfte Ratchets in
+  `microcopy.test.ts` (fünf Chips, Frische-Baustein) und
+  `web/e2e/mobile.spec.ts` (Antwort im ersten Viewport bei 390 × 844).
+
 ## [0.72.2] – 2026-10-03
 
 - **Wochenfenster immer als Uhrzeit.** Raster, Auswahl, Ersparnisliste und
