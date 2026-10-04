@@ -56,6 +56,7 @@
 | [Projektstand](planung/LUECKEN.md) | Implementiert, unbewiesen oder bewusst begrenzt |
 | [TODO](planung/TODO.md) | Offene Aufgaben mit Abhängigkeiten und Abnahmekriterien |
 | [Regime-Plan](planung/REGIME.md) | Geplante Regime-Behandlung, Messstand und offene Rechtsfragen |
+| [UX-Neuentwurf](planung/UX-NEUENTWURF.md) | Entwurf: Jetzt, Woche und Labor radikal vereinfachen |
 
 Empfohlene Lesereihenfolge: Installation → Betrieb; für Entwicklung zusätzlich
 Konzept → Architektur → passende Referenz → Projektstand → TODO.
