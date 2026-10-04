@@ -247,51 +247,66 @@ describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
     }
   });
 
-  it("der Grau-Zustand heißt überall „Keine klare Empfehlung“", () => {
+  it("ohne Urteil trägt die Karte die Tatsache, kein Urteil (§3)", () => {
+    // UX-NEUENTWURF §3: „Keine klare Empfehlung“ ist gestrichen — ohne
+    // freigegebene Aktion steht der günstigste bekannte Preis da (Chip
+    // „Preisvergleich“). Das Tagebuch behält das Wort für die Historie.
     expect(diaryActionWord("no_advice")).toBe("Keine klare Empfehlung");
     const now = readFileSync(
       fileURLToPath(new URL("now.ts", import.meta.url)),
       "utf8",
     );
-    expect(now).toContain('headline: "Keine klare Empfehlung"');
+    expect(now).toContain('chip: "Preisvergleich"');
+    expect(now).toContain('headline: `Günstigste gerade: ${stationName}`');
   });
 
   // ── 4b. Urteilstöne und abgelaufene Freigabe (UI-Neugestaltung, 26.09.2026) ──
 
-  it("die Urteils-Chips sind exakt die vier festen Ausgänge", () => {
-    // Ein Wort pro Ausgang — §4b. Die Töne (grün/blau/rot/grau) stecken
-    // in den Karten-/Chip-Klassen, nicht im Wort: „Warten“ ist blau,
-    // „Jetzt tanken“ grün, rot nur bei Tankrest-Risiko.
-    const jetzt = read("views/Jetzt.tsx");
-    const match = jetzt.match(/const CHIP_TEXT = \{([\s\S]*?)\} as const/);
-    expect(match, "CHIP_TEXT fehlt in views/Jetzt.tsx").not.toBeNull();
-    const keys = [
-      ...userVisible(match![1]).matchAll(/^\s*(\w+):/gm),
-    ].map((item) => item[1]);
-    expect(keys).toEqual([
-      "refuel_now",
-      "wait",
-      "refuel_elsewhere",
-      "no_advice",
+  it("die Antwort-Chips sind genau die fünf Ausgänge des Entwurfs (§3)", () => {
+    // Ein Wort pro Ausgang, und keines mehr: Jetzt tanken · Warten ·
+    // Kaum Unterschied · Preisvergleich · Offline. Die Töne stecken in den
+    // Kartenklassen, nicht im Wort — rot bleibt dem Tankrest vorbehalten.
+    const now = read("now.ts");
+    // Nur die Antwortkarte — der Frische-Chip trägt sein eigenes Wort
+    // („kein Stand“) und zählt hier nicht mit.
+    const answer = now.slice(
+      now.indexOf("export function nowAnswer"),
+      now.indexOf("export function nowWhy"),
+    );
+    expect(answer.length, "nowAnswer nicht gefunden").toBeGreaterThan(0);
+    const chips = [...answer.matchAll(/chip: "([^"]+)"/g)].map((m) => m[1]);
+    expect([...new Set(chips)].sort()).toEqual([
+      "Jetzt tanken",
+      "Kaum Unterschied",
+      "Offline",
+      "Preisvergleich",
+      "Warten",
     ]);
+    // Kein sechster Ausgang in der Ansicht.
+    const jetzt = read("views/Jetzt.tsx");
+    expect(jetzt).not.toContain("CHIP_TEXT");
   });
 
-  it("die abgelaufene Freigabe hat eine Headline an einer Stelle", () => {
-    // A21-B1.4: `valid_until` vergangen → Karteninhalt wechselt. Der
-    // Satz steht in now.ts (eine Stelle, ein Wort), die Karte rendert
-    // ihn in views/Jetzt.tsx.
+  it("eine abgelaufene Freigabe wird nie als Urteil gezeigt (A21-B1.4, §3)", () => {
+    // `valid_until` vergangen → die Karte fällt auf die Tatsache zurück
+    // (Chip „Preisvergleich“), sie behauptet kein abgelaufenes Fenster.
+    // Eine eigene „abgelaufen“-Headline würde genau das tun.
     const now = read("now.ts");
-    expect(now).toContain('headline: "Empfehlung abgelaufen"');
+    expect(now).not.toContain("Empfehlung abgelaufen");
+    expect(now).toContain("const expired =");
+    expect(now).toContain("p.action === \"no_advice\"");
+    const jetzt = read("views/Jetzt.tsx");
+    expect(jetzt).not.toContain("Empfehlung abgelaufen");
   });
 
   it("der Gültigkeits-Chip formatiert über timeOfDayLabel", () => {
     // §3: Zahlen und Zeiten laufen über die Formatter in data.ts — der
     // Chip „gültig bis 17:45“ stellt die Tageszeit nie selbst her.
     const jetzt = read("views/Jetzt.tsx");
-    expect(jetzt).toContain("nowValidity(verdict, now)");
+    expect(jetzt).toContain("nowValidity(answer, now)");
     const now = read("now.ts");
-    expect(now).toContain("timeOfDayLabel(verdict.validUntil)");
-    expect(now).toContain("gültig bis");
+    expect(now).toContain("timeOfDayLabel(answer.validUntil)");
+    expect(now).toContain("bis ${time}");
     expect(now).toContain("countLabel(Math.ceil(remaining / 60000))");
     const data = read("data.ts");
     expect(data).toContain("export function timeOfDayLabel");
@@ -456,14 +471,32 @@ describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
     expect(offenders, "§5: „Erneut laden“ oder „<Sache> neu laden“ — nichts drittes.").toEqual([]);
   });
 
-  it("die Frische-Zeile kommt aus einem Baustein", () => {
-    // T8: Fünf Ansichten bauten die Zeile selbst, jede mit eigener Ton-Tabelle
-    // und eigenem `· kein Ort gewählt`. Der Baustein ist `FreshnessLine`.
-    for (const relativePath of ["views/Jetzt.tsx", "views/Stationen.tsx", "views/Woche.tsx", "views/System.tsx", "views/Labor.tsx"]) {
+  it("die Frische kommt aus genau einem Baustein — Chip im Kopf, Zeile im Fuß", () => {
+    // T8: Fünf Ansichten bauten die Zeile selbst, jede mit eigener
+    // Ton-Tabelle und eigenem `· kein Ort gewählt`. Seit dem Neuentwurf
+    // (§6: ein Ort je Sache) tragen „Jetzt“ und „Woche“ den **Chip** im
+    // Kopf, die übrigen Ansichten die `FreshnessLine` im Fuß. Beide
+    // Bausteine rechnen das Alter über `nowFreshness`.
+    for (const relativePath of ["views/Jetzt.tsx", "views/Woche.tsx"]) {
       const source = read(relativePath);
-      expect(source, `${relativePath}: Frische-Zeile ohne FreshnessLine.`).toContain("FreshnessLine");
+      expect(source, `${relativePath}: Frische ohne FreshnessChip.`).toContain(
+        "FreshnessChip",
+      );
       expect(
-        source.includes('"kein Ort gewählt"'),
+        source.includes("FreshnessLine"),
+        `${relativePath}: der Chip ersetzt die Fußzeile — nicht beides.`,
+      ).toBe(false);
+      expect(source).toContain("nowFreshness(");
+    }
+    for (const relativePath of ["views/Stationen.tsx", "views/System.tsx", "views/Labor.tsx"]) {
+      const source = read(relativePath);
+      expect(source, `${relativePath}: Frische-Zeile ohne FreshnessLine.`).toContain(
+        "FreshnessLine",
+      );
+    }
+    for (const relativePath of ["views/Jetzt.tsx", "views/Woche.tsx", "views/Stationen.tsx", "views/System.tsx", "views/Labor.tsx"]) {
+      expect(
+        read(relativePath).includes('"kein Ort gewählt"'),
         `${relativePath}: „kein Ort gewählt“ steht im Baustein, nicht in der Ansicht.`,
       ).toBe(false);
     }

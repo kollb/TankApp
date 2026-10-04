@@ -3309,6 +3309,19 @@ export function euro(value: number | null | undefined, decimals = 2) {
 }
 
 /**
+ * „E10“ · „E5“ · „Diesel“ — die eine Schreibweise des Kraftstoffs.
+ *
+ * Der Kopf von „Jetzt“ und „Woche“ nennt Stadt und Kraftstoff in einer Zeile;
+ * damit dort nicht an zweiter Stelle eine andere Schreibweise entsteht, kommt
+ * das Label aus einem Formatter (wie Einheiten und Zeiten, §3 MICROCOPY).
+ */
+export function fuelLabel(fuel: Fuel | string | null | undefined): string {
+  if (fuel === "diesel") return "Diesel";
+  if (fuel === "e10" || fuel === "e5") return fuel.toUpperCase();
+  return "—";
+}
+
+/**
  * C9: Formatierungs-Konventionen als reine Funktionen — überall de-DE,
  * €/L mit drei Nachkommastellen, ct/L mit einer, Prozent ohne Dezimalstelle
  * (eine, wo der Server eine liefert). Panels sollen runden, nicht raten; die

@@ -148,6 +148,8 @@ function vehicleProps(
     setConsumption: () => {},
     tankCapacity: 50,
     setTankCapacity: () => {},
+    tankPercent: null,
+    setTankPercent: () => {},
     activeProfileName: null,
     speed: 45,
     setSpeed: () => {},

@@ -13,27 +13,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  AMPEL_TEXT,
-  CONFIDENCE_TEXT,
-  GUIDE_CARD,
-  RULE_OF_THUMB,
   accuracyDots,
-  ampelClass,
-  confidenceStage,
   dayPosition,
   priceDrivers,
   fillAmount,
   guideBanner,
-  guideBenefit,
   guideLevel,
-  guideRestoredNote,
-  guideTone,
-  guideWaitSubline,
-  hourlyOutlook,
   accuracySentence,
   perFillText,
-  timePhrase,
-  type GuideTone,
 } from "./guide";
 
 /** 19:00 Europe/Berlin — der Abendwert aus dem Entwurf. */
@@ -53,7 +40,6 @@ describe("3-Stufen-Fallback", () => {
 
   it("Stufe 1 trägt kein Banner — eine volle Ansicht erklärt sich nicht", () => {
     expect(guideBanner("full")).toBeNull();
-    expect(guideRestoredNote("full")).toBeNull();
   });
 
   it.each([
@@ -117,55 +103,6 @@ describe("3-Stufen-Fallback", () => {
       expect(banner?.retrying).toBe("Verbinde …");
     }
   });
-
-  it("die Wiederherstellung bestätigt leise, ohne Fehler-Vokabular", () => {
-    expect(guideRestoredNote("offline")).toBe("Wieder online. Alles ist aktuell.");
-    expect(guideRestoredNote("noForecast")).toBe("Prognose ist zurück.");
-  });
-});
-
-describe("Urteilstöne", () => {
-  it("Rot bleibt dem Tankrest — „Warten“ wird nicht rot", () => {
-    // Die sicherheitsrelevante Bedeutung von Rot darf nicht umgewidmet
-    // werden (Begründung in guide.ts).
-    expect(guideTone({ action: "wait", tone: "red" })).toBe("risk");
-  });
-
-  it.each([
-    ["green", "now"],
-    ["blue", "wait"],
-    ["gray", "relaxed"],
-  ] as const)("Ton %s → %s", (tone, expected) => {
-    expect(guideTone({ action: "wait", tone })).toBe(expected);
-  });
-
-  it("abgelaufene Freigabe und fehlendes Urteil sind neutral", () => {
-    expect(guideTone({ action: "wait", tone: "blue", expired: true })).toBe(
-      "neutral",
-    );
-    expect(guideTone({ action: null, tone: null })).toBe("neutral");
-  });
-
-  it("jeder Ton trägt Chip, Headline und eine Handlung", () => {
-    for (const tone of Object.keys(GUIDE_CARD) as GuideTone[]) {
-      const card = GUIDE_CARD[tone];
-      expect(card.chip, tone).toBeTruthy();
-      expect(card.headline, tone).toBeTruthy();
-      // Die vier Handlungs-Töne enden mit einem Punkt — ein ganzer Satz,
-      // kein Fragment. Der neutrale Ton ist ein Label („Günstigste
-      // Tankstelle gerade“) und trägt den Stationsnamen dahinter.
-      if (tone !== "neutral") {
-        expect(card.headline.endsWith("."), `${tone}: ${card.headline}`).toBe(
-          true,
-        );
-      }
-    }
-  });
-
-  it("„Kein Zeitdruck“ bleibt der ehrliche Ton für stabile Tage", () => {
-    expect(GUIDE_CARD.relaxed.chip).toBe("Kein Zeitdruck");
-    expect(GUIDE_CARD.relaxed.headline).toBe("Tanken, wann’s passt.");
-  });
 });
 
 describe("Geld und Zeit in Nutzer-Einheiten", () => {
@@ -186,69 +123,9 @@ describe("Geld und Zeit in Nutzer-Einheiten", () => {
     expect(perFillText(null)).toBeNull();
   });
 
-  it("die Uhrzeit steht als konkrete Zeit, nie als Spanne", () => {
-    const sub = guideWaitSubline(8, EVENING_ISO);
-    expect(sub).toBe("Gegen 19:00 Uhr ca. 8 Cent günstiger.");
-    expect(sub).not.toContain("–");
-    expect(sub).not.toContain("%");
-  });
-
-  it("fehlt die Uhrzeit, bleibt der Betrag — fehlt der Betrag, der ganze Satz", () => {
-    expect(guideWaitSubline(8, null)).toBe("Ca. 8 Cent günstiger.");
-    expect(guideWaitSubline(null, EVENING_ISO)).toBeNull();
-  });
-
-  it("„Bis 19 Uhr“ und „Warten kostet“ sind dieselbe Zahl in zwei Richtungen", () => {
-    const wait = guideBenefit({
-      tone: "wait",
-      centDiff: 8,
-      liters: 45,
-      atIso: EVENING_ISO,
-    });
-    expect(wait?.tone).toBe("good");
-    expect(wait?.text).toContain("ca. 3,60 € gespart · 45 L");
-
-    const now = guideBenefit({
-      tone: "now",
-      centDiff: 7,
-      liters: 45,
-      atIso: EVENING_ISO,
-    });
-    expect(now?.tone).toBe("bad");
-    expect(now?.text).toContain("Warten kostet");
-  });
-
-  it("unter 50 Cent pro Füllung ist der Weg die Antwort, nicht die Zeit", () => {
-    const benefit = guideBenefit({ tone: "wait", centDiff: 0.8, liters: 45 });
-    expect(benefit?.tone).toBe("neutral");
-    expect(benefit?.text).toContain("unter 0,50 €");
-  });
-
-  it("Uhrzeit-Phrase hängt das Wort an, das man spricht", () => {
-    expect(timePhrase("14:32")).toBe("14:32 Uhr");
-  });
 });
 
-describe("Sicherheit: drei Balken statt einer Prozentzahl", () => {
-  it.each([
-    [95, 3],
-    [80, 3],
-    [79, 2],
-    [60, 2],
-    [59, 1],
-    [null, 1],
-  ] as const)("%s %% → Stufe %i", (percent, stage) => {
-    expect(confidenceStage(percent)).toBe(stage);
-  });
-
-  it("jede Stufe hat ein Wort, keine Prozentangabe", () => {
-    for (const text of Object.values(CONFIDENCE_TEXT)) {
-      expect(text).not.toContain("%");
-    }
-    expect(CONFIDENCE_TEXT[3]).toBe("Sehr sicher");
-    expect(CONFIDENCE_TEXT[2]).toBe("Ziemlich sicher");
-  });
-
+describe("Sicherheit: ein Wort, keine Prozentzahl (§7)", () => {
   it("Treffsicherheit als Zählung — und ohne Messung als Lernstand", () => {
     expect(accuracySentence(26, 30)).toBe(
       "An 26 von 30 Tagen lag die Empfehlung richtig.",
@@ -258,58 +135,23 @@ describe("Sicherheit: drei Balken statt einer Prozentzahl", () => {
   });
 });
 
-describe("Faustregel (Stufe 2 und 3)", () => {
-  it("nennt sich typisch, nicht Prognose", () => {
-    expect(RULE_OF_THUMB.note).toContain("Keine Prognose");
-  });
-
-  it("folgt der 12-Uhr-Regel: tief vor 12, teuer direkt danach — nicht mehr „abends“", () => {
-    const text = RULE_OF_THUMB.text;
-    expect(text).toContain("vor 12 Uhr");
-    expect(text).toContain("am günstigsten");
-    expect(text).toContain("nach 12 Uhr am teuersten");
-    expect(text.toLowerCase()).not.toContain("abends");
-    expect(text).not.toMatch(/18 und 22/);
-    const level = (label: string) =>
-      RULE_OF_THUMB.parts.find((part) => part.label === label)?.level;
-    expect(level("Vormittag")).toBe("low");
-    expect(level("Nach 12")).toBe("high");
-    // Der Sprung ist das Maximum, der Vormittag das Minimum — nichts dazwischen
-    // darf beides überbieten.
-    const order = { low: 0, mid: 1, high: 2 } as const;
-    const levels = RULE_OF_THUMB.parts.map((part) => order[part.level]);
-    expect(Math.min(...levels)).toBe(order.low);
-    expect(Math.max(...levels)).toBe(order.high);
-    expect(RULE_OF_THUMB.note).toContain("01.04.2026");
-  });
-
-  it("vier Tageszeiten, je eine Ampelstufe", () => {
-    expect(RULE_OF_THUMB.parts.map((p) => p.label)).toEqual([
-      "Vormittag",
-      "Nach 12",
-      "Nachmittag",
-      "Abend",
-    ]);
-    expect(ampelClass("low")).toBe("m3-bar-low");
-    expect(ampelClass("high")).toBe("m3-bar-high");
-    expect(Object.keys(AMPEL_TEXT).sort()).toEqual(["high", "low", "mid"]);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Sprach-Ratchet: die Übersetzungstabelle aus docs/produkt/MICROCOPY.md.
 // ---------------------------------------------------------------------------
 // Erweitert sich mit jedem Baustein des Guides (die Liste wächst mit).
 const GUIDE_FILES = [
   "guide.ts",
+  "now.ts",
+  "week.ts",
   "components/GuideBanner.tsx",
-  "components/GuideConfidence.tsx",
-  "components/HourBars.tsx",
-  "components/BenefitWidget.tsx",
+  "components/DayCurve.tsx",
+  "components/FreshnessChip.tsx",
   "components/LabAccuracy.tsx",
   "components/LabExperiments.tsx",
   "components/LabProfile.tsx",
   "components/PriceDrivers.tsx",
+  "views/Jetzt.tsx",
+  "views/Woche.tsx",
 ];
 
 function read(relativePath: string): string {
@@ -385,82 +227,6 @@ describe("Sprache des Guides (MICROCOPY §4b)", () => {
     const open = (text.match(/„/g) ?? []).length;
     const close = (text.match(/“/g) ?? []).length;
     expect(close, `${file}: ${open}× „ aber ${close}× “`).toBe(open);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// „Heute im Überblick“ — Stundenbalken
-// ---------------------------------------------------------------------------
-/** 17:00 Europe/Berlin an einem Septembertag (MESZ, UTC+2). */
-const AFTERNOON_MS = Date.parse("2026-09-27T15:00:00.000Z");
-
-function window(start: string, end: string, price: number) {
-  return { start, end, expected_price: price };
-}
-
-describe("Stundenbalken", () => {
-  const windows = [
-    window("2026-09-27T18:00:00+02:00", "2026-09-27T20:00:00+02:00", 1.689),
-    window("2026-09-27T20:00:00+02:00", "2026-09-27T22:00:00+02:00", 1.709),
-    window("2026-09-27T22:00:00+02:00", "2026-09-28T01:00:00+02:00", 1.669),
-  ];
-
-  it("acht Balken ab der laufenden Stunde, der erste heißt „Jetzt“", () => {
-    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
-    expect(bars).toHaveLength(8);
-    expect(bars[0].label).toBe("Jetzt");
-    expect(bars[0].isNow).toBe(true);
-    expect(bars.map((b) => b.hour)).toEqual([17, 18, 19, 20, 21, 22, 23, 0]);
-  });
-
-  it("jede Stunde trägt den Preis des Fensters, in dem sie liegt", () => {
-    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
-    expect(bars[0].price).toBeNull(); // 17 Uhr liegt vor dem ersten Fenster
-    expect(bars[1].price).toBe(1.689);
-    expect(bars[3].price).toBe(1.709);
-    expect(bars[5].price).toBe(1.669);
-  });
-
-  it("ein Fenster über Mitternacht fällt nicht auseinander", () => {
-    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
-    // 23 Uhr und 0 Uhr liegen beide im 22–01-Uhr-Fenster.
-    expect(bars[6].price).toBe(1.669);
-    expect(bars[7].price).toBe(1.669);
-  });
-
-  it("die Ampel teilt den gezeigten Zeitraum in Drittel", () => {
-    const { bars } = hourlyOutlook({ windows, now: AFTERNOON_MS });
-    expect(bars[1].level).toBe("mid"); // 1,689
-    expect(bars[3].level).toBe("high"); // 1,709
-    expect(bars[5].level).toBe("low"); // 1,669
-  });
-
-  it("ein flacher Tag bekommt kein rot-grünes Drama", () => {
-    const flat = [
-      window("2026-09-27T18:00:00+02:00", "2026-09-27T22:00:00+02:00", 1.699),
-      window("2026-09-27T22:00:00+02:00", "2026-09-28T01:00:00+02:00", 1.6995),
-    ];
-    const { bars, note } = hourlyOutlook({ windows: flat, now: AFTERNOON_MS });
-    expect(bars.every((b) => b.level === "mid")).toBe(true);
-    expect(note).toContain("unter einem Cent");
-  });
-
-  it("die Notiz nennt die Grenzen der Ampel — sonst ist Farbe Behauptung", () => {
-    const { note, bestHour } = hourlyOutlook({ windows, now: AFTERNOON_MS });
-    expect(note).toContain("grün bis 1,669 €/L");
-    expect(note).toContain("rot ab 1,709 €/L");
-    expect(bestHour).toBe(22);
-  });
-
-  it("ohne Fenster gibt es Balken ohne Preis und ohne Urteil", () => {
-    const { bars, note, bestHour } = hourlyOutlook({
-      windows: [],
-      now: AFTERNOON_MS,
-    });
-    expect(bars).toHaveLength(8);
-    expect(bars.every((b) => b.price === null)).toBe(true);
-    expect(note).toBeNull();
-    expect(bestHour).toBeNull();
   });
 });
 

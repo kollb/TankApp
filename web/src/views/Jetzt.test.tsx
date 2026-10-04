@@ -1,21 +1,18 @@
 // @vitest-environment happy-dom
-// Jetzt: Render-Tests der ersten Ansicht (UI-NEUENTWURF §5.1).
+// Jetzt: Render-Tests der ersten Ansicht (UX-NEUENTWURF §3).
 //
-// Geprüft wird, was der Nutzer tatsächlich bekommt: die feste Reihenfolge
-// ① Entscheidung → ② Drei Fakten → ③ Nächste Schritte → ④ Heute im Blick,
-// die vier Ausgänge der Karte, die Frische-Fußzeile und das Begründungs-Sheet
-// der Ebene 1. Die Fachlogik selbst steht in `now.test.ts`.
+// Geprüft wird, was der Nutzer tatsächlich bekommt: ein Kopf mit Ort und
+// Frische-Chip, höchstens ein Banner, die Antwortkarte (eine Zahl, eine
+// Handlung) und die Tageszeile — sowie alles, was **nicht** mehr auf dem
+// Schirm steht (Was-wäre-wenn, Intents, nächste Schritte, drei Fakten,
+// 19-Zellen-Raster, zweite Stationsliste, Fällig-Prompt, Frische-Fußzeile).
+// Die Fachlogik selbst steht in `now.test.ts`.
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Level1Sheet } from "../components/Level1Sheet";
-import { PROFILE_BOUNDS } from "../data";
 import type { DecideResult, Station } from "../data";
-import {
-  EMPTY_ASSUMPTIONS,
-  JetztView,
-  type JetztViewProps,
-} from "./Jetzt";
+import { JetztView, type JetztViewProps } from "./Jetzt";
 
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
 const minutesAgo = (m: number) => new Date(NOW - m * 60000).toISOString();
@@ -27,8 +24,8 @@ function station(id: string, overrides: Partial<Station> = {}): Station {
     name: `Station ${id}`,
     brand: "ARAL",
     fuel: "e10",
-    maps_url: null,
-    dist_km: 1,
+    maps_url: `https://maps.example/${id}`,
+    dist_km: 1.2,
     dist_mode: "road",
     price: 1.749,
     last_price: 1.749,
@@ -47,7 +44,12 @@ function decide(
   return {
     primary: {
       action,
-      station: { id: "aral", name: "Aral Mitte", price_now: 1.749, maps_url: null },
+      station: {
+        id: "aral",
+        name: "Aral Mitte",
+        price_now: 1.749,
+        maps_url: "https://maps.example/aral",
+      },
       recommended_window: {
         start: "2026-09-14T18:00:00+02:00",
         end: "2026-09-14T20:00:00+02:00",
@@ -85,44 +87,31 @@ function decide(
   };
 }
 
+const idle = (data: DecideResult | null) => ({
+  data,
+  error: false,
+  errorCode: null,
+  pending: false,
+  receivedAt: 0,
+});
+
 const baseProps: JetztViewProps = {
   activeCity: "Frankfurt",
-  decideRes: {
-    data: decide("wait"),
-    error: false,
-    errorCode: null,
-    pending: false,
-    receivedAt: 0,
-  },
+  fuel: "e10",
   liters: 40,
-  timeValue: 12,
-  autoZ: { z: 10, isPeak: false },
-  selectedId: "aral",
+  decideRes: idle(decide("wait")),
   stations: [station("aral")],
-  stripBand: null,
+  selectedId: "aral",
   stripCells: [
-    { hour: 6, value: null, latest: null, tone: "empty", current: false },
+    { hour: 6, value: 1.789, latest: 1.789, tone: "pricey", current: false },
     { hour: 12, value: 1.749, latest: 1.749, tone: "cheap", current: true },
+    { hour: 18, value: 1.709, latest: 1.709, tone: "cheap", current: false },
   ],
   pricesAt: minutesAgo(4),
   forecastAt: minutesAgo(35),
   onNavigate: () => {},
   onDeepen: () => {},
   onRetry: () => {},
-  assumptions: EMPTY_ASSUMPTIONS,
-  defaultLiters: 40,
-  defaultTimeValue: 12,
-  onAssumptions: () => {},
-  onAssumptionsReset: () => {},
-  tankPercent: null,
-  onTankQuick: () => {},
-  dueEpisode: null,
-  dueDismissed: false,
-  dueFillPrice: 1.749,
-  onConfirmRecommended: () => {},
-  onDismissDue: () => {},
-  onOpenFills: () => {},
-  onIntent: () => {},
   now: NOW,
 };
 
@@ -131,228 +120,101 @@ function render(overrides: Partial<JetztViewProps> = {}) {
   return renderToStaticMarkup(<JetztView {...props} />);
 }
 
-describe("Jetzt: Aufbau", () => {
-  it("hält die feste Reihenfolge ein", () => {
-    const html = render({
-      decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
-    });
-    const decision = html.indexOf('id="jetzt-entscheidung"');
-    const facts = html.indexOf('id="jetzt-fakten"');
-    const steps = html.indexOf('id="jetzt-schritte"');
-    const day = html.indexOf('id="jetzt-heute"');
-    const fresh = html.indexOf("Preise vor 4 Minuten");
-    expect(html).toContain("Heute im Blick");
-    expect(facts).toBeGreaterThan(decision);
-    expect(steps).toBeGreaterThan(facts);
-    expect(day).toBeGreaterThan(steps);
-    expect(fresh).toBeGreaterThan(day);
-  });
-
-  it("nennt für die Was-wäre-wenn-Tankmenge die Profil-Grenzen (10–100 L)", () => {
-    // Prüfbericht §5: Beleg-Erfassung (5–100 L) und Profil (10–100 L)
-    // reichen bis 100 L — die Annahmen-Zeile darf die Rechengröße nicht
-    // bei 80 L kappen, sonst ist ein 100-L-Tank (Transporter/Diesel) trotz
-    // buchbarer Belege nicht abbildbar.
+describe("Jetzt: Aufbau (§3 — eine Frage, eine Antwort)", () => {
+  it("hält die feste Reihenfolge ein: Kopf → Banner → Antwort → Tageszeile", () => {
     const html = render();
-    expect(html).toContain(
-      `${PROFILE_BOUNDS.liters.min}–${PROFILE_BOUNDS.liters.max} L, ganze Liter`,
-    );
+    const head = html.indexOf('id="jetzt-title"');
+    const answer = html.indexOf('id="jetzt-antwort"');
+    const day = html.indexOf('id="jetzt-tag"');
+    expect(head).toBeGreaterThanOrEqual(0);
+    expect(answer).toBeGreaterThan(head);
+    expect(day).toBeGreaterThan(answer);
   });
 
-  it("nennt genau drei Fakten in fester Reihenfolge", () => {
-    const html = render({
-      decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
-    });
-    for (const label of ["Jetzt hier", "Bestes Fenster heute", "Tank reicht?"]) {
-      expect(html).toContain(label);
-    }
-  });
-
-  it("„Heute im Blick“: Balken in fester Spur — Zahlenreihe auf einer Linie", () => {
-    // Nutzer-Feedback 16.09.2026: „Heute im Blick Zahlenreihe ist schief“.
-    // Der Balken stand als Fluss-Element über Stunden- und Wertzeile: je
-    // höher der Balken, desto tiefer rutschten beide Zeilen, und die Reihe
-    // lief von Zelle zu Zelle auseinander. Jetzt wächst er in einer festen
-    // 12-px-Spur von unten (`items-end`), alle Zellen haben dieselbe
-    // Reihenfolge Balken → Stunde → Wert.
-    const html = render({
-      stripCells: [
-        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
-        { hour: 18, value: null, latest: null, tone: "empty", current: false },
-      ],
-    });
-    const cells = html.split('role="img"').slice(1);
-    expect(cells).toHaveLength(3);
-    for (const cell of cells) {
-      expect(cell).toContain("h-3 w-full items-end");
-      // Kein zweizeiliger Preis: „1,725“ bleibt in einer Zeile.
-      expect(cell).toContain("whitespace-nowrap");
-    }
-    const first = cells[0].indexOf("h-3 w-full items-end");
-    const hour = cells[0].indexOf(">06<");
-    // Sichtbarer Text, nicht das `aria-label` („06:00 — 1,759 €/L“).
-    const value = cells[0].indexOf(">1,759<");
-    expect(first).toBeGreaterThanOrEqual(0);
-    expect(hour).toBeGreaterThan(first);
-    expect(value).toBeGreaterThan(hour);
-  });
-
-  it("„Heute im Blick“: mobil dieselben drei Zahlen, nur gestapelt", () => {
-    // Mobil-Verdichtung 0.53.0 („Zu lang auf mobil“, 18.09.2026): Die drei
-    // Kennzahlen standen auf 390 px als drei eigene Karten (260 px statt der
-    // 88 px des Entwurfs). Mobil ist der Primärfall — dort steht jetzt eine
-    // Zeilenliste aus derselben Quelle (`nowDayPanel`), Desktop behält die
-    // Karten. Geprüft wird, dass beide Anordnungen dieselben Werte tragen und
-    // dass die Liste nicht selbst wieder versteckt wird (`hidden` ohne
-    // `sm:`-Gegenstück) — die mobile Fassung darf nur den Desktop ausblenden.
-    const html = render({
-      stripCells: [
-        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
-      ],
-    });
-    const list = html.slice(html.indexOf("<dl"));
-    for (const label of ["Günstigste Stunde", "Tagesmedian", "Jetzt"]) {
-      expect(list).toContain(label);
-    }
-    expect(list).toContain("12–13 Uhr · 1,709 €/L");
-    // Die drei Desktop-Karten bleiben vollständig und stehen ab `sm`.
-    expect(html).toContain(
-      '<div class="mt-3 hidden gap-2 sm:grid sm:grid-cols-3">',
-    );
-    // Die Mobil-Liste ist nur unterhalb von `sm` verborgen, nie ganz.
-    expect(list).toContain("sm:hidden");
-  });
-
-  it("drei Fakten bleiben drei Fakten — auch mobil keine Nullreihe", () => {
-    // 0.53.0: Die Fakten-Reihe stand mobil als drei gestapelte Karten
-    // (409 px). Sie ist jetzt die 3er-Reihe des Entwurfs
-    // (ui-neuentwurf-mockup: 88 px), der Tank-Fakt darunter über zwei
-    // Spalten — dieselben drei Fakten, zwei Anordnungen. Der Fehler, der
-    // hier nicht passieren darf: einen Fakt per `hidden` weglassen, damit
-    // es kürzer aussieht.
-    const html = render({
-      decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
-    });
-    const grid = html.slice(
-      html.indexOf('id="jetzt-fakten"'),
-      html.indexOf('id="jetzt-schritte"'),
-    );
-    expect(grid).toContain("Jetzt hier");
-    expect(grid).toContain("Bestes Fenster heute");
-    expect(grid).toContain("Tank reicht?");
-    // Tank-Fakt mobil volle Breite, die beiden anderen je eine halbe.
-    expect(grid).toContain("col-span-6 sm:col-span-1");
-    expect(grid).toContain("col-span-3 sm:col-span-1");
-    // Die Schnellauswahl bleibt erreichbar (kein Wischen nötig).
-    for (const label of ["¼", "½", "¾", "voll"]) {
-      expect(grid).toContain(`>${label}</button>`);
-    }
-  });
-
-  it("B4: keine Stationszeilen-Liste mehr — die Liste lebt nur in „Stationen“", () => {
-    // Befund UX/Mathe 2026-09-19, §1.4.1: „Die Stationszeilen-Liste entfällt
-    // hier vollständig (sie lebt in ‚Stationen‘)“. Die graue Karte zeigt
-    // weiterhin die Tatsache (günstigster offener Preis) und den Weg zur
-    // vollständigen Liste — aber keine zweite Fassung derselben Wahrheit.
-    const html = render({
-      decideRes: {
-        data: {
-          ...decide("wait"),
-          primary: { ...decide("wait").primary, action: "no_advice" },
-        },
-        error: false,
-        errorCode: null,
-        pending: false,
-        receivedAt: 0,
-      },
-      stations: [
-        station("nord", { name: "Demo-Tank Nord", price: 1.664 }),
-        station("ost", { name: "Demo-Tank Ost", price: 1.671 }),
-      ],
-    });
-    // Die Aufzählung der Preise ist weg — kein `<ol>` mehr in der Ansicht.
-    expect(html).not.toContain("<ol");
-    // Die Tatsache und der Weg bleiben: günstigster Preis plus Verweis.
-    expect(html).toContain("Jetzt am günstigsten: Demo-Tank Nord");
-    expect(html).toContain("Alle 2 Preise vergleichen");
-  });
-
-  it("B4: der Tagesstreifen ist default-eingeklappt, die Kennzahlen stehen darüber", () => {
-    // Befund UX/Mathe 2026-09-19, §1.4.1: „Der Tagesstreifen ist die einzige
-    // Visualisierung auf diesem Bildschirm und standardmäßig eingeklappt —
-    // die Entscheidung braucht ihn nicht.“ Geprüft: `<details>` ohne
-    // `open` (zu), der Auslöser trägt die Tagesfenster-Zeit, die Kennzahlen
-    // (Tagesmedian …) stehen vor dem Detail, der Streifensatz dahinter.
-    const html = render({
-      stripCells: [
-        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
-      ],
-    });
-    const trigger = html.match(/<button[^>]*id="jetzt-daystrip"[^>]*>/);
-    expect(trigger).not.toBeNull();
-    expect(trigger![0]).toContain('aria-haspopup="dialog"');
-    expect(html).toContain("<dialog");
-    expect(html).not.toMatch(/<dialog[^>]* open/);
-    expect(html).toContain("Tagesstreifen 06–24 Uhr");
-    // Reihenfolge: Kennzahlen (Zeilenliste) vor dem eingeklappten Detail.
-    expect(html.indexOf("Tagesmedian")).toBeLessThan(
-      html.indexOf('id="jetzt-daystrip"'),
-    );
-    // Der Streifensatz (Zellen + Abdeckung) ist im Detail — erreichbar, nur
-    // nicht default-malend.
-    const detail = html.slice(html.indexOf('id="jetzt-daystrip"'));
-    expect(detail).toContain("daystrip-cells");
-    expect(detail).toContain("Stunden mit offener Meldung");
-  });
-
-  it("„Heute im Blick“ nennt Zahlen, nicht nur Farben", () => {
-    const html = render({
-      stripCells: [
-        { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
-        { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
-        { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
-      ],
-    });
-    expect(html).toContain("Günstigste Stunde");
-    expect(html).toContain("12–13 Uhr");
-    expect(html).toContain("Tagesmedian");
-    expect(html).toContain("Spanne 5,0 ct/L");
-    expect(html).toContain("3 von 3 Stunden mit offener Meldung");
-    expect(html).toContain("1,709");
-    expect(html).toContain("1,759");
-  });
-
-  it("Gleichstand über 06–12 nennt die Spanne, nicht nur 06–07", () => {
-    const html = render({
-      stripCells: [6, 7, 8, 9, 10, 11].map((hour) => ({
-        hour,
-        value: 2.289,
-        latest: 2.289,
-        tone: "cheap" as const,
-        current: hour === 9,
-      })),
-    });
-    expect(html).toContain("06–12 Uhr");
-    expect(html).not.toContain(">06–07 Uhr<");
-    expect(html).toContain("2,289");
-  });
-
-  it("zeigt die Frische-Fußzeile mit Ort und Alter", () => {
-    const html = render({
-      decideRes: { data: decide("wait"), error: false, errorCode: null, pending: false, receivedAt: 0 },
-    });
-    expect(html).toContain("Preise vor 4 Minuten · Prognose vor 35 Minuten");
+  it("nennt im Kopf Ort, Kraftstoff und das Alter als Chip", () => {
+    const html = render();
     expect(html).toContain("Frankfurt");
+    expect(html).toContain("E10");
+    expect(html).toContain("vor 4 Minuten");
+    // Der Chip steht im Kopf, nicht als Fußzeile unter der Ansicht.
+    expect(html.indexOf("vor 4 Minuten")).toBeLessThan(
+      html.indexOf('id="jetzt-antwort"'),
+    );
+  });
+
+  it("die Antwortkarte trägt genau eine Zahl und genau eine Handlung", () => {
+    const html = render();
+    expect(html).toContain("Warten bis ~18 Uhr");
+    expect(html).toContain("spart ca. 1,60 €");
+    // Genau ein Route-Link, genau ein „Warum?“.
+    expect((html.match(/https:\/\/maps\.example\//g) ?? []).length).toBe(1);
+    expect((html.match(/Warum\?/g) ?? []).length).toBe(1);
+  });
+
+  it("Tageszeile: eine Zeile, die Kurve hat eine Textalternative", () => {
+    const html = render();
+    expect(html).toContain('id="jetzt-tagzeile"');
+    expect(html).toContain("Heute: Tief ~18 Uhr");
+    // M8: kein Bild ohne Text — die Kurve ist beschriftet.
+    expect(html).toMatch(/aria-label="Tagesverlauf[^"]*1,709 €\/L/);
+    // Das Detailblatt ist zu (kein offener Dialog im Markup).
+    expect(html).not.toMatch(/<dialog[^>]* open/);
+  });
+
+  it("ohne Messwerte gibt es keine Tageszeile", () => {
+    const html = render({ stripCells: [] });
+    expect(html).not.toContain('id="jetzt-tag"');
+    expect(html).toContain('id="jetzt-antwort"');
+  });
+});
+
+describe("Jetzt: Streichliste (§7)", () => {
+  const html = render();
+
+  it("keine Was-wäre-wenn-Annahmen mehr", () => {
+    expect(html).not.toContain("Was-wäre-wenn");
+    expect(html).not.toContain("Annahmen:");
+    expect(html).not.toContain("Tankmenge (L)");
+    expect(html).not.toContain("Spätestens tanken");
+  });
+
+  it("keine Intents, keine nächsten Schritte, keine drei Fakten", () => {
+    expect(html).not.toContain("Ich warte");
+    expect(html).not.toContain("Verwerfen");
+    expect(html).not.toContain("Nächste Schritte");
+    expect(html).not.toContain("Jetzt hier");
+    expect(html).not.toContain("Bestes Fenster heute");
+    expect(html).not.toContain("Tank reicht?");
+  });
+
+  it("kein 19-Zellen-Raster, keine zweite Stationsliste", () => {
+    expect(html).not.toContain("Heute im Blick");
+    expect(html).not.toContain("Tagesstreifen");
+    expect(html).not.toContain("daystrip-cells");
+    expect(html).not.toContain("<ol");
+  });
+
+  it("keine Tankstands-Pflege — die gehört an genau einen Ort („Ich“)", () => {
+    expect(html).not.toContain("Schnellauswahl");
+    expect(html).not.toContain(">¼<");
+    expect(html).not.toContain("Keine Angabe");
+  });
+
+  it("kein Fällig-Prompt mehr (Entscheidung 04.10.2026)", () => {
+    expect(html).not.toContain("Rückmeldung nach Fensterende");
+    expect(html).not.toContain("Gerade getankt?");
+    expect(html).not.toContain("wie empfohlen");
+  });
+
+  it("keine Frische-Fußzeile unter der Ansicht", () => {
+    expect(html).not.toContain("Preise vor 4 Minuten · Prognose vor 35 Minuten");
   });
 });
 
 describe("Jetzt: Zustände", () => {
   it("S0: ohne Daten führt die Karte zur Einrichtung", () => {
     const html = render({
-      decideRes: { data: null, error: false, errorCode: null, pending: false, receivedAt: 0 },
+      decideRes: idle(null),
       stations: [],
       stripCells: [],
     });
@@ -360,68 +222,26 @@ describe("Jetzt: Zustände", () => {
     expect(html).toContain("Einrichtung starten");
   });
 
-  it("S1: das lernende Modell bekommt die graue Karte mit Zählstand — genau einmal", () => {
-    const learning = decide("no_advice", false);
-    learning.personal_stats.advice.last_30d_total = 12;
+  it("ohne Prognose trägt die Karte die Tatsache: der günstigste Preis jetzt", () => {
     const html = render({
-      decideRes: { data: learning, error: false, errorCode: null, pending: false, receivedAt: 0 },
-    });
-    expect(html).toContain("Keine klare Empfehlung");
-    expect(html).toContain("Das Modell lernt noch");
-    expect(html).not.toContain("% sicher");
-    // Nutzer-Feedback 16.09.2026: „Das Modell lernt noch … ist doppelt“. Der
-    // Satz kam zweimal, weil `nowVerdict.detail` ihn schon trug
-    // (`learning ?? reason_short`) und die Karte ihn darunter noch einmal
-    // renderte. A21-B1.4: Die Detailzeile führt jetzt den Servergrund
-    // (`reason_short || learning`), der Zählstand steht in der eigenen
-    // Zeile darunter — weiterhin genau einmal, nie doppelt.
-    expect(html.split("Das Modell lernt noch").length - 1).toBe(1);
-    expect(html.split("von 100 abgeschlossenen Empfehlungen").length - 1).toBe(
-      1,
-    );
-  });
-
-  it("S1 ohne Modell nennt trotzdem den günstigsten offenen Preis", () => {
-    // Nutzer-Feedback 14.09.2026: Solange kein Modell bzw. keine Auswahl
-    // steht, muss die Karte die Tatsache liefern, die auch ohne Prognose
-    // gilt — der günstigste offene Preis, nicht nur „keine Empfehlung“.
-    const learning = decide("no_advice", false);
-    learning.personal_stats.advice.last_30d_total = 12;
-    const html = render({
-      decideRes: { data: learning, error: false, errorCode: null, pending: false, receivedAt: 0 },
+      decideRes: idle(decide("no_advice")),
       stations: [
         station("aral", { price: 1.759 }),
         station("shell", { price: 1.709, name: "Shell Nord" }),
-        station("esso", { price: 1.729, name: "Esso West" }),
       ],
     });
-    expect(html).toContain("Keine klare Empfehlung");
-    expect(html).toContain("Jetzt am günstigsten: Shell Nord");
+    expect(html).toContain("Günstigste gerade: Shell Nord");
     expect(html).toContain("1,709 €/L");
-    // O19: Die Ersparnis rechnet gegen den Anker der Empfehlung und benennt
-    // ihn; die Set-Spanne steht daneben als Spanne.
-    expect(html).toContain(
-      "unter dem Preis, den die Empfehlung für „jetzt tanken“ ansetzt (Aral Mitte, 1,749 €/L)",
-    );
-    expect(html).toContain("Günstigste bis teuerste:");
-    expect(html).toContain("Das Modell lernt noch");
+    expect(html).toContain("Stand 11:56 Uhr");
   });
 
-  it("ohne jede Prognose steht der Preisvergleich statt einer leeren Karte", () => {
-    const broken = { error_code: "polling_missing" } as unknown as DecideResult;
-    const html = render({
-      decideRes: { data: broken, error: false, errorCode: null, pending: false, receivedAt: 0 },
-      stations: [
-        station("aral", { price: 1.759 }),
-        station("shell", { price: 1.709, name: "Shell Nord" }),
-      ],
-    });
-    expect(html).toContain("Preisvergleich");
-    expect(html).toContain("Jetzt am günstigsten: Shell Nord");
-    expect(html).toContain('role="alert"');
+  it("offline: letzter Stand, und der Preis an der Säule zählt", () => {
+    const html = render({ online: false });
+    expect(html).toContain("Letzter Stand: Station aral");
+    expect(html).toContain("Der Preis an der Säule zählt.");
   });
 
-  it("Fehler: Klartext-Karte mit erneutem Versuch", () => {
+  it("Fehler: Klartext mit erneutem Versuch", () => {
     const html = render({
       decideRes: {
         data: null,
@@ -449,41 +269,53 @@ describe("Jetzt: Server-Fehlerpayload (Regression: keine leere Seite)", () => {
   // nächster Schritt, wenn nichts da ist — und ein benannter Fehler, wenn es
   // Stationen gibt, die Empfehlung aber nicht berechnet werden konnte.
   const broken = { error_code: "polling_missing" } as unknown as DecideResult;
-  const brokenRes = {
-    data: broken,
-    error: false,
-    errorCode: null,
-    pending: false,
-    receivedAt: 0,
-  };
 
   it("S0 gewinnt, wenn noch keine Stationen da sind", () => {
-    const html = render({ decideRes: brokenRes, stations: [], stripCells: [] });
+    const html = render({
+      decideRes: idle(broken),
+      stations: [],
+      stripCells: [],
+    });
     expect(html).toContain("Einrichten in drei Schritten");
     expect(html).not.toContain('role="alert"');
   });
 
-  it("unerreichbare Anlage ist ein Fehler, keine Einrichtungs-Aufforderung", () => {
-    const html = render({
-      decideRes: {
-        data: null,
-        error: true,
-        errorCode: "request_failed",
-        pending: false,
-        receivedAt: 0,
-      },
-      stations: [],
-      stripCells: [],
-    });
-    expect(html).toContain('role="alert"');
-    expect(html).not.toContain("Einrichten in drei Schritten");
-  });
-
   it("mit Stationen steht der Grund im Klartext, mit Rohcode", () => {
-    const html = render({ decideRes: brokenRes });
+    const html = render({ decideRes: idle(broken) });
     expect(html).toContain('role="alert"');
     expect(html).toContain("Polling-Set fehlt");
     expect(html).toContain("polling_missing");
+  });
+});
+
+describe("Jetzt: genau ein Banner (§3, Rangfolge offline → keine Prognose → Hinweis)", () => {
+  it("volle Ansicht: kein Banner", () => {
+    const html = render();
+    expect(html).not.toContain("m3-banner-warn");
+    expect(html).not.toContain("Die Prognose macht gerade Pause");
+  });
+
+  it("keine Prognose: ein Banner, Preise bleiben live", () => {
+    const html = render({
+      decideRes: idle({ ...decide("wait"), decision_ready: false }),
+    });
+    expect(html).toContain("Die Prognose macht gerade Pause");
+    expect(html).toContain("Alle Preise sind trotzdem live");
+    expect(html).toContain("Erneut versuchen");
+  });
+
+  it("offline schlägt „keine Prognose“ — genau ein Banner", () => {
+    const html = render({
+      online: false,
+      decideRes: idle({ ...decide("wait"), decision_ready: false }),
+    });
+    expect((html.match(/m3-banner-warn/g) ?? []).length).toBe(1);
+    expect(html).not.toContain("Die Prognose macht gerade Pause");
+  });
+
+  it("jede Stufe bietet genau eine Handlung zum Wiederverbinden", () => {
+    const html = render({ online: false });
+    expect((html.match(/Erneut versuchen/g) ?? []).length).toBe(1);
   });
 });
 
@@ -503,12 +335,14 @@ describe("Ebene 1: Begründungs-Sheet", () => {
     expect(html).toBe("");
   });
 
-  it("zeigt höchstens drei Sätze, die Herkunft und den Weg in die Tiefe", () => {
+  it("zeigt höchstens fünf Zeilen, die Herkunft und den Weg in die Tiefe", () => {
+    // UX-NEUENTWURF §3: Das „Warum?“ -Blatt trägt maximal fünf Zeilen
+    // (Fenster, Ersparnis, Sicherheit, Tank, Stand).
     const html = renderToStaticMarkup(
       <Level1Sheet
         open
         title="Warum diese Empfehlung?"
-        sentences={["eins", "zwei", "drei", "vier"]}
+        sentences={["eins", "zwei", "drei", "vier", "fünf", "sechs"]}
         source="Grundlage: die geladenen Preismeldungen."
         labHint={{ section: "prognose", label: "Im Labor vertiefen: Was die App vorhersagt" }}
         onDeepen={() => {}}
@@ -518,141 +352,9 @@ describe("Ebene 1: Begründungs-Sheet", () => {
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain("Warum diese Empfehlung?");
-    expect(html).toContain("eins");
-    expect(html).toContain("drei");
-    expect(html).not.toContain("vier");
+    expect(html).toContain("fünf");
+    expect(html).not.toContain("sechs");
     expect(html).toContain("Grundlage: die geladenen Preismeldungen.");
     expect(html).toContain("Im Labor vertiefen: Was die App vorhersagt");
-  });
-});
-
-describe("Jetzt: Fällig-Prompt (O17)", () => {
-  const due = {
-    id: "ep_1",
-    status: "due",
-    last_snapshot: { station_id: "aral", expected_price: 1.559 },
-  };
-
-  it("nennt am Knopf den Live-Preis, der gebucht wird", () => {
-    const html = render({ dueEpisode: due as any, dueFillPrice: 1.719 });
-    expect(html).toContain("Ja, wie empfohlen (");
-    expect(html).toContain("1,719 €/L");
-  });
-
-  it("schaltet ohne Live-Preis ab, statt den Median zu buchen", () => {
-    const html = render({ dueEpisode: due as any, dueFillPrice: null });
-    expect(html).toContain("Preis unbekannt");
-    expect(html).toContain("disabled");
-  });
-});
-
-describe("Jetzt: Preisvergleich trägt die Ansicht (A70, Priorität 1)", () => {
-  it("nennt Titel, Abdeckung und ehrliche Vergleichsgrenze", () => {
-    const html = render({
-      decideRes: {
-        data: decide("no_advice"),
-        error: false,
-        errorCode: null,
-        pending: false,
-        receivedAt: 0,
-      },
-      stations: [station("aral"), station("shell", { price: null, fresh: false })],
-    });
-    expect(html).toContain("Jetzt günstig tanken");
-    expect(html).toContain("Jetzt am günstigsten: Station aral");
-    expect(html).toContain("Günstigste bekannte Station unter den beobachteten Stationen");
-    expect(html).toContain("1 von 2 eingerichteten Stationen mit frischem Preis");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tank-Guide: 3-Stufen-Fallback in der Ansicht
-//
-// Die Stufen kommen aus echten Zuständen (`browserOnline`, `decision_ready`),
-// nicht aus einer Vermutung. Geprüft wird, was jemand an der Säule sieht:
-// ein Banner über der Karte statt eines Modals — und die Faustregel dort,
-// wo keine Prognose steht.
-// ---------------------------------------------------------------------------
-describe("Tank-Guide: Fallback-Stufen", () => {
-  it("Stufe 1 trägt kein Banner — eine volle Ansicht erklärt sich nicht", () => {
-    const html = render();
-    expect(html).not.toContain("Die Prognose macht gerade Pause");
-    expect(html).not.toContain("m3-banner-warn");
-  });
-
-  it("Stufe 2: die Prognose pausiert, die Preise bleiben live", () => {
-    const html = render({
-      decideRes: {
-        data: { ...decide("wait"), decision_ready: false },
-        error: false,
-        errorCode: null,
-        pending: false,
-        receivedAt: 0,
-      },
-    });
-    expect(html).toContain("Die Prognose macht gerade Pause");
-    expect(html).toContain("Alle Preise sind trotzdem live");
-    expect(html).toContain("Erneut versuchen");
-  });
-
-  it("Stufe 3: offline steht der Datenstand und was weiter geht", () => {
-    const html = render({ online: false });
-    expect(html).toContain("m3-banner-warn");
-    expect(html).toContain("Route starten und die Faustregel funktionieren weiter");
-    expect(html).toContain("kann abweichen");
-  });
-
-  it("jede Stufe bietet genau eine Handlung zum Wiederverbinden", () => {
-    const html = render({ online: false });
-    const hits = html.match(/Erneut versuchen/g) ?? [];
-    expect(hits).toHaveLength(1);
-  });
-
-  it("Stufe 2 und 3 zeigen die Faustregel statt der Stundenbalken", () => {
-    const offline = render({ online: false });
-    expect(offline).toContain("Faustregel für heute");
-    expect(offline).toContain("Keine Prognose für heute");
-    const paused = render({
-      decideRes: {
-        data: { ...decide("wait"), decision_ready: false },
-        error: false,
-        errorCode: null,
-        pending: false,
-        receivedAt: 0,
-      },
-    });
-    expect(paused).toContain("Faustregel für heute");
-  });
-
-  it("Stufe 1 zeigt die nächsten acht Stunden als Balken", () => {
-    const html = render();
-    expect(html).toContain("Heute im Überblick");
-    expect(html).toContain("Nächste 8 Stunden");
-    expect(html).not.toContain("Faustregel für heute");
-  });
-
-  it("die Ersparnis steht als Betrag auf der Tankmenge", () => {
-    const html = render();
-    // 1,749 €/L jetzt gegen 1,709 €/L im Fenster = 4 ct/L × 40 L = 1,60 €.
-    expect(html).toContain("ca. 1,60 € gespart · 40 L");
-  });
-
-  it("ohne Zeit-Aussage der Karte kein Ersparnis-Betrag", () => {
-    // „Woanders tanken“ und „Keine klare Empfehlung“ vergleichen Orte,
-    // keine Zeiten — ein Betrag pro Tankfüllung würde hier eine Differenz
-    // behaupten, die die Entscheidung nicht trifft.
-    for (const action of ["refuel_elsewhere", "no_advice"] as const) {
-      const html = render({
-        decideRes: {
-          data: { ...decide(action), decision_ready: true },
-          error: false,
-          errorCode: null,
-          pending: false,
-          receivedAt: 0,
-        },
-      });
-      expect(html).not.toContain("gespart ·");
-      expect(html).not.toContain("Warten kostet");
-    }
   });
 });

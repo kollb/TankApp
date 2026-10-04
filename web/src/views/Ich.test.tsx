@@ -41,6 +41,8 @@ const vehicle: VehiclePanelProps = {
   setConsumption: noop,
   tankCapacity: 50,
   setTankCapacity: noop,
+  tankPercent: null,
+  setTankPercent: noop,
   activeProfileName: null,
   speed: 45,
   setSpeed: noop,

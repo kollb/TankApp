@@ -113,9 +113,7 @@ function DashboardShell() {
     pinnedIds,
     togglePin,
     pinNote,
-    assumptions,
     setAssumptions,
-    dueDismissed,
     prices,
     data,
     activeCity,
@@ -151,7 +149,6 @@ function DashboardShell() {
     statsSummaryRes,
     fillsSummary,
     series7d,
-    stripBand,
     stripCells,
     effLiters,
     effTimeValue,
@@ -174,13 +171,8 @@ function DashboardShell() {
     fillList,
     visibleFills,
     voidedCount,
-    dueEpisode,
-    dueFillPrice,
-    handleConfirmRecommendedFill,
     handleQuickFill,
     handleVoidFill,
-    handleDismissDue,
-    handleIntent,
     showJobLog,
     fallbackNotice,
   } = ov;
@@ -432,42 +424,19 @@ function DashboardShell() {
         {tab === "jetzt" && (
           <JetztView
             activeCity={activeCity}
+            fuel={fuel}
             liters={effLiters}
-            timeValue={effTimeValue}
-            autoZ={autoZ}
             decideRes={decideRes}
             stations={stations}
             selectedId={selectedId}
-            stripBand={stripBand}
             stripCells={stripCells}
             pricesAt={nowPricesAt}
             forecastAt={nowForecastAt}
             onNavigate={handleNowNavigate}
             onDeepen={(section) => openLabor(section)}
             onRetry={refreshNow}
-            assumptions={assumptions}
-            defaultLiters={liters}
-            defaultTimeValue={timeValue}
-            onAssumptions={(patch) =>
-              setAssumptions((current) => ({ ...current, ...patch }))
-            }
-            onAssumptionsReset={() =>
-              setAssumptions({ liters: null, latestBy: null, timeValue: null })
-            }
-            tankPercent={tankPercent}
-            onTankQuick={(percent) => setTankPercent(percent)}
-            dueEpisode={dueEpisode}
-            dueDismissed={dueDismissed}
-            dueFillPrice={dueFillPrice}
-            onConfirmRecommended={(ep) => handleConfirmRecommendedFill(ep)}
-            onDismissDue={(epId) => handleDismissDue(epId)}
-            onOpenFills={() => {
-              setIchSection("fills");
-              gotoTab("ich");
-            }}
-            onIntent={(intent, mapsUrl) => handleIntent(intent, mapsUrl)}
-            /* Verbindung des Geräts (navigator.onLine): steuert Stufe 3 des
-               Guides — ohne Netz trägt die Karte den letzten Stand. */
+            /* Verbindung des Geräts (navigator.onLine): ohne Netz trägt die
+               Karte den letzten Stand — offline schlägt alles (§3). */
             online={browserOnline}
           />
         )}
@@ -514,13 +483,19 @@ function DashboardShell() {
         {tab === "week" && (
           <WocheView
             activeCity={activeCity}
+            fuel={fuel}
             stationsCount={stations.length}
             decideRes={decideRes}
             priceNow={price(selected)}
             tankPercent={tankPercent}
-            setTankPercent={setTankPercent}
             tankCapacity={tankCapacity}
-            consumption={consumption}
+            onEditTank={() => {
+              /* Der Tankstand wird an genau einem Ort gepflegt (§6):
+                 „Ich“ → Fahrzeug. */
+              setIchSection("vehicle");
+              gotoTab("ich");
+            }}
+            stripCells={stripCells}
             forecastAt={nowForecastAt}
             pricesAt={nowPricesAt}
             onRetry={refreshNow}
@@ -542,6 +517,8 @@ function DashboardShell() {
               setConsumption,
               tankCapacity,
               setTankCapacity,
+              tankPercent,
+              setTankPercent,
               activeProfileName: activeProfile?.name ?? null,
               speed,
               setSpeed,

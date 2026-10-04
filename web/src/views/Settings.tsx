@@ -25,6 +25,7 @@ import {
   Sun,
 } from "lucide-react";
 import { PrecisionSlider } from "../components/PrecisionSlider";
+import { TANK_QUICK } from "../now";
 import { LoadError } from "../components/LoadError";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
@@ -59,6 +60,12 @@ export interface VehiclePanelProps {
   setConsumption: (v: number) => void;
   tankCapacity: number;
   setTankCapacity: (v: number) => void;
+  /**
+   * Tankstand (A2) — der **eine** Ort der Pflege (UX-NEUENTWURF §6).
+   * „Jetzt“ und „Woche“ zeigen ihn nur an; hier wird er gesetzt.
+   */
+  tankPercent: number | null;
+  setTankPercent: (v: number | null) => void;
   activeProfileName: string | null;
   // Zeit & Fahrtcharakter
   speed: number;
@@ -112,9 +119,11 @@ export function VehiclePanel(props: VehiclePanelProps) {
     setLiters,
     setSpeed,
     setTankCapacity,
+    setTankPercent,
     setTimeValue,
     speed,
     tankCapacity,
+    tankPercent,
     timeValue,
     timeValueUsed,
   } = props;
@@ -238,6 +247,74 @@ export function VehiclePanel(props: VehiclePanelProps) {
               </span>
             }
           />
+        </div>
+        {/* Tankstand — der eine Ort der Pflege (§6). Die Schnellauswahl
+            stand bis 0.72.2 in „Jetzt“ und „Woche“ zugleich; hier gilt sie
+            für alle Bereiche. */}
+        <div
+          className="mt-5 border-t border-slate-800 pt-4"
+          aria-labelledby="ich-tankstand-heading"
+        >
+          <h4
+            id="ich-tankstand-heading"
+            className="flex items-center gap-2 text-xs font-semibold text-slate-200"
+          >
+            <Gauge size={14} className="text-emerald-400" aria-hidden="true" />
+            Aktueller Tankstand
+          </h4>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-400">
+              Schnellauswahl:
+            </span>
+            {TANK_QUICK.map((item) => (
+              <button
+                key={item.percent}
+                onClick={() =>
+                  setTankPercent(
+                    tankPercent === item.percent ? null : item.percent,
+                  )
+                }
+                aria-pressed={tankPercent === item.percent}
+                aria-label={`${item.percent} % Füllstand setzen`}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                  tankPercent === item.percent
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-600"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+            {tankPercent !== null && (
+              <button
+                onClick={() => setTankPercent(null)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300"
+              >
+                Keine Angabe
+              </button>
+            )}
+          </div>
+          {tankPercent !== null && (
+            <div className="mt-3 max-w-sm">
+              <PrecisionSlider
+                id="ich-tankPercent"
+                label="Füllstand"
+                icon={<Gauge size={14} />}
+                value={tankPercent}
+                onChange={(value) => setTankPercent(value)}
+                min={0}
+                max={100}
+                step={5}
+                unit="%"
+                valueText={`${deTrimmed(tankPercent, 0)} % Füllstand`}
+                valueSpeech={`${deTrimmed(tankPercent, 0)} Prozent Füllstand`}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            Mit dem Stand prüft die App, ob Warten bis zum günstigen Fenster
+            reicht. Ohne Angabe sagt sie dazu nichts.
+          </p>
         </div>
       </section>
 
