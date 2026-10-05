@@ -64,7 +64,9 @@ export function Level1Sheet({
   }, [open, onClose]);
 
   if (!open) return null;
-  const shown = sentences.slice(0, 3);
+  // UX-NEUENTWURF §3: Das „Warum?“ -Blatt trägt maximal fünf Zeilen
+  // (Fenster, Ersparnis, Sicherheit, Tank, Stand) — nicht mehr.
+  const shown = sentences.slice(0, 5);
 
   return (
     <div

@@ -75,7 +75,13 @@ test("Pi-Tab bleibt beim Vertrag; Rückwechsel erhält Kraftstoff, Ort und Einga
   const response = await page.request.get(pi + "/api/v1/decide", { headers: { "X-TankApp-UI": "pi-v1" } });
   expect((await response.json()).f1.recommendation).toBe("no_advice");
   await page.locator("#nas-pill").click();
-  await expect(page.locator("#jetzt-headline")).toBeVisible();
+  // Der Beleg „wir sind wieder in der Vollversion“ ist die
+  // Bereichs-Überschrift — `#jetzt-headline` gibt es nur, wenn eine Antwort
+  // steht; der Rückwechsel kann noch im Laden sein (Stand 0.73.0).
+  await expect(
+    page.getByRole("heading", { name: "Jetzt", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("#answer-title")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("tankapp.liters")!))).toBe(95);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("tankapp.city")!))).toBe("Demostadt");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("tankapp.fuel")!))).toBe("e5");

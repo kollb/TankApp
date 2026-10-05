@@ -1,308 +1,172 @@
-// Woche — der Zeit-Planer (docs/produkt/UI.md, BereichePhase 2).
+// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche;
+// docs/planung/UX-NEUENTWURF.md §4).
 //
-// Feste Reihenfolge, nie anders:
-//   ① Tank-Zeile (Füllstand + Reichweite, „Ändern“ öffnet die Pflege)
-//   ② Beste Fenster (7-Tage-Raster, Sterne, Tage 5–7 „noch unsicher“)
-//   ③ Ausgewählt (Fenster-Detail: Preis, Abstand, Sicherheit, Tank-Abgleich)
-//   ④ Wochenlinie (Tagesbestwerte) + alle Fenster nach Ersparnis
-//   — darunter die Frische-Fußzeile (fester Platz, jede Ansicht)
+// Frage: „Wann in den nächsten Tagen soll ich tanken?“ Antwort: eine
+// Bestenliste mit höchstens drei Einträgen, sortiert nach Ersparnis.
+// Kein 7-Tage-Raster, keine Detailkarte, keine zweite Liste, keine
+// Wochenlinie (deren Balken „höher = billiger“ gegen jede Lesegewohnheit
+// lief): Der Server liefert maximal drei Fenster — vier Darstellungen
+// dafür waren drei zu viel.
 //
-// Die View rendert, sie entscheidet nichts (D1): Tage, Sterne,
-// Tank-Abgleich, Zusammenfassung und Begründung kommen aus `week.ts`
-// und sind dort getestet. Horizonte-Honesty: Die App zeigt die ganze
-// Woche, verspricht aber nur, was die Engine liefert (Tage 5–7
-// entsättigt, Sterne nur mit messbarem P).
+// Die View rendert, sie entscheidet nichts (D1): Einträge, Ersparnis,
+// Sicherheit als ein Wort und die Tank-Zeile kommen aus `week.ts` und sind
+// dort getestet. Der Tankstand wird hier nur **angezeigt** — gepflegt wird
+// er an genau einem Ort („Ich“ → Fahrzeug, §6).
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  Gauge,
-  Star,
-} from "lucide-react";
-import { FreshnessLine } from "../components/FreshnessLine";
+import { ArrowRight, CalendarDays, Gauge } from "lucide-react";
+import { BottomSheet } from "../components/BottomSheet";
+import { DayCurve } from "../components/DayCurve";
+import { FreshnessChip } from "../components/FreshnessChip";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
-import { PrecisionSlider } from "../components/PrecisionSlider";
 import { RegimeNotice } from "../components/RegimeNotice";
 import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
 import {
-  deTrimmed,
-  euro,
-  windowTimeRangeLabel,
+  fuelLabel,
   type DecideResult,
+  type Fuel,
   type ResourceState,
 } from "../data";
-import { type LabSectionId } from "../lab";
-import { learningNote, nowFreshness, TANK_QUICK } from "../now";
+import type { LabSectionId } from "../lab";
 import {
-  WEEK_CALIBRATION_24H,
-  WEEK_CALIBRATION_SCENARIO,
-  weekCalibrationNote,
-  weekDays,
-  weekExplanation,
-  weekLine,
+  learningNote,
+  nowDayRow,
+  nowFreshness,
+  type NowTarget,
+} from "../now";
+import type { StripCell } from "../strip";
+import {
+  WEEK_UNCERTAIN_NOTE,
+  weekEntryWhy,
+  weekRanking,
   weekTankLine,
-  weekWindowList,
-  weekWindowSummary,
-  windowStars,
-  type WeekDay,
+  type WeekEntry,
 } from "../week";
 
 export interface WocheViewProps {
   activeCity: string;
+  fuel: Fuel | string | null;
   stationsCount: number;
   decideRes: ResourceState<DecideResult>;
   priceNow: number | null;
-  /** Tankstand (A2): Pflege lebt hier, Schnellauswahl in „Jetzt“. */
+  /** Tankstand (A2) — hier nur Anzeige, Pflege in „Ich“. */
   tankPercent: number | null;
-  setTankPercent: (v: number | null) => void;
+  /** Sprung dorthin, wo der Tankstand gepflegt wird (genau ein Ort). */
+  onEditTank: () => void;
   tankCapacity: number;
-  consumption: number;
+  /** Tageskurve des heutigen Tages (Messwerte) — Detail des ersten Eintrags. */
+  stripCells: StripCell[];
   forecastAt: string | null;
   pricesAt: string | null;
   onRetry: () => void;
-  onNavigate: (target: "stations" | "ich" | "system") => void;
-  onDeepen?: (section: LabSectionId) => void;
+  onNavigate: (target: NowTarget) => void;
+  onDeepen: (section: LabSectionId) => void;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
-}
-
-/** 0–3 Sterne als Symbole + Wort (Barrierefreiheit: nie Farbe/Symbol allein). */
-function Stars({ value, withWord = false }: { value: number; withWord?: boolean }) {
-  const word =
-    value >= 3
-      ? "ziemlich sicher"
-      : value === 2
-        ? "eher sicher"
-        : value === 1
-          ? "unsicher"
-          : "noch nicht messbar";
-  if (value === 0)
-    return withWord ? (
-      <span className="text-xs text-slate-500">{word}</span>
-    ) : (
-      <span className="text-xs text-slate-600" aria-label={word}>
-        ···
-      </span>
-    );
-  return (
-    <span
-      className="inline-flex items-center gap-0.5"
-      aria-label={`${value} von 3 Sternen — ${word}`}
-    >
-      {[0, 1, 2].map((i) => (
-        <Star
-          key={i}
-          size={11}
-          fill={i < value ? "currentColor" : "none"}
-          className={i < value ? "text-amber-300" : "text-slate-600"}
-          aria-hidden="true"
-        />
-      ))}
-      {withWord && <span className="ml-1 text-xs text-slate-400">{word}</span>}
-    </span>
-  );
-}
-
-/**
- * Wochenlinie: Tagesbestwerte als Mini-Balken (null = kein Fenster).
- *
- * Richtung (TEXT-BEFUND T1): Der **höchste** Balken ist der **günstigste**
- * Tag — Legende, `aria-label` und `title` sagen dieselbe Richtung. Die
- * Balkenhöhe wächst also mit `max - value`, nicht mit dem Preis.
- */
-function WeekLine({ days }: { days: WeekDay[] }) {
-  const values = days
-    .map((day) => day.window?.expected_price ?? null)
-    .filter((v): v is number => v !== null);
-  if (values.length === 0) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  return (
-    <div
-      className="flex items-end gap-1.5"
-      role="img"
-      aria-label="Wochenlinie: erwartete Tagesbestpreise — höherer Balken ist der günstigere Tag"
-    >
-      {days.map((day) => {
-        const value = day.window?.expected_price ?? null;
-        const height =
-          value === null ? 4 : 10 + ((max - value) / span) * 34;
-        return (
-          <div key={day.index} className="flex flex-1 flex-col items-center gap-1">
-            <div
-              className={`w-full rounded-t ${
-                value === null
-                  ? "bg-slate-800"
-                  : day.uncertain
-                    ? "bg-slate-600/60"
-                    : "bg-emerald-500/70"
-              }`}
-              style={{ height: `${height}px` }}
-              title={
-                value === null
-                  ? `${day.shortDay} ${day.date} — kein Fenster`
-                  : `${day.shortDay} ${day.date} — erwartet ${deTrimmed(value, 3)} €/L${
-                      value === min ? " (günstigster Tag der Woche)" : ""
-                    }`
-              }
-            />
-            <span className="text-xs font-semibold text-slate-500">
-              {day.shortDay}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 export function WocheView(props: WocheViewProps) {
   const {
     activeCity,
-    consumption,
     decideRes,
+    fuel,
     forecastAt,
+    now,
     onDeepen,
+    onEditTank,
     onNavigate,
     onRetry,
     pricesAt,
-    setTankPercent,
     stationsCount,
+    stripCells,
     tankCapacity,
     tankPercent,
-    now,
   } = props;
   const decide = decideRes.data ?? null;
   const problemCode =
     decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
-  const [tankOpen, setTankOpen] = useState(false);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [dayOpen, setDayOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const days = useMemo(
-    () => weekDays(decide?.windows_week ?? null, now),
-    [decide?.windows_week, now],
+  const ranking = useMemo(
+    () =>
+      weekRanking({
+        windows: decide?.windows_week ?? null,
+        notice: decide?.regime_notice ?? null,
+        decide,
+        now,
+      }),
+    [decide, now],
   );
-  const defaultIdx = useMemo(() => {
-    const withWindow = days.find((day) => day.window);
-    return withWindow ? withWindow.index : 0;
-  }, [days]);
-  const selected: WeekDay =
-    days[
-      selectedIdx !== null && days[selectedIdx] ? selectedIdx : defaultIdx
-    ] ?? days[0];
-  const summary = weekWindowSummary(selected, decide, props.priceNow, now);
-  const list = weekWindowList(days, decide?.regime_notice ?? null);
-  const line = weekLine(days);
+  // Auswahl zurücksetzen, wenn das gewählte Fenster verschwindet — sonst
+  // zeigt das Detail eine Leere.
+  useEffect(() => {
+    if (
+      selectedId !== null &&
+      !ranking.some((entry) => entry.id === selectedId)
+    ) {
+      setSelectedId(null);
+    }
+  }, [selectedId, ranking]);
+
+  const selected: WeekEntry | null =
+    ranking.find((entry) => entry.id === selectedId) ?? ranking[0] ?? null;
   const tankLine = weekTankLine(decide?.tank ?? null, tankPercent, tankCapacity);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
-  // Auswahl zurücksetzen, wenn sich die Fenster ändern und der gewählte
-  // Tag kein Fenster (mehr) hat — sonst zeigt das Detail eine Leere.
-  useEffect(() => {
-    if (selectedIdx !== null && !days[selectedIdx]?.window) {
-      setSelectedIdx(null);
-    }
-  }, [selectedIdx, days]);
-
+  const day = nowDayRow(stripCells);
   const setup = stationsCount === 0 && !decideRes.error;
-  const explanation = selected?.window
-    ? weekExplanation(selected, decide, props.priceNow, now)
-    : null;
   const learning = learningNote(decide);
+  const why = selected
+    ? weekEntryWhy(selected, decide, props.priceNow, now)
+    : null;
+  /** Die Tageskurve gehört zum heutigen Eintrag — weiter voraus gibt es
+   *  keine Messwerte, und geschätzt wird nichts (§8). */
+  const dayForEntry = selected && selected.index === 0 ? day : null;
 
   return (
     <section aria-labelledby="woche-title">
-      <h1 id="woche-title" className="text-2xl font-bold tracking-tight text-slate-100">
-        Woche
-      </h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h1
+          id="woche-title"
+          className="text-2xl font-bold tracking-tight text-slate-100"
+        >
+          Woche
+        </h1>
+        <p className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          {activeCity ? <span>{activeCity}</span> : null}
+          {fuel ? <span>· {fuelLabel(fuel)}</span> : null}
+          <FreshnessChip label={freshness.chip} tone={freshness.tone} />
+        </p>
+      </div>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
         Wann in den nächsten Tagen — als Nachschlagewerk, kein Wecker.
       </p>
 
-      {/* ① Tank-Zeile */}
-      <div className={`${panel} mt-4 p-4`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            <Gauge size={15} className="text-emerald-400" aria-hidden="true" />
-            <span className="font-semibold">{tankLine.text}</span>
-          </div>
-          <button
-            onClick={() => setTankOpen((value) => !value)}
-            aria-expanded={tankOpen}
-            className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
-          >
-            Ändern
-          </button>
+      {/* ① Tank: nur Anzeige. Die Pflege liegt an genau einem Ort („Ich“). */}
+      <div className={`${panel} mt-4 flex flex-wrap items-center justify-between gap-2 p-4`}>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-slate-300">
+          <Gauge size={15} className="shrink-0 text-emerald-400" aria-hidden="true" />
+          <span className="font-semibold">{tankLine.text}</span>
         </div>
-        <p className="mt-1 text-xs text-slate-500">{tankLine.detail}</p>
-        {tankOpen && (
-          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-slate-400">
-                Schnellauswahl:
-              </span>
-              {TANK_QUICK.map((item) => (
-                <button
-                  key={item.percent}
-                  onClick={() => setTankPercent(item.percent)}
-                  aria-pressed={tankPercent === item.percent}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
-                    tankPercent === item.percent
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                      : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              {tankPercent !== null && (
-                <button
-                  onClick={() => setTankPercent(null)}
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300"
-                >
-                  Keine Angabe
-                </button>
-              )}
-            </div>
-            {tankPercent !== null && (
-              <div className="mt-3">
-                <PrecisionSlider
-                  id="woche-tankPercent"
-                  label="Füllstand"
-                  icon={<Gauge size={14} />}
-                  value={tankPercent}
-                  onChange={(value) => setTankPercent(value)}
-                  min={0}
-                  max={100}
-                  step={5}
-                  unit="%"
-                  valueText={`${deTrimmed(tankPercent, 0)} % Füllstand`}
-                  valueSpeech={`${deTrimmed(tankPercent, 0)} Prozent Füllstand`}
-                />
-                <p className="mt-2 text-xs text-slate-500">
-                  Tankgröße {deTrimmed(tankCapacity, 0)} L · Verbrauch{" "}
-                  {deTrimmed(consumption, 1)} L/100 km — geändert wird beides
-                  unter „Ich“.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+        <button
+          onClick={onEditTank}
+          className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-slate-600"
+        >
+          Ändern
+        </button>
       </div>
 
-      {/* Preisniveau-Termin (Tankrabatt): steht vor den Fenstern, weil er
-          ihre Zahlen einordnet — sichtbar auch ohne Fenster. */}
+      {/* Preisniveau-Termin (Tankrabatt): ordnet die Zahlen darunter ein. */}
       <RegimeNotice notice={decide?.regime_notice} className="mt-4" />
 
-      {/* ② Beste Fenster (7-Tage-Raster) */}
+      {/* ② Bestenliste — höchstens drei Einträge, sortiert nach Ersparnis. */}
       <div className="mt-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200">
           <CalendarDays size={15} className="text-emerald-400" aria-hidden="true" />
-          Beste Fenster (7 Tage)
+          Wann tanken?
         </h2>
         {setup ? (
           <div className={`${panel} mt-2 p-5`}>
@@ -330,7 +194,7 @@ export function WocheView(props: WocheViewProps) {
               onRetry={onRetry}
             />
           </div>
-        ) : list.length === 0 ? (
+        ) : ranking.length === 0 ? (
           <div className={`${panel} mt-2 p-5`}>
             <Empty>
               {learning ??
@@ -339,97 +203,62 @@ export function WocheView(props: WocheViewProps) {
           </div>
         ) : (
           <>
-            <div
-              className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7"
-              role="listbox"
-              aria-label="Beste Fenster je Tag der nächsten 7 Tage"
-            >
-              {days.map((day) => {
-                const isSelected = selected.index === day.index;
-                const hasWindow = !!day.window;
-                return (
+            <ol id="woche-liste" className={`${panel} mt-2 divide-y divide-slate-800/80`}>
+              {ranking.map((entry, position) => (
+                <li key={entry.id}>
                   <button
-                    key={day.index}
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => setSelectedIdx(day.index)}
-                    disabled={!hasWindow}
-                    className={`flex min-h-24 flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-colors ${
-                      isSelected
-                        ? "border-emerald-500/40 bg-emerald-500/10"
-                        : hasWindow
-                          ? "border-slate-800 bg-slate-900/60 hover:border-slate-700"
-                          : "cursor-default border-slate-800/60 bg-slate-950/40"
-                    } ${day.uncertain && hasWindow ? "opacity-70" : ""}`}
+                    onClick={() => setSelectedId(entry.id)}
+                    aria-expanded={selected?.id === entry.id}
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-800/40"
                   >
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      {day.shortDay}
-                      {day.isToday ? " · heute" : ""}{" "}
-                      <span className="font-normal normal-case text-slate-600">
-                        {day.date}
+                    <span
+                      aria-hidden="true"
+                      className="mt-0.5 w-4 shrink-0 font-mono text-xs font-bold text-slate-500"
+                    >
+                      {position + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-slate-100">
+                        {entry.dayLabel} {entry.timeLabel ?? entry.rangeLabel}
+                      </span>
+                      <span className="mt-0.5 block font-mono text-xs text-slate-300 tabular-nums">
+                        {entry.priceLabel}
+                        {entry.savingLabel ? ` · ${entry.savingLabel}` : ""}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {entry.security}
                       </span>
                     </span>
-                    {hasWindow && day.window ? (
-                      <>
-                        <span className="font-mono text-xs font-bold text-emerald-300">
-                          {formatWindowRange(day.window)}
-                        </span>
-                        <Stars value={day.stars} />
-                        {day.uncertain && (
-                          <span className="text-xs text-slate-500">
-                            noch unsicher
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-600">—</span>
-                    )}
                   </button>
-                );
-              })}
-            </div>
+                </li>
+              ))}
+            </ol>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              Sicherheit zeigt die Sterne unter jedem Fenster (bis drei — die
-              Bedeutung im Detail, Schwellen im Labor). Leere Tage: kein
-              Fenster mit Vorsprung — keine Erfindung. Tage 5–7 sind „noch
-              unsicher“. Nur 24-h-Fenster sind PIT-kalibriert — alle späteren
-              Tage sind unkalibrierte Szenarioprognosen.
+              {WEEK_UNCERTAIN_NOTE} Leere Tage haben kein Fenster mit
+              Vorsprung — die App erfindet keins. Ein Tipp auf einen Eintrag
+              zeigt die Begründung.
             </p>
           </>
         )}
       </div>
 
-      {/* ③ Ausgewählt */}
-      {selected.window && summary && list.length > 0 && (
-        <div className={`${panel} mt-4 p-4 sm:p-5`}>
+      {/* ③ Das Detail des gewählten Eintrags — ein Tipp entfernt (Ebene 2). */}
+      {selected && ranking.length > 0 && (
+        <div className={`${panel} mt-4 p-4 sm:p-5`} id="woche-detail">
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">
             Ausgewählt
           </p>
-          <h3 className="mt-1 text-lg font-bold text-slate-100">{summary.headline}</h3>
-          <p className="mt-1 font-mono text-sm text-slate-200">
-            Erwartet {deTrimmed(selected.window.expected_price, 3)} €/L
-            {summary.savingLine ? ` · ${summary.savingLine}` : ""}
+          <h3 className="mt-1 text-lg font-bold text-slate-100">
+            {selected.dayLabel} {selected.timeLabel ?? selected.rangeLabel}
+          </h3>
+          <p className="mt-1 font-mono text-sm text-slate-200 tabular-nums">
+            Erwartet {selected.priceLabel}
+            {selected.savingLabel ? ` · ${selected.savingLabel}` : ""}
           </p>
-          <p className="mt-1 text-xs text-slate-300">{summary.security}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            {weekCalibrationNote(selected.index)}
-            {selected.uncertain ? " · noch unsicher" : ""}
+          <p className="mt-1 text-xs text-slate-400">
+            Fenster {selected.rangeLabel} · {selected.security}
+            {selected.uncertain ? ` · ${WEEK_UNCERTAIN_NOTE}` : ""}
           </p>
-          {summary.tank && (
-            <p
-              className={`mt-2 text-xs ${
-                summary.tank.tone === "bad"
-                  ? "text-rose-300"
-                  : summary.tank.tone === "warn"
-                    ? "text-amber-300"
-                    : summary.tank.tone === "ok"
-                      ? "text-emerald-300"
-                      : "text-slate-400"
-              }`}
-            >
-              Tank: {summary.tank.text}
-            </p>
-          )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => onNavigate("stations")}
@@ -444,89 +273,26 @@ export function WocheView(props: WocheViewProps) {
             >
               Warum?
             </button>
+            {dayForEntry && (
+              <button
+                onClick={() => setDayOpen(true)}
+                aria-haspopup="dialog"
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-xs font-semibold text-slate-200 hover:border-slate-600"
+              >
+                Tagesverlauf
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* ④ Wochenlinie + Liste */}
-      {list.length > 0 && (
-        <>
-          <div className={`${panel} mt-4 p-4`}>
-            <p className="mb-3 text-xs uppercase tracking-wider text-slate-500">
-              Wochenlinie (Tagesbestwerte)
-            </p>
-            <WeekLine days={days} />
-            <p className="mt-2 text-xs text-slate-500">
-              Balken = günstigster erwarteter Preis des Tages: höher =
-              günstiger · grau = kein Fenster.
-            </p>
-          </div>
-          <div className={`${panel} mt-4 overflow-hidden`}>
-            <p className="border-b border-slate-800 px-4 py-2.5 text-xs uppercase tracking-wider text-slate-500">
-              Alle Fenster nach Ersparnis
-            </p>
-            <div className="divide-y divide-slate-800/80">
-              {list.map((entry) => (
-                <button
-                  key={entry.window.start}
-                  onClick={() => setSelectedIdx(entry.day.index)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-xs transition-colors hover:bg-slate-800/40"
-                >
-                  <span className="text-slate-300">
-                    {dayShort(entry.day)} {formatWindowRange(entry.window)}
-                    {entry.day.uncertain ? " · noch unsicher" : ""}
-                  </span>
-                  <span className="flex items-center gap-3">
-                    <span
-                      title={
-                        entry.window.p_raw != null && entry.window.p_competitors != null
-                          ? `Sterne: gegen die Zufallsbasis von ${entry.window.p_competitors + 1} vergleichbaren Fenstern normalisiert (Rohwert ${Math.round(entry.window.p_raw * 100)} %).`
-                          : "Sterne: Sicherheit des Fensters"
-                      }
-                    >
-                      <Stars value={windowStars(entry.window.p)} />
-                    </span>
-                    <span className="font-mono text-slate-400">
-                      {deTrimmed(entry.window.expected_price, 3)} €/L
-                    </span>
-                    <span
-                      className={`font-mono font-bold ${
-                        entry.savingEur != null && entry.savingEur > 0
-                          ? "text-emerald-300"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      {entry.savingEur != null && entry.savingEur > 0
-                        ? `${euro(entry.savingEur)} € günstiger`
-                        : "—"}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Frische-Fußzeile (T8: ein Baustein) – B2: Kalibrierungshorizont ehrlich nennen */}
-      <FreshnessLine
-        text={freshness.text}
-        tone={freshness.tone}
-        place={activeCity}
-        extra={
-          line.length > 0
-            ? ` · ab Tag 5 wird die Prognose breiter · ${WEEK_CALIBRATION_24H}, Folgetage: ${WEEK_CALIBRATION_SCENARIO}`
-            : ""
-        }
-      />
-
-      {explanation && (
+      {why && (
         <Level1Sheet
           open={sheetOpen}
-          title={`Warum ${summary?.headline ?? "dieses Fenster"}?`}
-          sentences={explanation.sentences}
-          source={explanation.source}
-          labHint={explanation.labHint}
+          title={`Warum ${selected?.dayLabel ?? "dieses Fenster"}?`}
+          sentences={why.lines}
+          source={why.source}
+          labHint={why.labHint}
           onDeepen={(section) => {
             setSheetOpen(false);
             onDeepen?.(section);
@@ -534,14 +300,28 @@ export function WocheView(props: WocheViewProps) {
           onClose={() => setSheetOpen(false)}
         />
       )}
+
+      {dayForEntry && (
+        <BottomSheet
+          open={dayOpen}
+          title={`Tagesverlauf — ${selected?.dayLabel ?? "heute"}`}
+          onClose={() => setDayOpen(false)}
+        >
+          <div className="mt-3">
+            <DayCurve
+              cells={dayForEntry.cells}
+              label={`Tagesverlauf 06–24 Uhr — ${dayForEntry.sentence}`}
+            />
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              {dayForEntry.sentence}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              {dayForEntry.coverage} Höhe = Preis, oben teurer — leere Stunden
+              bleiben Lücken, sie werden nicht geschätzt.
+            </p>
+          </div>
+        </BottomSheet>
+      )}
     </section>
   );
-}
-
-function formatWindowRange(window: { start: string; end: string }): string {
-  return windowTimeRangeLabel(window.start, window.end);
-}
-
-function dayShort(day: WeekDay): string {
-  return day.isToday ? "Heute" : day.shortDay;
 }

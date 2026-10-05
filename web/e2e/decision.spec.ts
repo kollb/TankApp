@@ -122,70 +122,30 @@ async function stubBase(page: Page) {
   });
 }
 
-test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page }) => {
+test("Jetzt: eine Antwort, eine Handlung — kein Intent-Kanal mehr", async ({
+  page,
+}) => {
+  // D2 bleibt die Zusage („Erfolg nur bei Erfolg“), aber der Weg ist seit
+  // dem UX-NEUENTWURF §3/§7 ein anderer: Die Antwortkarte trägt genau eine
+  // Handlung (Route) und ein „Warum?“; die Feedback-Intents („Ich warte“)
+  // und der Fällig-Prompt sind gestrichen. Der **Vertrag** bleibt: Der
+  // Server liefert Intents und Episoden weiter — die GUI zeigt sie nur
+  // nicht mehr (kein API-Bruch).
   const intents: string[] = [];
-  let due = false;
-  const fillsPosted: Record<string, unknown>[] = [];
-
   await stubBase(page);
-
-  await page.route("**/api/v1/episodes?status=due", async (route) => {
-    await route.fulfill({
-      json: due
-        ? {
-            count: 1,
-            episodes: [
-              {
-                id: "ep-1",
-                status: "due",
-                intent: "wait",
-                last_snapshot: {
-                  station_id: "a",
-                  station_name: "F-Station",
-                  expected_price: 1.719,
-                },
-              },
-            ],
-          }
-        : { count: 0, episodes: [] },
-    });
-  });
   await page.route("**/api/v1/episodes/*/intent", async (route) => {
     const body = route.request().postDataJSON() as { intent?: string };
     intents.push(body.intent ?? "");
     await route.fulfill({ json: { id: "ep-1", status: "waiting", intent: body.intent } });
   });
-  await page.route("**/api/v1/fills", async (route) => {
-    if (route.request().method() === "POST") {
-      const body = route.request().postDataJSON() as Record<string, unknown>;
-      fillsPosted.push(body);
-      await route.fulfill({ json: { ...body, id: "fill-1", voided: false } });
-      return;
-    }
-    await route.fulfill({ json: { count: fillsPosted.length, fills: fillsPosted, error_code: null } });
-  });
-  // B7: „Jetzt“ liest aus /overview statt den Einzelpfaden —
-  // derselbe Inhalt, eine Antwort; die Closure folgt `due`/`fillsPosted`.
   await page.route("**/api/v1/overview?*", async (route) => {
     await route.fulfill({
       json: {
         generated_at: iso(0),
-        decide: DECIDE_FIXTURE,
-        fills: { count: fillsPosted.length, fills: fillsPosted, error_code: null },
+        decide: { ...DECIDE_FIXTURE, calibrated: true },
+        fills: { count: 0, fills: [], error_code: null },
         stats_summary: STATS_FIXTURE,
-        episodes: due
-          ? {
-              count: 1,
-              episodes: [
-                {
-                  id: "ep-1",
-                  status: "due",
-                  intent: "wait",
-                  last_snapshot: { station_id: "a", station_name: "F-Station", expected_price: 1.719 },
-                },
-              ],
-            }
-          : { count: 0, episodes: [] },
+        episodes: { count: 0, episodes: [] },
         day: { points: [], error_code: null },
         error_code: null,
       },
@@ -193,100 +153,67 @@ test("decide → intent → fill → due: Erfolg nur bei Erfolg", async ({ page 
   });
 
   await page.goto("/");
-  // Der Einstieg ist „Jetzt“: die Warten-Karte mit dem sekundären Intent-
-  // Knopfen (die Feedback-Schleife M7 bleibt, klein und unter der Primäraktion).
-  await expect(page.getByText("Warten", { exact: true })).toBeVisible();
+  // Die Antwort selbst: Chip, Überschrift und der Euro-Betrag (§3).
+  await expect(page.locator("#jetzt-headline")).toContainText("Warten bis");
+  await expect(page.getByText("spart ca. 1,60 €")).toBeVisible();
 
-  // 1) Intent „Ich warte“ setzen.
-  await page.getByRole("button", { name: "Ich warte", exact: true }).click();
-  await expect(page.getByText("Auswahl gespeichert.")).toBeVisible();
-  expect(intents).toContain("wait");
-
-  // 2) Fenster vorbei → Due-Prompt erscheint nach dem nächsten Refresh.
-  due = true;
-  await page.getByRole("button", { name: "Daten aktualisieren" }).click();
+  // §7: keine Intents mehr in der Ansicht — der Kanal wird nicht benutzt.
+  await expect(
+    page.getByRole("button", { name: "Ich warte", exact: true }),
+    "Die Feedback-Intents sind zurück.",
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Verwerfen/ })).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Gerade getankt?" }),
-  ).toBeVisible();
+    "Der Fällig-Prompt ist zurück (Entscheidung 04.10.2026: ersatzlos streichen).",
+  ).toHaveCount(0);
+  expect(intents, "kein Intent-Request aus der Antwortkarte").toEqual([]);
 
-  // 3) Beleg verbuchen → Erfolgsmeldung.
-  await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
-  await expect(page.getByText("Beleg in deiner Bilanz verbucht.")).toBeVisible();
-  expect(fillsPosted.length).toBe(1);
-  expect(fillsPosted[0].liters).toBe(40);
+  // „Warum?“ ist der einzige Weg in die Tiefe — mit höchstens fünf Zeilen.
+  await page.getByRole("button", { name: "Warum?", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const lines = dialog.locator("ol > li");
+  const count = await lines.count();
+  expect(count, "Das „Warum?“ -Blatt trägt mehr als fünf Zeilen.").toBeLessThanOrEqual(5);
+  expect(count, "Das „Warum?“ -Blatt ist leer.").toBeGreaterThan(0);
 });
 
 // B10: Aus dem „Serverfehler“ wurden zwei Fälle. Ein 503 heißt „niemand
 // erreichbar“ — der Beleg wird vorgemerkt und nachgereicht, und die App
 // behauptet **keinen** Erfolg. Eine echte Ablehnung (400) bleibt ein Fehler
 // mit Klartext.
+// B10: Aus dem „Serverfehler“ wurden zwei Fälle. Ein 503 heißt „niemand
+// erreichbar“ — der Beleg wird vorgemerkt und nachgereicht, und die App
+// behauptet **keinen** Erfolg. Eine echte Ablehnung (400) bleibt ein Fehler
+// mit Klartext.
+//
+// Der Weg dorthin war bis 0.72.2 der Fällig-Prompt („Ja, wie empfohlen“).
+// Er ist ersatzlos gestrichen; Belege entstehen in „Ich → Belege → Tanken
+// erfassen“. Die Outbox-Zusage (B10) bleibt und wird hier am neuen Ort
+// geprüft.
+async function openReceiptForm(page: Page) {
+  await page.goto("/?tab=ich");
+  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  const form = page.getByRole("region", { name: "Tanken erfassen" });
+  await form.getByRole("textbox").nth(0).fill("37.5");
+  await form.getByRole("textbox").nth(1).fill("1.777");
+  return form;
+}
+
 test("NAS nicht erreichbar (503): Beleg wird vorgemerkt, kein Erfolg behauptet", async ({
   page,
 }) => {
   await stubBase(page);
-  await page.route("**/api/v1/episodes?status=due", async (route) => {
-    await route.fulfill({
-      json: {
-        count: 1,
-        episodes: [
-          {
-            id: "ep-1",
-            status: "due",
-            intent: "wait",
-            last_snapshot: {
-              station_id: "a",
-              station_name: "F-Station",
-              expected_price: 1.719,
-            },
-          },
-        ],
-      },
-    });
-  });
-  await page.route("**/api/v1/episodes/*/intent", async (route) => {
-    await route.fulfill({ json: { id: "ep-1", status: "waiting", intent: "wait" } });
-  });
   await page.route("**/api/v1/fills", async (route) => {
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error_code: "record_fill_failed" }),
-      });
+    if (route.request().method() !== "POST") {
+      await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
       return;
     }
-    await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
+    await route.fulfill({ status: 503, json: { detail: "NAS nicht erreichbar" } });
   });
-  // B7: Overview-Antwort für „Jetzt“ (due-Episode von Anfang an).
-  await page.route("**/api/v1/overview?*", async (route) => {
-    await route.fulfill({
-      json: {
-        generated_at: iso(0),
-        decide: DECIDE_FIXTURE,
-        fills: { count: 0, fills: [], error_code: null },
-        stats_summary: STATS_FIXTURE,
-        episodes: {
-          count: 1,
-          episodes: [
-            {
-              id: "ep-1",
-              status: "due",
-              intent: "wait",
-              last_snapshot: { station_id: "a", station_name: "F-Station", expected_price: 1.719 },
-            },
-          ],
-        },
-        day: { points: [], error_code: null },
-        error_code: null,
-      },
-    });
-  });
-
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Gerade getankt?" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
+  const form = await openReceiptForm(page);
+  await form.getByRole("button", { name: "Beleg buchen", exact: true }).click();
   await expect(page.getByText(/Beleg lokal vorgemerkt/)).toBeVisible();
   await expect(page.getByText("Beleg in deiner Bilanz verbucht.")).toHaveCount(0);
   // Die Queue sagt selbst, dass etwas wartet (B10) — sichtbar, nicht still.
@@ -299,70 +226,17 @@ test("NAS nicht erreichbar (503): Beleg wird vorgemerkt, kein Erfolg behauptet",
 
 test("Abgelehnter Beleg (400) bleibt ein Fehler", async ({ page }) => {
   await stubBase(page);
-  await page.route("**/api/v1/episodes?status=due", async (route) => {
-    await route.fulfill({
-      json: {
-        count: 1,
-        episodes: [
-          {
-            id: "ep-1",
-            status: "due",
-            intent: "wait",
-            last_snapshot: {
-              station_id: "a",
-              station_name: "F-Station",
-              expected_price: 1.719,
-            },
-          },
-        ],
-      },
-    });
-  });
   await page.route("**/api/v1/fills", async (route) => {
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 400,
-        contentType: "application/json",
-        body: JSON.stringify({ error_code: "invalid_liters" }),
-      });
+    if (route.request().method() !== "POST") {
+      await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
       return;
     }
-    await route.fulfill({ json: { count: 0, fills: [], error_code: null } });
+    // Der Server lehnt mit einem benannten Code ab (`invalid_liters`) —
+    // nur daran erkennt die Maske die Ablehnung.
+    await route.fulfill({ status: 400, json: { error_code: "invalid_liters" } });
   });
-  // Seit dem Overview-Bündel (0.19.0) kommt die due-Episode aus `/overview`.
-  await page.route("**/api/v1/overview?*", async (route) => {
-    await route.fulfill({
-      json: {
-        generated_at: iso(0),
-        decide: DECIDE_FIXTURE,
-        fills: { count: 0, fills: [], error_code: null },
-        stats_summary: STATS_FIXTURE,
-        episodes: {
-          count: 1,
-          episodes: [
-            {
-              id: "ep-1",
-              status: "due",
-              intent: "wait",
-              last_snapshot: {
-                station_id: "a",
-                station_name: "F-Station",
-                expected_price: 1.719,
-              },
-            },
-          ],
-        },
-        day: { points: [], error_code: null },
-        error_code: null,
-      },
-    });
-  });
-
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Gerade getankt?" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: /Ja, wie empfohlen/ }).click();
+  const form = await openReceiptForm(page);
+  await form.getByRole("button", { name: "Beleg buchen", exact: true }).click();
   await expect(page.getByText(/Speichern fehlgeschlagen/)).toBeVisible();
   await expect(page.getByText(/lokal vorgemerkt/)).toHaveCount(0);
 });
@@ -386,11 +260,18 @@ test("Gültigkeits-Countdown wechselt ohne neue Freigabe zur Ablaufkarte", async
     } });
   });
   await page.goto("/");
-  await expect(page.getByText("gültig bis 12:01 · noch 2 min", { exact: true })).toBeVisible();
+  // §3: Die Gültigkeit steht in kleiner Schrift als `bis HH:MM` — und erst
+  // in den letzten 30 Minuten mit dem Zusatz „noch N min“.
+  await expect(page.getByText("bis 12:01 · noch 2 min", { exact: true })).toBeVisible();
   await page.clock.runFor(60000);
-  await expect(page.getByText("gültig bis 12:01 · noch 1 min", { exact: true })).toBeVisible();
+  await expect(page.getByText("bis 12:01 · noch 1 min", { exact: true })).toBeVisible();
   await page.clock.runFor(30000);
-  await expect(page.getByRole("heading", { name: "Empfehlung abgelaufen", exact: true })).toBeVisible();
-  await expect(page.getByText(/gültig bis 12:01/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Empfehlung neu laden", exact: true })).toBeVisible();
+  // Abgelaufen heißt seit 0.73.0: **kein** Urteil mehr. Die Karte fällt auf
+  // die Tatsache zurück (Chip „Preisvergleich“, günstigster bekannter
+  // Preis) — eine eigene „abgelaufen“-Karte würde eine Freigabe behaupten,
+  // die es nicht mehr gibt (A21-B1.4, UX-NEUENTWURF §3).
+  await expect(page.getByText("Preisvergleich", { exact: true })).toBeVisible();
+  await expect(page.locator("#jetzt-headline")).toContainText("Günstigste gerade: F-Station");
+  await expect(page.getByText(/bis 12:01/)).toHaveCount(0);
+  await expect(page.getByText("Empfehlung abgelaufen")).toHaveCount(0);
 });

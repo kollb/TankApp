@@ -303,54 +303,83 @@ test.describe("Mobil: kein Querlauf", () => {
     });
   }
 
-  test("Jetzt: die Verdichtung ist aktiv — kein Zurück zur langen Fassung", async ({
+  test("Jetzt: die Antwort steht ohne Scrollen im Bild — der Rest ein Tipp entfernt", async ({
     page,
-  }) => {
-    // Nutzer-Feedback 18.09.2026: „Zu lang auf mobil“. Der Einstieg maß auf
-    // 390 × 844 2 530 px gegen 1 223 px des Entwurfs
-    // (`ui-neuentwurf-mockup`) — die drei Fakten standen als drei Karten
-    // (409 px), die drei Kennzahlen von „Heute im Blick“ als drei Kacheln
-    // (260 px statt 88 px). Beides ist seit 0.53.0 verdichtet. Geprüft wird
-    // die Struktur, nicht eine Pixelzahl: dieselben drei Fakten in EINER
-    // Reihe, die Kennzahlen als sichtbare Zeilenliste, die Desktop-Karten
-    // ausgeblendet (keine doppelte Anzeige).
+  }, testInfo) => {
+    // UX-NEUENTWURF §9 (Abnahme): „Die Antwort ist ohne Scrollen sichtbar,
+    // Details ein Tipp entfernt.“ Bis 0.72.2 maß der Einstieg auf 390 × 844
+    // über zwei Viewports: drei Fakten, „Heute im Blick“ mit 19 Zellen,
+    // Benefit-Block, nächste Schritte, Fällig-Prompt. Geblieben sind Kopf,
+    // höchstens ein Banner, die Antwortkarte und die Tageszeile.
+    //
+    // Geprüft wird die Struktur, nicht eine Pixelzahl:
+    //   ① die Antwort-Überschrift endet im ersten Viewport;
+    //   ② die Tageszeile ist der einzige Weg in die Tiefe und zu;
+    //   ③ die gestrichenen Bausteine sind weg (Streichliste §7).
+    // Dieselbe Einschränkung wie beim B4-Ratchet unten: Die KPI gilt bei der
+    // Entwurfsbreite 390 px (mobile-Projekt). 320 px ist die Störbreite der
+    // Überlauf-Prüfung — dort trägt dieselbe Ansicht die globale Kopfzeile
+    // (Shell, 0.73.0 noch drei Steuerreihen) und kommt naturgemäß tiefer.
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "Die KPI gilt bei der Entwurfsbreite 390 px (mobile-Projekt).",
+    );
     await page.goto("/");
     await settled(page);
-    const labels = ["Jetzt hier", "Bestes Fenster heute", "Tank reicht?"];
-    const tops: number[] = [];
-    for (const label of labels) {
-      const el = page.getByText(label, { exact: true }).first();
-      await expect(el).toBeVisible();
-      const box = await el.boundingBox();
-      expect(box, `Keine Box für „${label}“`).not.toBeNull();
-      tops.push(Math.round(box!.y));
-    }
-    // Fakt 1 und 2 teilen sich die erste Reihe; der Tank-Fakt steht darunter
-    // über die volle Breite (seine Schnellauswahl bräuchte in einer halben
-    // Spalte fünf Zeilen). Die Zusage ist deshalb: höchstens ZWEI kompakte
-    // Reihen — die drei gestapelten Karten von vorher lagen bei je ~110 px
-    // plus Abständen, also deutlich darüber.
-    expect(
-      Math.abs(tops[0] - tops[1]),
-      `„${labels[0]}“ und „${labels[1]}“ stehen nicht in einer Reihe: ${tops.join(", ")}`,
-    ).toBeLessThan(4);
-    expect(
-      tops[2] - tops[0],
-      `Die Fakten brauchen mehr als zwei Reihen: ${tops.join(", ")}`,
-    ).toBeLessThan(140);
+    await expectArea(page, AREAS[0]);
 
-    // Kennzahlen: die Zeilenliste ist da, die drei Desktop-Karten nicht.
-    await expect(page.locator("dt", { hasText: "Tagesmedian" })).toBeVisible();
+    const viewportHeight = page.viewportSize()?.height ?? 844;
+    const headline = page.locator("#jetzt-headline");
+    await expect(headline, "Keine Antwort-Überschrift.").toBeVisible();
+    const box = await headline.boundingBox();
+    expect(box, "Keine Box für die Antwort-Überschrift.").not.toBeNull();
+    expect(
+      box!.y + box!.height,
+      `Die Antwort endet erst bei ${Math.round(box!.y + box!.height)} px — ` +
+        `sichtbar sind ${viewportHeight} px. Die Antwort braucht den ersten ` +
+        `Bildschirm für sich (§9).`,
+    ).toBeLessThanOrEqual(viewportHeight);
+
+    // ② Die Tageszeile steht, ihr Detail ist zu.
+    await expect(page.locator("#jetzt-tagzeile")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // ③ Streichliste: nichts davon ist zurückgekehrt.
+    for (const label of [
+      "Jetzt hier",
+      "Bestes Fenster heute",
+      "Tank reicht?",
+      "Nächste Schritte",
+    ]) {
+      await expect(
+        page.getByText(label, { exact: true }),
+        `„${label}“ ist zurück — §7 hat es gestrichen.`,
+      ).toHaveCount(0);
+    }
     await expect(
-      page.locator('p:has-text("Günstigste Stunde")').first(),
-    ).toBeHidden();
-    // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Tagesstreifen ist die
-    // einzige Visualisierung des Bildschirms und standardmäßig
-    // eingeklappt — „die Entscheidung braucht ihn nicht“. Der Ratchet
-    // hält genau das: Auslöser sichtbar, Profilsatz nicht gemalt.
-    const strip = page.locator("#jetzt-daystrip");
-    await expect(strip).toBeVisible();
-    await expect(strip.locator(".daystrip-cells")).toBeHidden();
+      page.locator("#jetzt-daystrip"),
+      "Das 19-Zellen-Raster ist zurück.",
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Was-wäre-wenn", { exact: false }),
+      "Die Was-wäre-wenn-Annahmen sind zurück.",
+    ).toHaveCount(0);
+
+    // „Warum?“ öffnet das einzige Erklärblatt — mit höchstens fünf Zeilen.
+    await page.getByRole("button", { name: "Warum?", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const lines = dialog.locator("ol > li");
+    const count = await lines.count();
+    expect(
+      count,
+      `Das „Warum?“ -Blatt trägt ${count} Zeilen — §3 erlaubt höchstens fünf.`,
+    ).toBeLessThanOrEqual(5);
+    expect(count, "Das „Warum?“ -Blatt ist leer.").toBeGreaterThan(0);
+    // Fokus liegt im Dialog (Barrierefreiheit, §10).
+    await expect(dialog.getByRole("button", { name: /schließen/i })).toBeFocused();
+    await dialog.getByRole("button", { name: /schließen/i }).click();
+    await expect(dialog).toHaveCount(0);
   });
 
   test("Jetzt: Scrolltiefe ≤ 1,5 Viewports (B4-Ratchet)", async ({
@@ -386,10 +415,10 @@ test.describe("Mobil: kein Querlauf", () => {
       const section = document.querySelector(
         'section[aria-labelledby="jetzt-title"]',
       );
-      // Das Fensterende-Feedback („Gerade getankt?“) ist transientes
-      // Episoden-UI: Es erscheint, bis der Beleg gebucht oder verworfen
-      // ist, und ist Teil keiner festen Ansicht — die Messung des
-      // Entscheidungsbildschirms zählt es deshalb nicht mit.
+      // Das Fensterende-Feedback („Gerade getankt?“) ist mit 0.73.0
+      // ersatzlos gestrichen (Entscheidung 04.10.2026) — der Abzug bleibt
+      // als Gegenprobe: Tauchte die Rückmeldung wieder auf, zählt sie
+      // hier nicht mit und fällt dafür im Ratchet darunter auf.
       const prompt = section
         ? section.querySelector(
             '[aria-label="Rückmeldung nach Fensterende"]',
@@ -434,8 +463,8 @@ test.describe("Mobil: kein Querlauf", () => {
       `„Jetzt“ scrollt tiefer als 1,5 Viewports (gemessen ${depth.toFixed(
         2,
       )}). Der Entscheidungsbildschirm trägt zu viel: Entscheidung, ` +
-        `Fakten, Streifen und Rückmeldung dürfen nicht alle vier auf ` +
-        `einem Scroll stehen (Befund §1.2: „1 + 3 + 1“).`,
+        `Antwort, Tageszeile und Rückmeldung dürfen nicht alle drei auf ` +
+        `einem Scroll stehen (§9: eine Frage, eine Antwort).`,
     ).toBeLessThanOrEqual(1.5 + 1e-6);
   });
 

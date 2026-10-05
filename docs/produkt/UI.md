@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 03.10.2026 · App-Version 0.72.2
+> Stand: 04.10.2026 · App-Version 0.73.0
 > Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
@@ -9,12 +9,16 @@
 > Neu in 0.71.0: GUI v2 — helles Material-You-Design nach `sample/good gui`
 > als Standard; der bisherige dunkle Stand bleibt als Thema „Dunkel“
 > ([Release 0.71.0](../releases/CHANGELOG.md#0710--2026-09-27)).
+> Neu in 0.73.0: „Jetzt“ und „Woche“ antworten statt zu berichten — eine
+> Frage, eine Antwort ([Release 0.73.0](../releases/CHANGELOG.md#0730--2026-10-04)).
 
 ## Inhaltsverzeichnis
 
 - [Navigation](#navigation)
 - [Bereiche](#bereiche)
 - [Tank-Guide: eine Frage, eine Antwort](#tank-guide-eine-frage-eine-antwort)
+- [Jetzt: eine Antwort, ein Tipp in die Tiefe](#jetzt-eine-antwort-ein-tipp-in-die-tiefe)
+- [Woche: Bestenliste statt Raster](#woche-bestenliste-statt-raster)
 - [Labor-Unterbereiche](#labor-unterbereiche)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
 - [Urteilstöne und Elevation](#urteilstöne-und-elevation)
@@ -25,11 +29,12 @@
 ## Navigation
 
 Seit 0.70.1 öffnet der Kontext-Chip im Kopf Stadt und Kraftstoff in einem
-Bottom Sheet. Tagesstreifen-Details öffnen ebenfalls als Sheet; native
-Dialoge begrenzen den Tastaturfokus und schließen mit Escape, danach
-kehrt der Fokus zum Auslöser zurück. Der Gültigkeits-Chip zählt die
-letzten 30 Minuten herunter; ab dem Ablaufzeitpunkt wird die Empfehlung
-auch ohne neue Serverantwort durch die neutrale Ablaufkarte ersetzt.
+Bottom Sheet. Das Tagesverlauf-Detail der Tageszeile öffnet ebenfalls als
+Sheet; native Dialoge begrenzen den Tastaturfokus und schließen mit Escape,
+danach kehrt der Fokus zum Auslöser zurück. Die Gültigkeit zählt die letzten
+30 Minuten herunter (`bis 17:45 · noch 12 min`); ab dem Ablaufzeitpunkt
+zeigt die Karte auch ohne neue Serverantwort die neutrale Tatsachenvariante
+(`Preisvergleich`) statt des Urteils.
 
 Die RP2-Leseausgabe (`web/rp2`) teilt Theme, Formatter und Sheet mit der
 Vollversion, bleibt aber ausdrücklich beim lesenden `pi-v1`-Vertrag.
@@ -63,31 +68,35 @@ die nur über einen alten Haupttab erreichbar waren.
 
 | Bereich | Verantwortung | Abgrenzung |
 |---|---|---|
-| Jetzt | Empfehlung, drei Fakten, „Heute im Blick“, Umweg-Rechnung | Keine zweite vollständige Stationsliste |
-| Woche | Veröffentlichte Fenster für die nächsten Tage | Mehrtagesbänder nicht als PIT-kalibriert ausgeben — seit 0.70.0 trägt jede Tageskarte ihr Kalibrierungs-Etikett (`24-h-Fenster (PIT-kalibriert, wenn aktiv)` nur am heutigen Tag, danach `Szenarioprognose (unkalibriert)`), die Fußzeile nennt `24h kalibriert (PIT), 3/7d unkalibrierte Szenarioprognose` |
+| Jetzt | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung | Keine drei Fakten, kein 19-Zellen-Raster, keine Was-wäre-wenn-Annahmen, keine zweite Stationsliste |
+| Woche | Bestenliste: höchstens drei Fenster, sortiert nach Ersparnis | Kein 7-Tage-Raster, keine Sterne, keine Prozentwerte, keine Wochenlinie, keine zweite Liste; die Unsicherheit steht als **ein** Satz unter der Liste (`Ab Tag 5 wird die Prognose unsicher.`) |
 | Stationen | Polling-Set, Karte, Vergleich und Stationsdetails | Tagesverlauf im Detail statt unbeschrifteter Mini-Linie in jeder Zeile |
 | Labor | Modell, Güte, Kalibrierung, Heatmaps und Begründungen | Markt-Labor und Live-Advice nicht mit persönlicher Bilanz vermengen |
-| Ich | Fahrzeug, Profile, Tankstand, Belege und Bilanz | Ein Intent ist kein Beleg |
+| Ich | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)**, Belege und Bilanz | Ein Intent ist kein Beleg |
 | System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox und Export | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
-„Heute im Blick“ zeigt die drei Faktenzeilen dauerhaft, den Tagesstreifen
-zunächst eingeklappt. Ohne Empfehlung entfällt eine zusätzliche Freitext-
-Wiederholung derselben Aussage. Mit Empfehlung kann sie Referenz und
-persönlichen Vorteil erläutern.
+Seit 0.73.0 gilt für beide Bereiche derselbe Auftrag: **eine Frage, eine
+Antwort — der Rest ein Tipp entfernt.** „Jetzt“ zeigt die Antwortkarte und
+eine Tageszeile (Mini-Kurve + Tief); „Woche“ zeigt die Bestenliste mit
+höchstens drei Einträgen. Alles Statistische bleibt erreichbar, aber es
+steht nicht mehr auf dem Antwortschirm.
 
 ## Tank-Guide: eine Frage, eine Antwort
 
 Der Bereich „Jetzt“ beantwortet genau eine Frage: **Soll ich jetzt tanken?**
-Die Erfassung läuft in vier Schritten, alles Statistische ordnet sich unter
-(`web/src/guide.ts` hält die Texte und die Rechnung):
+Die Antwortkarte (`web/src/now.ts`) trägt genau das, was die Frage braucht —
+Chip, Überschrift, **eine** Zahl in Euro, eine Nebenzeile und **eine**
+Handlung („Route“, daneben „Warum?“). Alles Statistische ordnet sich unter
+und liegt einen Tipp entfernt (`web/src/guide.ts` hält die Fallback-Texte):
 
-1. Farbe der Karte — Grün = jetzt tanken, Rot = Reserve wird knapp,
-   Blau = besser warten, neutral = keine Zeit-Empfehlung.
-2. Handlungs-Headline — „Jetzt tanken.“, „Besser warten.“,
-   „Tanken, wann’s passt.“
-3. Günstigster Preis in der Nähe.
-4. Primäre Handlung (Route oder Erinnerung), daneben „Warum?“
+1. Chip — einer von fünf Ausgängen (siehe unten).
+2. Überschrift — „Jetzt tanken“, „Warten bis ~18 Uhr“,
+   „Tanken, wann’s passt“, „Günstigste gerade: <Station>“, „Letzter Stand:
+   <Station>“. Höchstens 25 Wörter, kein Fachwort.
+3. **Eine** Zahl in Euro — `spart ca. 1,60 €` beim Warten, sonst der
+   günstigste Preis als `1,709 €/L`.
+4. Genau eine primäre Handlung: „Route“ zur Station der Antwort.
 
 **Geld und Zeit stehen in Nutzer-Einheiten:** Cent je Liter sind eine
 Modellgröße, die Antwort ist der Betrag auf die Tankmenge
@@ -99,11 +108,16 @@ Modellgröße, die Antwort ist der Betrag auf die Tankmenge
 Ein anhaltender Zustand bekommt **kein** Modal und keinen Alert-Dialog. Das
 Inline-Banner sitzt über der Karte und lässt die Preise sichtbar.
 
-| Stufe | Auslöser | Karte | Tagesverlauf (im Blatt „Heute im Blick“) |
+| Stufe | Auslöser | Banner | Karte |
 |---|---|---|---|
-| 1 · Voller Guide | Verbindung und `decision_ready` | Urteilston wie oben | Stundenbalken (nächste 8 Stunden, aus `windows_today`) |
-| 2 · Ohne Prognose | `decision_ready=false`, Preise live | Neutral (Outlined Card) mit „Jetzt am günstigsten: <Station>“ — ein Ort, kein Urteil über die Zeit | Faustregel: vier Tageszeiten, typischer Verlauf |
-| 3 · Offline | keine Verbindung | Neutral, gedämpfte Preise mit Stand | Faustregel |
+| 1 · Voller Guide | Verbindung und `decision_ready` | keiner (außer Tankrabatt-Hinweis) | Urteilston wie oben |
+| 2 · Ohne Prognose | `decision_ready=false`, Preise live | „Die Prognose macht gerade Pause“ | Neutral („Günstigste gerade: <Station>“) — ein Ort, kein Urteil über die Zeit |
+| 3 · Offline | keine Verbindung | letzter Stand | Neutral („Letzter Stand: <Station>“) — „Der Preis an der Säule zählt.“ |
+
+Genau **ein** Banner steht gleichzeitig; die Rangfolge ist offline →
+keine Prognose → Hinweis (Tankrabatt). Die Tageszeile hängt nicht an der
+Stufe, sondern an Messwerten: Sie erscheint, wenn der Tag bepreiste Stunden
+hat, und fehlt sonst — geschätzt wird nie.
 
 Die Faustregel folgt der 12-Uhr-Regel (seit 01.04.2026 darf der Preis nur um
 12:00 Uhr steigen): `Vormittag` tief, `Nach 12` hoch, `Nachmittag` und `Abend`
@@ -117,20 +131,23 @@ Die Stationenliste öffnet nach Preis, günstigste zuerst.
 
 Der Tagesverlauf liegt **einen Tipp entfernt**, nicht offen unter der Karte:
 Die Startseite trägt eine Frage und eine Antwort (B4 aus dem Befund
-UX/Mathe 2026-09-19). Wer den Tag sehen will, tippt „Tagesstreifen 06–24
-Uhr“ und bekommt Streifen **und** Balken bzw. Faustregel in einem Blatt.
-Gemessene Scrolltiefe des Entscheidungsbildschirms: 1,41 Viewports auf
-390 × 844 (Ratchet in `web/e2e/mobile.spec.ts`: ≤ 1,5).
+UX/Mathe 2026-09-19, §9 des Neuentwurfs). Wer den Tag sehen will, tippt die
+Tageszeile und bekommt im Blatt die große Kurve mit drei Zahlen (tiefster
+Preis, jetzt, Tagesmedian) und der Abdeckung (`n von m Stunden mit offener
+Meldung`). Gemessene Scrolltiefe des Entscheidungsbildschirms: 1,41
+Viewports auf 390 × 844 (Ratchet in `web/e2e/mobile.spec.ts`: ≤ 1,5); die
+Antwort-Überschrift endet im ersten Viewport.
 
-Die Karte selbst trägt die Antwort und höchstens zwei Sätze dazu; Spanne,
-Preisalter und die Bestätigung des Netto-Vergleichs stehen hinter „Mehr zum
-Vergleich“. Was der Antwort **widerspricht** (eine andere Station ist netto
-günstiger), bleibt sichtbar — eine Karte darf nicht „hier am günstigsten“
-sagen und das Gegenteil einklappen.
+Die Karte trägt die Antwort und höchstens eine Nebenzeile; Spanne,
+Preisalter, Herkunft und Sicherheit stehen im „Warum?“ -Blatt — **höchstens
+fünf Zeilen** (Fenster, Ersparnis, Sicherheit, Tank, Stand), danach der Weg
+ins Labor. Was der Antwort **widerspricht**, bleibt benennbar: Ohne
+freigegebene Aktion zeigt die Karte die Tatsache (günstigster bekannter
+Preis) statt eines Urteils.
 
 Beide Fallback-Stufen bieten **eine** Handlung: „Erneut versuchen“ mit
 Inline-Ladeindikator. Kommen die Daten zurück, springt die Ansicht leise auf
-Stufe 1 und bestätigt mit einer Snackbar („Wieder online. Alles ist aktuell.“).
+Stufe 1 — der Banner verschwindet, ohne Erfolgsmeldung.
 
 **Eine Farbe, eine Bedeutung.** Der Entwurf („Tankklar“) ordnet „Warten“ Rot
 zu. Rot trägt in dieser App aber schon eine sicherheitsrelevante Aussage:
@@ -150,6 +167,53 @@ stehen vier Blöcke (`web/src/views/labor/BetaBlocks.tsx`):
 | Wie oft lag die Empfehlung richtig? | Kann ich der App trauen? | Advice-Ledger: ein Punkt je abgerechnete Empfehlung; ohne Zählung der Lernstand |
 | Persönliches Tankprofil | Was bringt es **mir**? | Tankmenge × Wartebereitschaft gegen die echten Fenster des Tages; lokale Vorschau, das Profil bleibt in „Ich“ |
 | Experimente | Was gibt es Neues? | Lokale Schalter, offline deaktiviert mit dem Grund „Braucht eine Verbindung“ |
+
+## Jetzt: eine Antwort, ein Tipp in die Tiefe
+
+Der Aufbau ist fest (Befund UX/Mathe 2026-09-19, Neuentwurf §3):
+
+```text
+Kopf        Ort · Kraftstoff · Frische-Chip
+Banner      höchstens einer (offline → keine Prognose → Tankrabatt)
+Antwort     Chip · Überschrift · eine Zahl in € · eine Handlung · „Warum?“
+Tageszeile  Mini-Kurve + Tief + „Heute: …“ — ein Tipp auf die große Kurve
+```
+
+Was 0.73.0 gestrichen hat und **nicht** zurückkehrt (§7):
+
+| Entfällt | Warum | Wohin stattdessen |
+|---|---|---|
+| Was-wäre-wenn-Annahmen (Tankmenge, Zeitwert, Spätestens) | die App rechnet mit der Menge, die der Server nutzt (`used_liters`) | „Ich“ → Fahrzeug |
+| Feedback-Intents („Ich warte“), Fällig-Prompt | eine Bestätigung ist kein Beleg; Belege werden gepflegt, nicht bestätigt (Entscheidung 04.10.2026) | „Ich“ → Belege |
+| „Nächste Schritte“, drei Fakten, Benefit-Block | die Antwort steht oben; darunter stand dreimal dieselbe Zahl | „Warum?“ (≤ 5 Zeilen), Labor |
+| „Heute im Blick“ mit 19 Zellen und Stundenbalken | die Entscheidung braucht kein Raster | Tageszeile, ein Tipp entfernt |
+| Konfidenz-Balken, Prozentwerte | eine Prozentzahl ist keine Handlung | Sicherheit als **ein Wort** (`ziemlich sicher` · `eher sicher` · `unsicher` · `noch nicht messbar`) |
+| Frische-Fußzeile unter der Ansicht | doppelter Ort für das Alter | Frische-Chip im Kopf |
+
+Der Serververtrag bleibt unberührt: Intents, Fenster, p-Felder und
+`regime_notice` werden weiter geliefert — die GUI zeigt weniger davon.
+
+## Woche: Bestenliste statt Raster
+
+„Woche“ beantwortet: **Wann in den nächsten Tagen soll ich tanken?**
+Statt sieben Tageskarten, einer Detailkarte, einer zweiten Liste und einer
+Wochenlinie (deren Balken „höher = günstiger“ gegen jede Lesegewohnheit
+lief) steht eine Bestenliste mit **höchstens drei** Einträgen, sortiert
+nach Ersparnis. Jeder Eintrag trägt:
+
+1. Tag und Zeit (`Morgen` · `19–21 Uhr`),
+2. erwarteten Preis (`1,709 €/L`),
+3. Ersparnis (`spart ca. 1,60 €`) — oder keine Zahl, wenn ein
+   Preisniveau-Termin dazwischen liegt,
+4. Sicherheit als ein Wort.
+
+Unter der Liste steht **ein** Satz zur Prognosebreite:
+`Ab Tag 5 wird die Prognose unsicher.` Leere Tage bleiben leer — die App
+erfindet kein Fenster. Der Tagesverlauf ist das Detail des heutigen
+Eintrags; weiter voraus gibt es keine Messwerte, und geschätzt wird nichts.
+
+Der Tankstand wird hier nur **angezeigt** (`Tank: 62 %` · „Ändern“).
+Gepflegt wird er an genau einem Ort: „Ich“ → Fahrzeug (§6).
 
 ## Labor-Unterbereiche
 
@@ -198,27 +262,44 @@ Seit 26.09.2026 trägt jede Urteils-Karte vier Töne mit fester Bedeutung:
 | Grün (primary) | jetzt handeln | `Jetzt tanken` bei Preisvorteil |
 | Blau (tertiary) | warten bis Fenster — die geplante, Geld sparende Handlung | `Warten bis 18–20 Uhr` · `Woanders tanken` |
 | Rot (error) | echtes Risiko — Tankrest blockiert das Warten | `Jetzt tanken` bei `tank.blocks_wait` |
-| Grau (neutral) | ehrlich unentschieden | `Keine klare Empfehlung` · abgelaufene Freigabe |
+| Grau (neutral) | ehrlich unentschieden — oder keine freigegebene Aktion | `Tanken, wann’s passt` · `Günstigste gerade: <Station>` · `Letzter Stand: <Station>` · abgelaufene Freigabe |
 
 Rot ist keine Dekoration und kein Wartungs-Alarm: Es markiert genau die
 eine Situation, in der das Warten physisch riskant ist. Grau (keine
 Empfehlung) ist ein regulärer Produktzustand — bewusst ohne Elevation.
 
-Die Urteils-Karte ist die **einzige Karte der Seite mit Elevation**
+Die Antwort-Karte ist die **einzige Karte der Seite mit Elevation**
 (Glow nach Urteilston: `glow-emerald` / `glow-blue` / `glow-rose`);
-Fakten-, Tagesstreifen- und Umweg-Karten bleiben flach (Tonal). Der
-Blick auf „Jetzt“ erreicht die Antwort deshalb ohne Suchen.
+Tageszeile und Blätter bleiben flach (Tonal). Der Blick auf „Jetzt“
+erreicht die Antwort deshalb ohne Suchen.
+
+Seit 0.73.0 trägt die Antwortkarte **fünf** Ausgänge — mehr gibt es nicht,
+und jeder heißt immer gleich:
+
+| Chip | Ton | Wann |
+|---|---|---|
+| `Jetzt tanken` | grün (rot bei `tank.blocks_wait`) | jetzt ist der günstigste Weg |
+| `Warten` | blau | Fenster mit spürbarem Vorsprung (`> 0,50 €`) |
+| `Kaum Unterschied` | grau | „Tanken, wann’s passt“ — der Vorsprung ist kleiner als die Schwelle |
+| `Preisvergleich` | grau | keine freigegebene Aktion (`no_advice`, abgelaufene Freigabe, nicht entscheidungsbereit) — die Tatsache statt eines Urteils |
+| `Offline` | grau | keine Verbindung — letzter Stand, „Der Preis an der Säule zählt.“ |
 
 Zu den Tönen gehören zwei Zustands-Chips:
 
-- **Gültigkeits-Chip** `gültig bis 17:45` — die Freigabe trägt ihr
-  `valid_until` (A21-B1.4) sichtbar; Tageszeit über `timeOfDayLabel`.
-  Eine Ablehnung altert nicht und trägt keinen Chip.
+- **Gültigkeit** `bis 17:45` in kleiner Schrift neben dem Chip — die
+  Freigabe trägt ihr `valid_until` (A21-B1.4); Tageszeit über
+  `timeOfDayLabel`. In den letzten 30 Minuten steht zusätzlich
+  `· noch <n> min` (`countLabel`). Eine Ablehnung altert nicht und trägt
+  keine Gültigkeit.
 - **Abgelaufene Freigabe** — liegt `valid_until` in der Vergangenheit
-  (offene Seite, gecachte Antwort), wechselt der Karteninhalt in die
-  graue Variante `Empfehlung abgelaufen`. Das ist ein Inhaltswechsel,
-  kein Fehler: Der Vertrag verbietet, die Aktion erneut zu zeigen;
-  Preise und Fakten bleiben darunter sichtbar.
+  (offene Seite, gecachte Antwort), wechselt die Karte in die graue
+  Tatsachenvariante (`Preisvergleich`): Chip, Überschrift und die
+  Gültigkeitszeile verschwinden, der günstigste bekannte Preis bleibt.
+  Das ist ein Inhaltswechsel, kein Fehler — und bewusst **keine** eigene
+  „abgelaufen“-Karte: Sie würde eine Freigabe zeigen, die es nicht mehr
+  gibt.
+- **Frische** — ein Chip im Kopf (`vor 4 Min` · `alt` · `kein Stand`),
+  nicht als Fußzeile unter der Antwort (§6: ein Ort je Sache).
 
 Die Lernphase (S1) benennt, was schon funktioniert:
 `Vergleich und Umweg-Rechnung funktionieren bereits.` — die App ist in
@@ -275,6 +356,19 @@ bleiben Microcopy-Ratchet, mobile Layout-Prüfungen und die
 Für das Labor bleiben alle sechs historischen Abschnittssprünge sowie der
 Umbruch langer Bezeichner in den Parameterkarten Teil der Demo-Browser-Suite.
 Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
+
+Seit 0.73.0 gehören zur Abnahme von „Jetzt“ und „Woche“:
+
+- **Sichtprüfung bei 390 px und auf dem Desktop:** die Antwort ist ohne
+  Scrollen sichtbar, die Details liegen einen Tipp entfernt (§9).
+- **Ratchets in `web/e2e/mobile.spec.ts`:** die Antwort-Überschrift endet
+  im ersten Viewport, die Tageszeile ist zu, das „Warum?“ -Blatt trägt
+  höchstens fünf Zeilen, der Fokus liegt beim Öffnen im Dialog.
+- **Streichlisten in den Unit-Tests** (`views/Jetzt.test.tsx`,
+  `views/Woche.test.tsx`): keiner der gestrichenen Bausteine kehrt zurück.
+- **Microcopy-Ratchet** (`web/src/microcopy.test.ts`): genau fünf
+  Antwort-Chips, Frische aus einem Baustein, keine abgelaufene
+  Urteils-Headline.
 
 ## Interaktives Design-Lab (0.72.0)
 

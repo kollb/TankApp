@@ -195,13 +195,17 @@ Die GUI hat sechs Bereiche (GUI-Neuentwurf, Phase 3 seit 0.36.0): **Jetzt**,
 Nebeneinander; „Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur
 noch in Archiv-Dokumenten.
 
-- **Jetzt:** Empfehlung aus `/api/v1/decide` — eine Handlung, drei Fakten,
-  nächste Schritte, dazu Stadt/Kraftstoff, Tankmenge, Datenalter und der
-  Tagesstreifen „Heute im Blick“ (günstigste und teuerste offene Stunde,
-  Tagesmedian, Abdeckung). Ohne Modell (S0/S1/Stufe C) steht dort die graue
-  Preisvergleich-Karte mit der günstigsten offenen Meldung. Ebene 1 ist der
-  Knopf „Warum?“ (Sheet); von dort führt der Weg in den passenden
-  Labor-Abschnitt. Stadt, Kraftstoff und Tankmenge merkt sich der Browser.
+- **Jetzt:** Antwort aus `/api/v1/decide` — **eine** Frage, **eine** Antwort
+  (seit 0.73.0): Chip, Überschrift, eine Zahl in Euro (`spart ca. 1,60 €`) und
+  genau eine Handlung („Route“), dazu der Frische-Chip im Kopf und die
+  Tageszeile (Mini-Kurve + Tief, ein Tipp auf den Tagesverlauf). Die Was-wäre-
+  wenn-Annahmen, die drei Fakten, „Heute im Blick“ und die „Nächsten Schritte“
+  sind entfallen; was die Antwort trägt, steht im „Warum?“ -Blatt (höchstens
+  fünf Zeilen). Ohne Modell (S0/S1/Stufe C) steht die graue Preisvergleich-
+  Karte mit der günstigsten offenen Meldung (`Günstigste gerade: …`). Ebene 1
+  ist der Knopf „Warum?“ (Sheet); von dort führt der Weg in den passenden
+  Labor-Abschnitt. Stadt, Kraftstoff und Tankmenge merkt sich der Browser, den
+  Tankstand seit 0.73.0 nur in „Ich“ → Fahrzeug.
   Aus dem alten Alltag: Umweg-Vergleich mit Button „Server prüfen“ (B3.12),
   Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und Dezimaleingabe mit Komma
   (E2); der Beleg-Dialog prüft Liter und Preis gegen dieselben Grenzen wie der
@@ -212,11 +216,18 @@ noch in Archiv-Dokumenten.
   beschriftet, Zuhause trägt das Haus-Symbol), sortierte Liste, Verlauf der
   gewählten Station (24 h/3 Tage/7 Tage mit Achsen) und „A gegen B“ mit der
   Vorauswahl Top 1 gegen Top 2.
-- **Woche:** 7-Tage-Fenster-Raster aus `windows_week` mit Sterne-Sicherheit
-  (Prozent nur auf Stufe A) und Tank-Abgleich.
+- **Woche:** Bestenliste aus `windows_week` (seit 0.73.0): höchstens drei
+  Einträge, sortiert nach Ersparnis — je Tag und Uhrzeit, erwarteter Preis,
+  Ersparnis in Euro und die Sicherheit als **ein** Wort (keine Sterne, keine
+  Prozentwerte). Darunter ein Satz zur Prognosebreite:
+  `Ab Tag 5 wird die Prognose unsicher.` Das 7-Tage-Raster, die Detailkarte,
+  die zweite Fensterliste und die Wochenlinie sind entfallen. Der Tankstand
+  wird hier nur angezeigt (`Tank: …` + „Ändern“), gepflegt wird er in
+  „Ich“ → Fahrzeug.
 - **Ich:** Fahrzeug (alle Defaults an einer Stelle: Stadt, Kraftstoff,
   Tankmenge, Verbrauch, Zeitwert manuell/auto, Tempo, Fahrtcharakter,
-  Tankgröße, Profile), Belege (Verlauf mit Storno und Schnellerfassung),
+  Tankgröße, **Tankstand — seit 0.73.0 der einzige Ort der Pflege**,
+  Profile), Belege (Verlauf mit Storno und Schnellerfassung),
   Bilanz (Monats-/Jahresbilanz, A4) und Einstellungen am Wirkungsort — dazu
   die aktiven Entscheidungsschwellen read-only und die Dark/Light-Umschaltung
   (0.24.0, C4).

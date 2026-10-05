@@ -109,7 +109,19 @@ import {
   queryWithTab,
   type TabId,
 } from "../routing";
-import type { NowAssumptions } from "../views/Jetzt";
+
+/**
+ * Was-wäre-wenn der Ansicht (kein Setting): Bis 0.72.2 trug die Karte in
+ * „Jetzt“ die Annahmen Liter, spätester Zeitpunkt und Zeitwert als eigene
+ * Eingaben (UX-NEUENTWURF §7: gestrichen). Was bleibt, ist der Zeitwert der
+ * Umweg-Rechnung in „Stationen“ — gesetzt wird er dort, gerechnet wird
+ * weiterhin mit demselben Server-Aufruf. `null` = Profilwert.
+ */
+type AssumptionsState = {
+  liters: number | null;
+  latestBy: string | null;
+  timeValue: number | null;
+};
 import type { ActionFeedback, FeedbackTone } from "../components/FeedbackBanner";
 
 function useOverviewState() {
@@ -182,10 +194,7 @@ function useOverviewState() {
   const [ichSection, setIchSection] = useState<
     "vehicle" | "fills" | "balance" | "settings"
   >("vehicle");
-  // GUI-Neuentwurf §5.1/§5.2: Was-wäre-wenn ist Ansichtszustand, kein
-  // Setting — die Karte ändert die Annahmen live (dieselbe Anfrage, andere
-  // Parameter), das Profil bleibt unangetastet. null = Profilwert.
-  const [assumptions, setAssumptions] = useState<NowAssumptions>({
+  const [assumptions, setAssumptions] = useState<AssumptionsState>({
     liters: null,
     latestBy: null,
     timeValue: null,

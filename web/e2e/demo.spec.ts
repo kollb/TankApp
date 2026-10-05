@@ -1,12 +1,4 @@
-import { test, expect, type Page, type Response } from "@playwright/test";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { test, expect, type Response } from "@playwright/test";
 
 // E2E **ohne Mocks** gegen den Demo-Stack (`ops/quality/demo_server.py`).
 //
@@ -56,9 +48,7 @@ function expectedPricedCells(date = new Date()): number {
   return hour - 5;
 }
 
-test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", async ({
-  page,
-}) => {
+test("overview → „Jetzt“ mit echten Zahlen", async ({ page }) => {
   const overviewResponses: Response[] = [];
   page.on("response", (response) => {
     if (response.url().includes("/api/v1/overview")) {
@@ -80,195 +70,92 @@ test("overview → „Jetzt“ und „Heute im Blick“ mit echten Zahlen", asyn
 
   // ② Die Entscheidung zeigt eine echte Station aus dem Demo-Set und einen
   //    Preis im Format 1,725 €/L. Ohne Kalibrierung bleibt es beim grauen
-  //    Zweig „Jetzt am günstigsten: …“ (§0.4 — keine erfundene Empfehlung).
+  //    Zweig „Günstigste gerade: …“ (§0.4 — keine erfundene Empfehlung).
+  //    UX-NEUENTWURF §3: die Antwort ist EINE Zeile aus einer festen Liste
+  //    von fünf Ausgängen — kein sechster Wortlaut.
   const headline = page.locator("#jetzt-headline");
   await expect(headline).toBeVisible();
-  await expect(headline).toContainText("Jetzt am günstigsten: Demo-Tank");
+  await expect(headline).toHaveText(
+    /^(Günstigste gerade|Warten bis|Jetzt tanken|Tanken, wann’s passt|Letzter Stand)/,
+  );
   const cardPrice = page.getByText(/^\d,\d{3} €\/L$/).first();
   await expect(cardPrice).toBeVisible();
 
-  // ③ „Heute im Blick“: 19 Zellen (06–24 Uhr), jede beschriftet — mit Preis
-  //    oder als leere Stunde, nie als NaN/„null“. Seit 0.49.3 bleiben
-  //    zukünftige Stunden leer (Kalendertag statt 24-h-Rollfenster): Nach
-  //    Mitternacht und vor sechs Uhr sind alle Stunden leer — das ist die
-  //    neue Ehrlichkeit, kein Datenverlust.
+  // ③ Die Tageszeile (Mini-Kurve + Tief) ist der einzige Weg in die Tiefe —
+  //    das 19-Zellen-Raster von „Heute im Blick“ ist mit 0.73.0 gestrichen.
+  //    Vor sechs Uhr gibt es noch keine bepreiste Stunde: dann fehlt die
+  //    Zeile, statt eine Kurve zu erfinden (`now.ts`, §8).
+  const row = page.locator("#jetzt-tagzeile");
+  if (expectedPricedCells() > 0) {
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Heute:");
+  } else {
+    await expect(row).toHaveCount(0);
+  }
   await expect(
     page.getByRole("heading", { name: "Heute im Blick" }),
-  ).toBeVisible();
-  const cells = page.locator(".daystrip-cells [role=img]");
-  await expect(cells).toHaveCount(19);
-  const labels = await cells.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("aria-label") ?? ""),
-  );
-  for (const label of labels) {
-    expect(label).toMatch(
-      /^([0-2]\d):00 — (keine offene Meldung|\d,\d{3} €\/L)$/,
-    );
-  }
-  const prices = labels
-    .map((label) => label.match(/(\d),(\d{3}) €\/L$/))
-    .filter((match): match is RegExpMatchArray => match !== null)
-    .map((match) => Number(`${match[1]}.${match[2]}`));
-  // Seit 0.49.3 zählt nur der Berliner Kalendertag: die bepreisten Zellen
-  // sind „seit 6 Uhr vergangene Stunden“, keine Mindestzahl. Vor dem
-  // Durchzug um 12 Uhr ist sechs schlicht falsch.
-  expect(prices.length).toBeGreaterThanOrEqual(
-    Math.max(0, expectedPricedCells() - 1),
-  );
-  // Plausible Demo-Preise — ein NaN oder eine Einheit ohne Umrechnung fiele auf.
-  if (prices.length > 0) {
-    expect(Math.min(...prices)).toBeGreaterThan(1.0);
-    expect(Math.max(...prices)).toBeLessThan(3.0);
-  }
+    "„Heute im Blick“ ist zurück — §7 hat es gestrichen.",
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".daystrip-cells"),
+    "Das 19-Zellen-Raster ist zurück.",
+  ).toHaveCount(0);
 
-  // ④ Ortszeit: die als „jetzt“ markierte Zelle trägt die Berliner Stunde.
-  //    Eine in UTC geschnittene Kurve (B3-Klasse) steht hier zwei Stunden
-  //    daneben. Zwischen 00:00 und 06:00 liegt die Stunde außerhalb des
-  //    Streifens — dann gibt es keine markierte Zelle.
-  const expectedHour = berlinHour();
-  const current = page.locator(".daystrip-cells [role=img].border-emerald-400");
-  if (expectedHour >= 6) {
-    await expect(current).toHaveCount(1);
-    await expect(current).toHaveAttribute(
-      "aria-label",
-      new RegExp(`^${String(expectedHour).padStart(2, "0")}:00 — `),
+  // ④ Die Kurve hat eine Textalternative (M8: kein Bild ohne Text) — das
+  //    Blatt ist zu, bis jemand tippt.
+  if (expectedPricedCells() > 0) {
+    const curve = row.locator("[role=img]").first();
+    const label = await curve.getAttribute("aria-label");
+    expect(label ?? "", "Die Tageskurve ist nicht beschriftet.").toMatch(
+      /^Tagesverlauf 06–24 Uhr — /,
     );
-  } else {
-    // Nachtstunden: keine markierte Zelle (der Streifen beginnt erst 06:00).
-    await expect(current).toHaveCount(0);
   }
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-// GUI-UX-BEFUND U2: Der Tagesstreifen darf auf dem Handy nicht brechen.
-// Mobil trägt das Raster vier Zeilen zu je fünf Zellen (styles.css
-// `.daystrip-cells`) — fünf Zeichen „1,725“ brauchen ~36 px, darunter läuft
-// die Zahl in die Nachbarzelle. Ursprünglich war der Streifen ein starres
-// 19er-Raster mit ~15,7 px je Zelle (faktisch unlesbar), danach ein
-// 10er-Raster mit ~27 px — dort ragten die Preise weiter heraus.
-test("U2: Tagesstreifen bleibt bei 390 px lesbar", async ({ page }) => {
+// UX-NEUENTWURF §9 (Abnahme): „Details ein Tipp entfernt.“ Wo bis 0.72.2 der
+// Tagesstreifen mit 19 Zellen stand (Befund U2: „1,725“ lief in die
+// Nachbarzelle), steht heute eine Zeile mit Mini-Kurve; die große Kurve liegt
+// im Blatt dahinter. Geprüft wird, dass beides bei 390 px im Bild bleibt.
+test("U2: Die Tageszeile bleibt bei 390 px lesbar", async ({ page }) => {
   await page.goto("/");
+  const row = page.locator("#jetzt-tagzeile");
+  await expect(row).toBeVisible();
+
+  // Die Zeile selbst: sie bleibt in der Viewport-Breite, nichts ragt
+  // seitlich heraus (U2: „1,725“ lief in die Nachbarzelle).
+  const box = await row.boundingBox();
+  expect(box, "Keine Box für die Tageszeile.").not.toBeNull();
+  const viewportWidth = page.viewportSize()?.width ?? 390;
+  expect(box!.width).toBeLessThanOrEqual(viewportWidth);
+  const rowOverflow = await row.evaluate(
+    (node) => node.scrollWidth - node.clientWidth,
+  );
+  expect(rowOverflow, "Die Tageszeile läuft seitlich über.").toBeLessThanOrEqual(1);
+
+  // Ein Tipp öffnet die große Kurve — beschriftet und ohne Querlauf.
+  await row.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const curve = dialog.locator("[role=img]").first();
+  await expect(curve).toBeVisible();
+  const label = await curve.getAttribute("aria-label");
+  expect(label ?? "", "Die Tageskurve im Blatt ist nicht beschriftet.").toMatch(
+    /^Tagesverlauf 06–24 Uhr — /,
+  );
+  const dialogOverflow = await dialog.evaluate(
+    (node) => node.scrollWidth - node.clientWidth,
+  );
+  expect(dialogOverflow, "Das Tagesblatt läuft seitlich über.").toBeLessThanOrEqual(1);
+  // Das Tief ist beziffert, nicht nur gemalt (§8: keine Farbe allein) —
+  // mit Uhrzeit und Preis im Satz, nicht als Farbe in der Kurve.
   await expect(
-    page.getByRole("heading", { name: "Heute im Blick" }),
+    dialog.getByText(/^Tiefster Preis heute ~/),
   ).toBeVisible();
-  const cells = page.locator(".daystrip-cells [role=img]");
-  await expect(cells).toHaveCount(19);
-
-  // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Streifen ist standardmäßig
-  // eingeklappt — Lesbarkeit (Zellenbreite, Zeilenhöhe) lässt sich nur im
-  // offenen Zustand messen, deshalb erst aufklappen.
-  await page.locator("#jetzt-daystrip").click();
-  await expect(cells.first()).toBeVisible();
-
-  // Die 19 Zellen stehen sofort (leer) im DOM, die Preise kommen erst mit
-  // der Overview-Antwort — vor dem Vermessen auf echte Werte warten, sonst
-  // misst dieser Test den Ladezustand statt des Streifens. Seit 0.49.3 ist
-  // die Sollzahl uhrzeitabhängig (Kalendertag statt 24-h-Rollfenster).
-  await expect
-    .poll(
-      () =>
-        cells
-          .evaluateAll((nodes) =>
-            nodes.map((node) => node.getAttribute("aria-label") ?? ""),
-          )
-          .then(
-            (labels) =>
-              labels.filter((label) => /\d,\d{3} €\/L$/.test(label)).length,
-          ),
-      { timeout: 20_000 },
-    )
-    .toBeGreaterThanOrEqual(Math.max(0, expectedPricedCells() - 1));
-
-  // DoD: Zellenbreite ≥ 26 px — darunter ist der Stundenwert nicht lesbar.
-  const boxes = await cells.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const element = node as HTMLElement;
-      const rect = element.getBoundingClientRect();
-      return {
-        width: rect.width,
-        label: element.getAttribute("aria-label") ?? "",
-        text: (element.textContent ?? "").trim(),
-      };
-    }),
-  );
-  for (const box of boxes) {
-    expect(
-      box.width,
-      `Zelle „${box.label}“ ist nur ${box.width.toFixed(1)} px breit`,
-    ).toBeGreaterThanOrEqual(26);
-  }
-
-  // DoD: sichtbarer Werttext. Die Demo-Daten haben mehrere offene Stunden —
-  // mindestens die seit Tagesbeginn verstrichenen Stunden zeigen einen Preis
-  // (Kalendertag-Schnitt 0.49.3: sechs ist nur ab 12 Uhr zulässig), und der
-  // Text ist echt gerendert (nicht leer, nicht abgeschnitten versteckt).
-  const withPrice = boxes.filter((box) => /\d,\d{3} €\/L$/.test(box.label));
-  expect(withPrice.length).toBeGreaterThanOrEqual(
-    Math.max(0, expectedPricedCells() - 1),
-  );
-  for (const box of withPrice.slice(0, 3)) {
-    const cell = cells.filter({ hasText: box.text }).first();
-    await expect(cell).toBeVisible();
-  }
-
-  // Kein Inhalt ragt aus seiner Zelle: `scrollWidth > clientWidth` heißt,
-  // der Preis wird breiter gemalt als die Zelle und überschreibt die
-  // Nachbarzelle (genau der Befund „Zahlenreihe ist schief“).
-  const overflowing = await cells.evaluateAll((nodes) =>
-    nodes
-      .map((node) => {
-        const element = node as HTMLElement;
-        return {
-          label: element.getAttribute("aria-label") ?? "",
-          scroll: element.scrollWidth,
-          client: element.clientWidth,
-        };
-      })
-      .filter((row) => row.scroll > row.client + 1),
-  );
-  expect(
-    overflowing,
-    `Zellen mit überlaufendem Inhalt: ${JSON.stringify(overflowing)}`,
-  ).toEqual([]);
-
-  // Balkenspur, Stunde und Wert liegen in jeder Zeile auf derselben Höhe:
-  // der Balken wächst in einer festen 12-px-Spur von unten, statt Stunden-
-  // und Wertzeile je Zelle zu verschieben.
-  const geometry = await cells.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const element = node as HTMLElement;
-      const box = element.getBoundingClientRect();
-      // Direkte Kinder: [Balkenspur, Stunde, Wert] — der Balken selbst liegt
-      // als Enkel in der Spur.
-      const spans = Array.from(element.querySelectorAll(":scope > span"));
-      return {
-        row: Math.round(box.top),
-        height: box.height,
-        hourTop: spans[1]?.getBoundingClientRect().top ?? null,
-        barBottom: spans[0]?.getBoundingClientRect().bottom ?? null,
-      };
-    }),
-  );
-  const rows = [...new Set(geometry.map((cell) => cell.row))];
-  expect(rows.length).toBeGreaterThanOrEqual(1);
-  for (const row of rows) {
-    const inRow = geometry.filter((cell) => cell.row === row);
-    const spread = (values: Array<number | null>) => {
-      const numbers = values.filter((value): value is number => value !== null);
-      return Math.max(...numbers) - Math.min(...numbers);
-    };
-    expect(
-      spread(inRow.map((cell) => cell.height)),
-      `Zeile ${row}: Zellen unterschiedlich hoch`,
-    ).toBeLessThan(1);
-    expect(
-      spread(inRow.map((cell) => cell.hourTop)),
-      `Zeile ${row}: Stundenzeile steht nicht auf einer Linie`,
-    ).toBeLessThan(1);
-    expect(
-      spread(inRow.map((cell) => cell.barBottom)),
-      `Zeile ${row}: Balken sitzen nicht auf derselben Basis`,
-    ).toBeLessThan(1);
-  }
+  // Und als bezifferte Zeile im Kurzblock (Wert, nicht nur Farbe).
+  await expect(
+    dialog.locator("dt", { hasText: "Tiefster Preis" }),
+  ).toBeVisible();
 });
 
 test("„Stationen“ zeigt die Stationen des Demo-Sets", async ({ page }) => {
@@ -347,199 +234,48 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-// O17: Der Ein-Tipp-Beleg („Ja, wie empfohlen“) bucht den frischen
-// Live-Preis, nie den Prognose-Median — und ohne Live-Preis fragt die
-// Maske nach, statt zu buchen. Der Seed liegt direkt im Feedback-Store des
-// Demo-Servers (Datei, kein Mock): eine fällige Episode mit einem
-// `expected_price`-Köder, der in keinem Request und keinem Beleg auftauchen
-// darf. `record_snapshot` (jeder Decide-Aufruf) schreibt nur an die ERSTE
-// offene Episode — deshalb steht eine Guard-Episode davor und der Seed
-// dahinter bleibt unberührt. Der Demo-Seed ist bewusst dieselbe Episode für
-// beide Projekte (update-or-append): Die Zusagen gelten je Anzeige,
-// unabhängig davon, welches Projekt den Seed geschrieben hat.
-const O17_STORE = fileURLToPath(
-  new URL("../../.demo-e2e-data/runtime/feedback/store.json", import.meta.url),
-);
-const O17_EPISODE_ID = "ep_o17_demo_prompt";
-const O17_GUARD_ID = "ep_o17_demo_guard";
-const O17_DECOY_PRICE = 1.559;
-const O17_KNOWN_STATION = "00000000-0000-0000-0000-0000000000d5";
-const O17_KNOWN_NAME = "Demo-Tank Mitte";
-const O17_UNKNOWN_STATION = "00000000-0000-0000-0000-00000000cafe";
-
-function o17Snapshot(stationId: string, stationName: string) {
-  const now = Date.now();
-  const iso = (ms: number) => new Date(ms).toISOString();
-  return {
-    id: "snap_o17_demo",
-    emitted_at: iso(now - 3 * 3600_000),
-    clock_hour: berlinHour(new Date(now - 3 * 3600_000)),
-    action: "wait",
-    city: "Demostadt",
-    station_id: stationId,
-    station_name: stationName,
-    alt_station_id: null,
-    alt_station_name: null,
-    price_now: 1.749,
-    window_start: iso(now - 2 * 3600_000),
-    window_end: iso(now - 3600_000),
-    window_start_hour: berlinHour(new Date(now - 2 * 3600_000)),
-    window_end_hour: berlinHour(new Date(now - 3600_000)),
-    expected_price: O17_DECOY_PRICE,
-    expected_saving_eur: 2.4,
-    decline_reason: null,
-    p_besser: null,
-    p_correct: 0.5,
-    p_source: "basisrate",
-    liters_assumed: 40,
-    fuel: "e10",
-    trip_mode: null,
-    latest_by: null,
-    tank_state: null,
-  };
-}
-
-function o17SeedStore(stationId: string, stationName: string) {
-  mkdirSync(dirname(O17_STORE), { recursive: true });
-  let store: any = {
-    schema_version: 5,
-    episodes: [],
-    fills: [],
-    settlements: [],
-  };
-  if (existsSync(O17_STORE)) {
-    try {
-      store = JSON.parse(readFileSync(O17_STORE, "utf8"));
-    } catch {
-      return; // Der Server schreibt gerade — der Aufrufer wiederholt.
-    }
-  }
-  if (!Array.isArray(store.episodes)) store.episodes = [];
-  const snap = o17Snapshot(stationId, stationName);
-  const due = {
-    id: O17_EPISODE_ID,
-    opened_at: snap.emitted_at,
-    closed_at: null,
-    status: "due",
-    intent: "none",
-    first_snapshot: { ...snap, id: "snap_o17_demo_first" },
-    last_snapshot: snap,
-    snapshots: [snap],
-  };
-  const guard = {
-    id: O17_GUARD_ID,
-    opened_at: new Date().toISOString(),
-    closed_at: null,
-    status: "open",
-    intent: "none",
-    first_snapshot: { ...snap, id: "snap_o17_demo_guard" },
-    last_snapshot: { ...snap, id: "snap_o17_demo_guard" },
-    snapshots: [{ ...snap, id: "snap_o17_demo_guard" }],
-  };
-  // Guard immer an den Anfang (fängt die Decide-Snapshots), die fällige
-  // Episode dahinter — update-or-append, damit parallele Projekte auf
-  // denselben zwei Einträgen landen statt auf Duplikaten.
-  const rest = store.episodes.filter(
-    (entry: any) => entry.id !== O17_GUARD_ID && entry.id !== O17_EPISODE_ID,
-  );
-  store.episodes = [guard, ...rest, due];
-  writeFileSync(O17_STORE, JSON.stringify(store));
-}
-
-async function o17SeedDue(page: Page, stationId: string, stationName: string) {
-  // Seed + Verifizierung über die echte API: Ein paralleler
-  // Snapshot-Schreibvorgang kann den Seed überholen (Lesen–Schreiben
-  // außerhalb der Store-Sperre) — dann läuft der Seed erneut.
-  for (let attempt = 0; attempt < 10; attempt++) {
-    o17SeedStore(stationId, stationName);
-    const res = await page.request.get("/api/v1/episodes?status=due");
-    if (res.ok()) {
-      const body = await res.json();
-      const mine = (body.episodes ?? []).find(
-        (entry: any) => entry.id === O17_EPISODE_ID,
-      );
-      if (mine?.last_snapshot?.station_id === stationId) return mine;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-  throw new Error("O17-Seed wurde nicht sichtbar");
-}
-
-test("O17: „Ja, wie empfohlen“ bucht den Live-Preis, nie den Median", async ({
+// O17: Gebucht wird der Preis an der Säule — nie ein Prognose-Median.
+//
+// Der Ein-Tipp-Beleg des Fällig-Prompts („Ja, wie empfohlen“) ist mit 0.73.0
+// ersatzlos gestrichen (Entscheidung 04.10.2026). Die Zusage bleibt, nur ihr
+// Ort wechselt: Bestätigt wird dort, wo Belege gepflegt werden — „Ich →
+// Belege → Tanken erfassen“. Geprüft wird am echten Demo-Server, dass der
+// eingetragene Preis unverändert im Beleg landet (`price_source:
+// „manuell“`) und keine Prognose ihn ersetzt.
+test("O17: der Beleg trägt den eingetragenen Preis, nie die Prognose", async ({
   page,
 }) => {
-  await o17SeedDue(page, O17_KNOWN_STATION, O17_KNOWN_NAME);
-  await page.goto("/");
-  await expect(page.getByText("Fenster vorbei")).toBeVisible({
-    timeout: 30_000,
-  });
+  await page.goto("/?tab=ich");
+  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  const form = page.getByRole("region", { name: "Tanken erfassen" });
+  await form.getByRole("textbox").nth(0).fill("37.5");
+  await form.getByRole("textbox").nth(1).fill("1.777");
 
-  const button = page.getByRole("button", { name: /Ja, wie empfohlen/ });
-  await expect(button).toBeEnabled();
-  const label = (await button.textContent()) ?? "";
-  const match = label.match(/(\d+,\d+)\s*€\/L/);
-  expect(match, `Knopf nennt den Live-Preis (Label: ${label})`).not.toBeNull();
-  const liveShown = Number(match![1].replace(",", "."));
-  expect(liveShown).not.toBe(O17_DECOY_PRICE);
-
-  // Auf die ANTWORT warten, nicht auf den Versand: `waitForRequest` löst beim
-  // Abschicken aus — das folgende `GET /api/v1/fills` überholte dann den
-  // noch laufenden POST-Handler und der Beleg „fehlte im Ledger“ (Flake).
   const [response] = await Promise.all([
     page.waitForResponse(
       (res) =>
-        res.url().includes("/api/v1/fills") &&
-        res.request().method() === "POST",
+        res.url().includes("/api/v1/fills") && res.request().method() === "POST",
     ),
-    button.click(),
+    form.getByRole("button", { name: "Beleg buchen", exact: true }).click(),
   ]);
   expect(response.ok(), "POST /api/v1/fills wird angenommen").toBe(true);
   const body = response.request().postDataJSON();
-  expect(body.source).toBe("prompt");
-  expect(body.station_id).toBe(O17_KNOWN_STATION);
-  expect(body.price_source).toBe("live");
-  expect(body.price_paid).toBeCloseTo(liveShown, 3);
-  expect(body.price_paid).not.toBe(O17_DECOY_PRICE);
+  expect(body.liters).toBeCloseTo(37.5, 3);
+  expect(body.price_paid).toBeCloseTo(1.777, 3);
+  // Aus der Maske kommt ein eingetragener Preis — nie „live“, nie Prognose.
+  expect(body.price_source).toBe("manuell");
+  expect(body.source).toBe("manual");
 
-  // Der gespeicherte Beleg trägt den Live-Preis mit Herkunft.
+  // Der gespeicherte Beleg trägt denselben Preis (kein Median im Ledger).
   const fills = await page.request.get("/api/v1/fills");
   expect(fills.ok()).toBe(true);
   const stored = (await fills.json()).fills ?? [];
   const mine = stored.find(
-    (fill: any) =>
-      fill.episode_id === O17_EPISODE_ID &&
-      fill.source === "prompt" &&
-      !fill.voided,
+    (fill: any) => Math.abs(fill.liters - 37.5) < 0.001 && !fill.voided,
   );
   expect(mine, "gebuchter Beleg steht im Ledger").toBeTruthy();
-  expect(mine.price_paid).toBeCloseTo(liveShown, 3);
-  expect(mine.price_source).toBe("live");
-});
-
-test("O17: ohne Live-Preis fragt die Maske, statt zu buchen", async ({
-  page,
-}) => {
-  await o17SeedDue(page, O17_UNKNOWN_STATION, "Ehemalige Station");
-  const posts: string[] = [];
-  page.on("request", (req) => {
-    if (req.url().includes("/api/v1/fills") && req.method() === "POST") {
-      posts.push(req.url());
-    }
-  });
-  await page.goto("/");
-  await expect(page.getByText("Fenster vorbei")).toBeVisible({
-    timeout: 30_000,
-  });
-
-  const button = page.getByRole("button", { name: /Ja, wie empfohlen/ });
-  await expect(button).toBeDisabled();
-  await expect(button).toContainText("Preis unbekannt");
-
-  await page.getByRole("button", { name: "Anders buchen" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Tanken erfassen" }),
-  ).toBeVisible();
-  expect(posts, "kein Beleg ohne Live-Preis").toHaveLength(0);
+  expect(mine.price_paid).toBeCloseTo(1.777, 3);
+  expect(mine.price_source).toBe("manuell");
 });
 
 test("O16: Labor zeigt δ̂-Balken mit Konfidenzintervall aus der Selektion", async ({

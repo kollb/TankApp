@@ -1,10 +1,16 @@
-// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche).
+// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche;
+// docs/planung/UX-NEUENTWURF.md §4).
 //
-// Reine Logik, ohne DOM (D1): das 7-Tage-Raster, die Sterne, die
-// Horizont-Ehrlichkeit (Tage 5–7 „noch unsicher“), der Tank-Abgleich
-// und die Auswahl-Zusammenfassung. Die Fenster kommen aus
-// `decide.windows_week` (max. 3, Server-geordnet) — die App zeigt die
-// ganze Woche, verspricht aber nur, was die Engine liefert.
+// Frage: „Wann in den nächsten Tagen soll ich tanken?“ — Antwort: eine
+// Bestenliste mit höchstens drei Einträgen, sortiert nach Ersparnis.
+// Kein 7-Tage-Raster, keine Wochenlinie, keine zweite Liste: Der Server
+// liefert maximal drei Fenster, vier Darstellungen dafür waren drei zu viel.
+//
+// Reine Logik, ohne DOM (D1): Tage, Ersparnis, Sicherheit als ein Wort und
+// der Tank-Abgleich kommen hierher und sind hier getestet.
+// Horizonte-Honesty: Die App zeigt die ganze Woche, verspricht aber nur, was
+// die Engine liefert — ab Tag 5 steht der eine Satz „Ab Tag 5 wird die
+// Prognose unsicher.“
 
 import {
   centPerLiter,
@@ -22,388 +28,240 @@ import { labHint, type LabHint } from "./lab";
 import { regimeDateLabel, windowPastRegimeEdge, type RegimeNotice } from "./regime";
 import {
   dayLabel,
+  hourApproxLabel,
   nowStage,
-  windowSavingEur,
   wordFromPercent,
-  type NowStage,
+  windowSavingEur,
 } from "./now";
 
 export type WeekWindow = DecideResult["windows_week"][number];
 
-export type WeekDay = {
-  /** Index 0 = heute … 6 (Berliner Kalendertag). */
+/**
+ * Ein Eintrag der Bestenliste (UX-NEUENTWURF §4). Genau eine Zeile je
+ * Fenster: Tag + Uhrzeit, erwarteter Preis, Ersparnis in €, Sicherheit als
+ * ein Wort. Kein Stern, kein Prozent, kein Kalibrierungs-Etikett.
+ */
+export type WeekEntry = {
+  /** Fensterbeginn (ISO) — zugleich der Schlüssel der Liste. */
+  id: string;
+  /** 0 = heute … 6 (Berliner Kalendertag). */
   index: number;
-  /** „Mo“ — Wochentag kurz. */
-  shortDay: string;
-  /** „15.09.“ — Kalenderdatum. */
-  date: string;
-  isToday: boolean;
-  /** Das beste Fenster des Tages (lowest expected_price), sonst null. */
-  window: WeekWindow | null;
-  /** 0–3 Sterne aus der Fenster-Sicherheit; 0 ohne Fenster oder ohne P. */
-  stars: number;
-  /** true ab Tag 5 (Index 4) — entsättigte Darstellung + Fußnote. */
-  uncertain: boolean;
-};
-
-/**
- * Sterne aus der Fenster-Sicherheit (UI-NEUENTWURF §5.3: „Sterne statt
- * Prozente“). Die Klassen liegen auf denselben Schwellen wie die Wort-Stufen
- * der Ampel-Karte (`wordFromPercent`, 75/55) — nur die letzte Stufe ist
- * feiner: Der 35-%-Schnitt trennt die beiden Fälle, die dort beide „unsicher“
- * heißen (1 Stern = 35–55 %, 0 Sterne = darunter). Ohne messbares P steht
- * ehrlich kein Stern, kein erfundener; festgehalten in `week.test.ts`
- * („Stern- und Wortklassen“).
- */
-export function windowStars(p: number | null | undefined): number {
-  if (p == null || !Number.isFinite(p)) return 0;
-  const percent = p * 100;
-  if (percent >= 75) return 3;
-  if (percent >= 55) return 2;
-  if (percent >= 35) return 1;
-  return 0;
-}
-
-/**
- * Die sieben Tage des Rasters (heute bis +6, Berlin). Je Tag das beste
- * verfügbare Fenster (günstigster Erwartungs-Preis). Der Server liefert
- * max. drei Fenster pro Woche — Tage ohne Fenster bleiben leer, keine
- * Erfindung.
- */
-export function weekDays(
-  windows: WeekWindow[] | null | undefined,
-  now = Date.now(),
-): WeekDay[] {
-  const day = (value: number) =>
-    new Intl.DateTimeFormat("de-DE", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(value));
-  // Berlin-Kalendartag als ISO (en-CA: YYYY-MM-DD) — die einzige Form, die
-  // Date.parse zuverlässig versteht. Das de-DE-Format „14.09.2026“ würde NaN
-  // liefern und die Woche komplett crashen.
-  const berlinDate = (value: number) =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(value));
-  const startOfToday = berlinDate(now);
-  const parsed = (windows ?? [])
-    .map((window) => ({
-      window,
-      ms: Date.parse(window.start),
-    }))
-    .filter((entry) => Number.isFinite(entry.ms));
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const ms = Date.parse(`${startOfToday}T12:00:00Z`) + index * 86400000;
-    const dayKey = day(ms);
-    const candidates = parsed.filter((entry) => day(entry.ms) === dayKey);
-    const best =
-      candidates.length > 0
-        ? candidates.reduce((b, c) =>
-            c.window.expected_price < b.window.expected_price
-              ? c
-              : b,
-          ).window
-        : null;
-    return {
-      index,
-      shortDay: new Intl.DateTimeFormat("de-DE", {
-        timeZone: "Europe/Berlin",
-        weekday: "short",
-      }).format(new Date(ms)),
-      date: new Intl.DateTimeFormat("de-DE", {
-        timeZone: "Europe/Berlin",
-        day: "2-digit",
-        month: "2-digit",
-      }).format(new Date(ms)),
-      isToday: index === 0,
-      window: best,
-      stars: best ? windowStars(best.p) : 0,
-      // Horizont-Ehrlichkeit: Tage 5–7 (Index 4–6) tragen den Hinweis.
-      uncertain: index >= 4,
-    };
-  });
-}
-
-export type WeekListEntry = {
-  day: WeekDay;
-  window: WeekWindow;
-  /** Ersparnis in € ggü. dem aktuellen Preis (null = unbekannt). */
+  /** „Heute“ · „Morgen“ · „Freitag“. */
+  dayLabel: string;
+  /** „~19 Uhr“ — die genannte Stunde des Fensterbeginns. */
+  timeLabel: string | null;
+  /** „18–20 Uhr“ — das Fenster, wie der Server es liefert. */
+  rangeLabel: string;
+  /** „1,669 €/L“. */
+  priceLabel: string;
+  /** Ersparnis gegen den aktuellen Preis (€) — `null` = nicht belastbar. */
   savingEur: number | null;
+  /** „spart ca. 3,60 €“ — `null` ohne belastbaren Abstand. */
+  savingLabel: string | null;
+  /** Ein Wort: „ziemlich sicher“ · „eher sicher“ · „unsicher“ ·
+   *  „noch nicht messbar“. */
+  security: string;
+  /** `true` ab Tag 5 (Index 4) — die Prognose wird breiter. */
+  uncertain: boolean;
+  expectedPrice: number;
+  start: string;
+  end: string;
 };
 
 /**
- * „Alle Fenster nach Ersparnis“ — die sortierte Liste unter dem Raster
- * (§5.3). Ersparnis = (aktuell − erwartet) × …; der Server liefert beide
- * Basen, die Liste zeigt und sortiert die zum Preis passende (O45).
+ * Ab diesem Tag (Index, 0 = heute) trägt ein Fenster den Unsicherheits-
+ * Hinweis. Die technische Wahrheit (PIT-Kalibrierung nur im 24-h-Pfad)
+ * bleibt in System und Doku — der Alltag liest den einen Satz
+ * (UX-NEUENTWURF §6, Vokabel-Diät).
  */
-export function weekWindowList(
-  days: WeekDay[],
-  notice: RegimeNotice | null = null,
-): WeekListEntry[] {
-  const entries: WeekListEntry[] = [];
-  for (const day of days) {
-    if (!day.window) continue;
+export const WEEK_UNCERTAIN_FROM_DAY = 4;
+
+export const WEEK_UNCERTAIN_NOTE =
+  "Ab Tag 5 wird die Prognose unsicher.";
+
+/** Berliner Kalendertag als `YYYY-MM-DD` (en-CA) — die einzige Form, die
+ *  `Date.parse` zuverlässig versteht. */
+function berlinDateKey(value: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+/**
+ * Die Bestenliste: höchstens drei Einträge, sortiert nach Ersparnis
+ * (unbekannte Ersparnis nach hinten, dann der frühere Tag zuerst).
+ * Tage ohne Fenster bleiben leer, nichts wird erfunden.
+ */
+export function weekRanking(input: {
+  windows: WeekWindow[] | null | undefined;
+  /** Preisniveau-Termin (Tankrabatt) — er entwertet Abstände hinter der Kante. */
+  notice?: RegimeNotice | null;
+  decide?: DecideResult | null;
+  now?: number;
+}): WeekEntry[] {
+  const now = input.now ?? Date.now();
+  const notice = input.notice ?? null;
+  const stage = nowStage(input.decide ?? null);
+  const startOfToday = berlinDateKey(now);
+
+  // Je Kalendertag das beste Fenster (niedrigster Erwartungs-Preis) —
+  // derselbe Tag kann mehrere Fenster tragen, gezeigt wird das beste.
+  const byDay = new Map<string, WeekWindow>();
+  for (const window of input.windows ?? []) {
+    const ms = Date.parse(window.start);
+    if (!Number.isFinite(ms)) continue;
+    const key = berlinDateKey(ms);
+    const current = byDay.get(key);
+    if (!current || window.expected_price < current.expected_price) {
+      byDay.set(key, window);
+    }
+  }
+
+  const entries: WeekEntry[] = [];
+  for (const [key, window] of byDay) {
+    const index = Math.round(
+      (Date.parse(`${key}T12:00:00Z`) - Date.parse(`${startOfToday}T12:00:00Z`)) /
+        86400000,
+    );
+    if (!Number.isFinite(index) || index < 0 || index > 6) continue;
+    const pastEdge = windowPastRegimeEdge(window, notice);
+    const saving = pastEdge ? null : windowSavingEur(window);
+    const percent =
+      stage === "A" && window.p !== null && window.p !== undefined
+        ? Math.round(window.p * 100)
+        : null;
+    // Befund A5 (23.09.2026): ohne gemessene Zahl heißt die Sicherheit
+    // ehrlich „noch nicht messbar“ statt „wird noch gemessen“.
+    const security =
+      percent !== null ? wordFromPercent(percent) : "noch nicht messbar";
     entries.push({
-      day,
-      window: day.window,
-      // Hinter einem bevorstehenden Stichtag (Tankrabatt) vergleicht die
-      // Ersparnis zwei Preisniveaus, die das Modell nicht kennt — keine Zahl.
-      savingEur: windowPastRegimeEdge(day.window, notice)
-        ? null
-        : windowSavingEur(day.window),
+      id: window.start,
+      index,
+      // „Heute“/„Morgen“ hängt am Referenzzeitpunkt — nicht an der realen
+      // Uhr im Moment des Renderns (sonst kippt das Wort um Mitternacht).
+      dayLabel: dayLabel(window.start, now),
+      timeLabel: hourApproxLabel(window.start),
+      rangeLabel: windowTimeRangeLabel(window.start, window.end),
+      priceLabel: euroPerLiter(window.expected_price),
+      savingEur: saving,
+      savingLabel:
+        saving != null && saving > 0
+          ? `spart ca. ${euro(saving)} €`
+          : null,
+      security,
+      uncertain: index >= WEEK_UNCERTAIN_FROM_DAY,
+      expectedPrice: window.expected_price,
+      start: window.start,
+      end: window.end,
     });
   }
+
   entries.sort((a, b) => {
-    // Unbekannte Ersparnis nach hinten, dann mehr Ersparnis zuerst.
     const sa = a.savingEur;
     const sb = b.savingEur;
-    if (sa == null && sb == null)
-      return a.day.index - b.day.index;
+    if (sa == null && sb == null) return a.index - b.index;
     if (sa == null) return 1;
     if (sb == null) return -1;
     if (sb !== sa) return sb - sa;
-    return a.day.index - b.day.index;
+    return a.index - b.index;
   });
-  return entries;
-}
-
-export type TankReach = {
-  tone: "ok" | "warn" | "bad" | "neutral";
-  text: string;
-};
-
-/**
- * Tank-Abgleich (UI-NEUENTWURF §5.3: „Physik schlägt Statistik“).
- *
- * Ehrlichkeits-Grenze: Der Server prüft den Tank nur gegen das
- * *heutige* Fenster (`tank.blocks_wait`). Für kommende Fenster gibt es
- * keine Routen-Daten — da steht die Reichweite, nicht ein „reicht bis
- * Do“, den die App nicht belegen könnte.
- */
-export function tankReach(
-  tank: TankInfo | null,
-  dayIndex: number,
-  window: WeekWindow | null,
-): TankReach | null {
-  if (!tank) {
-    return dayIndex === 0 && window
-      ? { tone: "neutral", text: "Tankstand nicht angegeben — ohne Angabe prüft die App nicht." }
-      : null;
-  }
-  if (tank.state === "empty") {
-    return { tone: "bad", text: tank.message ?? "Tank leer — vor der Fahrt tanken." };
-  }
-  if (dayIndex === 0) {
-    if (tank.blocks_wait) {
-      return {
-        tone: "bad",
-        text: tank.message ?? "Tank reicht nicht bis zum Fenster — Warten ist riskant.",
-      };
-    }
-    return {
-      tone: "ok",
-      text: `Reicht bis zum Fenster — Restreichweite ≈ ${kilometersLabel(tank.range_km)}.`,
-    };
-  }
-  if (tank.state === "low") {
-    return {
-      tone: "warn",
-      text: tank.message ?? "Tank ist knapp — bis zum Wochenende eher riskant.",
-    };
-  }
-  return {
-    tone: "neutral",
-    text: `Restreichweite ≈ ${kilometersLabel(tank.range_km)} — ob das bis dahin reicht, hängt von der Strecke ab.`,
-  };
-}
-
-export type WeekSummary = {
-  headline: string;
-  /** „≈ 2,10 € unter jetzt“ — nur wenn beide Preise bekannt. */
-  savingLine: string | null;
-  security: string;
-  tank: TankReach | null;
-};
-
-/**
- * Das Auswahl-Detail (§5.3 „AUSGEWÄHLT: Montag 19–21 Uhr“): erwarteter
- * Preis, Abstand zu jetzt, Sicherheit in Worten (+ Prozent nur auf
- * Stufe A) und der Tank-Abgleich.
- */
-export function weekWindowSummary(
-  day: WeekDay,
-  decide: DecideResult | null,
-  priceNow: number | null,
-  now: number = Date.now(),
-): WeekSummary | null {
-  const window = day.window;
-  if (!window) return null;
-  const stage = nowStage(decide);
-  const range = windowTimeRangeLabel(window.start, window.end);
-  const saving =
-    priceNow !== null
-      ? (priceNow - window.expected_price) * 100
-      : null;
-  const medianSaving =
-    window.expected_saving_median_eur ?? window.expected_saving_eur;
-  // 0.55.0: Die Zeile steht im View hinter „Erwartet <Preis> €/L“ — mit
-  // „günstiger erwartet“ stand „erwartet“ zweimal in einem Satz, ohne dass
-  // der zweite Auftritt etwas hinzufügte. Stattdessen sagt die Zeile jetzt,
-  // woher der Vorsprung kommt: der Vergleich läuft gegen den Preis von jetzt.
-  const pastEdge = windowPastRegimeEdge(window, decide?.regime_notice);
-  const savingLine = pastEdge
-    ? `Abstand zu jetzt nicht belastbar — der Stichtag ${
-        decide?.regime_notice ? regimeDateLabel(decide.regime_notice) : ""
-      } liegt dazwischen`
-    : saving !== null
-      ? saving >= 0.05
-        ? `${centPerLiter(saving)} günstiger als jetzt ≈ ${
-            medianSaving !== null
-              ? `${euro(medianSaving)} € im Median`
-              : "Betrag folgt mit der Tankmenge"
-          }`
-        : saving <= -0.05
-          ? `Das Fenster liegt ${centPerLiter(Math.abs(saving))} über dem aktuellen Preis`
-          : "Kein klarer Vorsprung gegenüber dem aktuellen Preis"
-      : null;
-
-  const percent =
-    stage === "A" && window.p !== null && window.p !== undefined
-      ? Math.round(window.p * 100)
-      : null;
-  // Befund A5 (23.09.2026): eine Zwischenstufe „Worte ohne Prozent“ war
-  // unerreichbar — ohne M7-Gate antwortet der Server mit `no_advice`. Ohne
-  // gemessene Zahl heißt die Sicherheit deshalb ehrlich „noch nicht
-  // messbar“ statt „wird noch gemessen“.
-  const word = percent !== null ? wordFromPercent(percent) : "noch nicht messbar";
-  const security =
-    percent !== null ? `${word} (${percentLabel(percent, 0)})` : word;
-
-  return {
-    // „Morgen“/„Heute“ hängt am Referenzzeitpunkt — nicht an der realen
-    // Uhr im Moment des Renderns (sonst kippt das Wort um Mitternacht).
-    headline: `${dayLabel(window.start, now)} ${range}`,
-    savingLine,
-    security,
-    tank: tankReach(decide?.tank ?? null, day.index, window),
-  };
+  return entries.slice(0, 3);
 }
 
 /**
- * Ebene 1 für ein Fenster (§7): max. drei Sätze, Alltagssprache,
- * mit Frische. Gleiche Mechanik wie die Jetzt-Begründung.
+ * Der Tank als **Anzeige** (UX-NEUENTWURF §4/§6): gepflegt wird der Stand an
+ * genau einem Ort („Ich“ → Fahrzeug); hier steht nur, was er bedeutet.
+ * „Reicht bis Do“ wäre eine Behauptung ohne Routen-Daten — deshalb nennt die
+ * Zeile die Reichweite, nicht ein Datum.
  */
-export function weekExplanation(
-  day: WeekDay,
-  decide: DecideResult | null,
-  priceNow: number | null,
-  now = Date.now(),
-): { sentences: string[]; source: string; labHint: LabHint | null } | null {
-  const window = day.window;
-  if (!window) return null;
-  const stage = nowStage(decide);
-  const sentences: string[] = [];
-  sentences.push(
-    `Um ${windowTimeRangeLabel(window.start, window.end)} erwartet das Modell ${euroPerLiter(window.expected_price)} — das günstigste Fenster dieses Tages.`,
-  );
-  if (windowPastRegimeEdge(window, decide?.regime_notice)) {
-    sentences.push(
-      `Zwischen jetzt und diesem Fenster liegt der Stichtag ${
-        decide?.regime_notice ? regimeDateLabel(decide.regime_notice) : ""
-      } — das Modell kennt das neue Preisniveau nicht, ein Abstand zum aktuellen Preis wäre nicht belastbar.`,
-    );
-  } else if (priceNow !== null) {
-    const deltaCt = (priceNow - window.expected_price) * 100;
-    sentences.push(
-      deltaCt >= 0.05
-        ? `Der aktuelle Preis liegt ${centPerLiter(deltaCt)} darüber — warten wäre der Vorsprung.`
-        : deltaCt <= -0.05
-          ? `Der aktuelle Preis liegt ${centPerLiter(Math.abs(deltaCt))} unter dem Fensterpreis — warten wäre teurer.`
-          : `Der aktuelle Preis liegt nahe am Fensterpreis — der Vorsprung ist klein.`,
-    );
-  } else {
-    sentences.push("Der aktuelle Preis fehlt, deshalb steht kein Abstand.");
-  }
-  if (day.uncertain) {
-    sentences.push(
-      "So weit voraus wird die Prognose breiter — der Tag trägt deshalb den Hinweis „noch unsicher“.",
-    );
-  } else if (stage === "A" && decide?.personal_stats?.advice) {
-    const advice = decide.personal_stats.advice;
-    if (advice.last_30d_total > 0) {
-      // Befund A3 (23.09.2026): Trefferzahl mit halben Unentschieden —
-      // dieselbe Abrechnung wie die hit_rate-Klammer dahinter.
-      const hits = advice.last_30d_hits + (advice.last_30d_ties ?? 0) / 2;
-      sentences.push(
-        `Von ${countLabel(advice.last_30d_total)} abgeschlossenen Empfehlungen traf ${deTrimmed(hits, hits % 1 ? 1 : 0)} zu ${
-          advice.hit_rate == null ? "" : `(${percentLabel(advice.hit_rate * 100, 0)})`
-        }.`,
-      );
-    }
-  }
-  return {
-    sentences: sentences.slice(0, 3),
-    source: "Grundlage: der Modell-Lauf der Engine (Fenster und Erwartungs-Preise).",
-    labHint: labHint("prognose"),
-  };
-}
-
-/**
- * Wochenlinie (§5.3): der beste Erwartungs-Preis je Tag als Punkte-Reihe
- * (null = kein Fenster). Die Ansicht rendert daraus eine kleine
- * Balken-/Punktlinie — kein Chart-Labor.
- */
-export function weekLine(
-  days: WeekDay[],
-): Array<{ label: string; value: number | null }> {
-  return days.map((day) => ({
-    label: day.shortDay,
-    value: day.window ? day.window.expected_price : null,
-  }));
-}
-
-/** Tank-Zeile des Wochen-Kopfs: „Tank: ¼ · ≈ 120 km · [Ändern]“. */
 export function weekTankLine(
   tank: TankInfo | null,
   tankPercent: number | null,
   tankCapacity: number,
-): { text: string; detail: string } {
+): { text: string; detail: string | null } {
   if (tankPercent == null && !tank) {
     return {
-      text: "Tankstand nicht angegeben",
-      detail: "Ohne Angabe sagt die App nichts zur Reichweite — „Ändern“ setzt den Füllstand.",
+      text: "Tank: keine Angabe",
+      detail: "Mit dem Stand prüft die App, ob Warten riskant ist.",
     };
   }
-  const percentLabelPart =
-    tankPercent !== null ? `${deTrimmed(tankPercent, 0)} %` : "—";
+  const percent = tankPercent !== null ? `${deTrimmed(tankPercent, 0)} %` : "—";
   const range = tank
     ? `Restreichweite ≈ ${kilometersLabel(tank.range_km)}`
     : `≈ ${deTrimmed(tankCapacity, 0)} L Tank`;
   return {
-    text: `Tank: ${percentLabelPart} · ${range}`,
+    text: `Tank: ${percent} · ${range}`,
     detail: tank
       ? `davon Reserve ≈ ${kilometersLabel(tank.reserve_range_km)}`
-      : "Bewertung folgt mit der nächsten Empfehlung-Antwort.",
+      : null,
   };
 }
 
 /**
- * Kalibrierungsstand je Wochen-Tag (M2): Nur 24-h-Pfade sind
- * PIT-kalibriert — 72-/168-h-Fenster sind unkalibrierte
- * Szenarioprognosen und erhalten nie dieselbe Vertrauenssprache.
+ * Das Detail eines Eintrags — ein Tipp entfernt (Ebene 2). Höchstens fünf
+ * Zeilen, Alltagssprache, mit dem Weg in die Tiefe.
  */
-export const WEEK_CALIBRATION_24H =
-  "24-h-Fenster (PIT-kalibriert, wenn aktiv)";
-export const WEEK_CALIBRATION_SCENARIO =
-  "Szenarioprognose (unkalibriert)";
+export function weekEntryWhy(
+  entry: WeekEntry,
+  decide: DecideResult | null,
+  priceNow: number | null,
+  now = Date.now(),
+): { lines: string[]; source: string; labHint: LabHint | null } | null {
+  const stage = nowStage(decide);
+  const lines: string[] = [];
 
-export function weekCalibrationNote(dayIndex: number): string {
-  return dayIndex <= 0 ? WEEK_CALIBRATION_24H : WEEK_CALIBRATION_SCENARIO;
+  lines.push(
+    `Fenster ${entry.rangeLabel} — erwartet ${entry.priceLabel}.`,
+  );
+
+  const window = (decide?.windows_week ?? []).find(
+    (item) => item.start === entry.id,
+  );
+  if (window && windowPastRegimeEdge(window, decide?.regime_notice ?? null)) {
+    lines.push(
+      `Zwischen jetzt und diesem Fenster liegt der Stichtag ${
+        decide?.regime_notice ? regimeDateLabel(decide.regime_notice) : ""
+      } — ein Abstand zum aktuellen Preis wäre nicht belastbar.`,
+    );
+  } else if (priceNow !== null) {
+    const deltaCt = (priceNow - entry.expectedPrice) * 100;
+    lines.push(
+      deltaCt >= 0.05
+        ? `Das sind ${centPerLiter(deltaCt)} unter dem aktuellen Preis.`
+        : deltaCt <= -0.05
+          ? `Das Fenster liegt ${centPerLiter(Math.abs(deltaCt))} über dem aktuellen Preis — Warten wäre teurer.`
+          : "Der Vorsprung gegenüber dem aktuellen Preis ist klein.",
+    );
+  } else {
+    lines.push("Der aktuelle Preis fehlt, deshalb steht kein Abstand.");
+  }
+
+  const advice = decide?.personal_stats?.advice;
+  if (stage === "A" && advice && advice.last_30d_total > 0) {
+    // Befund A3 (23.09.2026): Trefferzahl mit halben Unentschieden —
+    // dieselbe Abrechnung wie die Quote dahinter.
+    const hits = advice.last_30d_hits + (advice.last_30d_ties ?? 0) / 2;
+    lines.push(
+      `${entry.security} — an ${deTrimmed(hits, hits % 1 ? 1 : 0)} von ${countLabel(advice.last_30d_total)} Tagen richtig` +
+        `${advice.hit_rate == null ? "" : ` (${percentLabel(advice.hit_rate * 100, 0)})`}.`,
+    );
+  } else {
+    lines.push(entry.security);
+  }
+
+  if (entry.uncertain) lines.push(WEEK_UNCERTAIN_NOTE);
+
+  const liters = decide?.quantity?.used_liters;
+  if (entry.savingEur != null && liters != null) {
+    lines.push(`Bei ${deTrimmed(liters, 0)} L spart das ca. ${euro(entry.savingEur)} €.`);
+  }
+
+  return {
+    lines: lines.slice(0, 5),
+    source: "Grundlage: der Modell-Lauf der Engine (Fenster und Erwartungs-Preise).",
+    labHint: labHint("prognose"),
+  };
 }

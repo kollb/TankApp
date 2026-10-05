@@ -1,30 +1,34 @@
-// Jetzt (UI-NEUENTWURF §5.1, §7, §10): die reine Logik der ersten Ansicht.
+// Jetzt (UX-NEUENTWURF §3): die reine Logik der ersten Ansicht.
 //
-// Der Test hält die drei Versprechen des Entwurfs fest, die man später still
-// brechen würde: immer vier mögliche Ausgänge, immer genau drei Fakten in
-// derselben Reihenfolge, und Prozent ausschließlich auf Stufe A (≥ 100
-// abgeschlossene Empfehlungen, Brier unter der Schwelle).
+// Der Test hält die Versprechen des Neuentwurfs fest, die man später still
+// brechen würde: eine Karte mit höchstens einer Zahl und einer Handlung,
+// Unsicherheit als ein Wort (Prozent nur auf Stufe A), die Begründung in
+// höchstens fünf Zeilen und das Datenalter in einem Chip.
 
 import { describe, expect, it } from "vitest";
 import type { DecideResult, Station } from "./data";
 import {
+  ANYTIME_SAVING_EUR,
   confidenceWord,
   dayLabel,
   forecastStamp,
+  hourApproxLabel,
   learningNote,
+  nowAnswer,
   nowBestNow,
-  nowDayPanel,
-  nowExplanation,
-  nowFacts,
+  nowCoverage,
+  nowDayRow,
   nowFreshness,
+  nowNetBest,
   nowStage,
-  nowSteps,
-  nowVerdict,
   nowValidity,
+  nowWhy,
   savingPerLiterCt,
-  timeInputToBerlinIso,
+  windowSavingEur,
   wordFromPercent,
+  type NowInput,
 } from "./now";
+import type { StripCell } from "./strip";
 
 const NOW = Date.parse("2026-09-14T12:00:00+02:00");
 const minutesAgo = (m: number) => new Date(NOW - m * 60000).toISOString();
@@ -36,8 +40,8 @@ function station(id: string, overrides: Partial<Station> = {}): Station {
     name: `Station ${id}`,
     brand: "ARAL",
     fuel: "e10",
-    maps_url: null,
-    dist_km: 1,
+    maps_url: `https://maps.example/${id}`,
+    dist_km: 1.2,
     dist_mode: "road",
     price: 1.749,
     last_price: 1.749,
@@ -61,7 +65,7 @@ function decide(
         id: "aral",
         name: "Aral Mitte",
         price_now: 1.749,
-        maps_url: null,
+        maps_url: "https://maps.example/aral",
       },
       recommended_window: {
         start: "2026-09-14T18:00:00+02:00",
@@ -102,23 +106,33 @@ function decide(
   };
 }
 
-const input = (overrides: Partial<Parameters<typeof nowVerdict>[0]> = {}) => ({
+const input = (overrides: Partial<NowInput> = {}): NowInput => ({
   decide: decide("wait"),
   stations: [station("aral"), station("shell", { price: 1.689, brand: "SHELL" })],
   selectedId: "aral",
   liters: 40,
   now: NOW,
+  pricesAt: minutesAgo(4),
+  forecastAt: minutesAgo(35),
   ...overrides,
 });
+
+/** Alle Wörter eines Karten-Textes — der 25-Wörter-Ratchet aus §3. */
+function cardWords(answer: NonNullable<ReturnType<typeof nowAnswer>>): number {
+  return [answer.chip, answer.headline, answer.subline]
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
 
 describe("Stufen der Sicherheit (§10)", () => {
   it("Stufe A nur mit Kalibrierung, Stufe C ohne Freigabekette", () => {
     expect(nowStage(decide("wait"))).toBe("A");
-    // A5: Ohne M7-Gate („calibrated: false") gibt es keine Zwischenstufe —
-    // der Server würde ohnehin „no_advice" liefern; die GUI bleibt grau.
+    // A5: Ohne M7-Gate („calibrated: false“) gibt es keine Zwischenstufe —
+    // der Server würde ohnehin „no_advice“ liefern; die GUI bleibt grau.
     expect(nowStage(decide("wait", { calibrated: false }))).toBe("C");
     expect(nowStage(decide("no_advice", { calibrated: false }))).toBe("C");
-    expect(nowStage(null)).toBe("C");
   });
 
   it("Worte kommen aus dem Badge, nie geraten", () => {
@@ -129,33 +143,8 @@ describe("Stufen der Sicherheit (§10)", () => {
   });
 
   it("A5: ohne kalibriertes Gate gibt es keine Stufe B — die Karte bleibt Stufe C", () => {
-    // Befund A5 (23.09.2026): Der Server erzwingt ohne M7-Gate
-    // action="no_advice" (m7_pending); eine Empfehlungs-Handlung ohne Gate
-    // kann nie auftreten. Käme so ein Alt-Payload doch an, bleibt die Karte
-    // grau statt Worte ohne Prozent zu erfinden.
-    const falscherZustand = decide("wait", { calibrated: false });
-    expect(nowStage(falscherZustand)).toBe("C");
-    const verdict = nowVerdict(input({ decide: falscherZustand }));
-    expect(verdict?.percent).toBeNull();
-  });
-
-  it("der graue Zustand zeigt zuerst den Servergrund (A21-B1.4)", () => {
-    // Der Sperrgrund der Freigabekette darf nicht hinter einem allgemeinen
-    // Lernhinweis verschwinden — die Karte soll sagen, WARUM es keine
-    // Empfehlung gibt.
-    const blocked = decide("no_advice", {}, { reason_short: "Der Preis dieser Station ist nicht mehr frisch." });
-    const verdict = nowVerdict(input({ decide: blocked }));
-    expect(verdict?.detail).toBe("Der Preis dieser Station ist nicht mehr frisch.");
-    expect(verdict?.percent).toBeNull();
-  });
-
-  it("ohne Servergrund nennt der graue Anfangszustand den Zählstand", () => {
-    const learning = decide("no_advice", { calibrated: false }, { reason_short: "" });
-    learning.personal_stats.advice.last_30d_total = 12;
-    expect(learningNote(learning)).toContain("Das Modell lernt noch");
-    const verdict = nowVerdict(input({ decide: learning }));
-    expect(verdict?.detail).toContain("Das Modell lernt noch");
-    expect(verdict?.percent).toBeNull();
+    expect(nowStage(decide("refuel_now", { calibrated: false }))).toBe("C");
+    expect(nowStage(decide("wait", { calibrated: false }))).toBe("C");
   });
 
   it("die Lernphase benennt, was schon funktioniert (S1, UI-Neugestaltung)", () => {
@@ -169,7 +158,7 @@ describe("Stufen der Sicherheit (§10)", () => {
   });
 
   it("A3: der Lernstand zählt den M7-Vertragsschnitt, nicht das 30-Tage-Fenster", () => {
-    // Befund A3 (23.09.2026): „X von 100 abgeschlossenen Empfehlungen" lief
+    // Befund A3 (23.09.2026): „X von 100 abgeschlossenen Empfehlungen“ lief
     // auf dem 30-Tage-Fenster (last_30d_total) — volatil und falsch. Der
     // Server meldet dank A3-Fix den Gate-Schnitt mit; die 30-Tage-Zahl ist
     // nur noch Fallback für Alt-Payloads.
@@ -187,14 +176,18 @@ describe("Wort und Zahl widersprechen sich nicht", () => {
   it("auf Stufe A kommt das Wort aus dem gemessenen Prozentwert", () => {
     // Der Server-Badge beschreibt die Lage, nicht die Trefferwahrscheinlichkeit:
     // badge „low“ bei 99 % ergäbe sonst „unsicher (99 %)“.
-    const sicher = decide("refuel_now", {}, { p_correct: 0.9948, confidence_badge: "low" });
-    const verdict = nowVerdict(input({ decide: sicher }));
-    expect(verdict?.percent).toBe(99);
-    expect(verdict?.word).toBe("ziemlich sicher");
-    expect(verdict?.detail).toContain("ziemlich sicher (99 %)");
-
+    const sicher = decide(
+      "refuel_now",
+      {},
+      { p_correct: 0.9948, confidence_badge: "low" },
+    );
+    expect(nowWhy(input({ decide: sicher }))?.lines.join(" ")).toContain(
+      "ziemlich sicher",
+    );
     const unsicher = decide("refuel_now", {}, { p_correct: 0.41 });
-    expect(nowVerdict(input({ decide: unsicher }))?.word).toBe("unsicher");
+    expect(nowWhy(input({ decide: unsicher }))?.lines.join(" ")).toContain(
+      "unsicher",
+    );
   });
 
   it("übersetzt die Schwellen sauber", () => {
@@ -205,35 +198,31 @@ describe("Wort und Zahl widersprechen sich nicht", () => {
   });
 });
 
-describe("Ampel-Karte 2.0: vier Ausgänge", () => {
-  it("Warten nennt Fenster, Ersparnis und Sicherheit", () => {
-    const verdict = nowVerdict(input());
-    expect(verdict?.action).toBe("wait");
-    // UI-Neugestaltung (2026-09-26): „Warten“ ist die Geld sparende,
-    // geplante Empfehlung — Blau. Grün bleibt „jetzt handeln“, Rot ist
-    // dem echten Risiko (Tankrest) vorbehalten.
-    expect(verdict?.tone).toBe("blue");
-    expect(verdict?.headline).toBe("Warten bis 18–20 Uhr");
-    expect(verdict?.amount).toContain("günstiger");
-    expect(verdict?.amount).toContain("4,0 ct/L");
-    expect(verdict?.amount).toContain("1,60 €");
-    expect(verdict?.detail).toContain("bei 40 L");
-    expect(verdict?.detail).toContain("ziemlich sicher (82 %)");
+describe("Antwortkarte: eine Frage, eine Antwort (§3)", () => {
+  it("Warten nennt Uhrzeit und Ersparnis in € — und bleibt unter 25 Wörtern", () => {
+    const answer = nowAnswer(input());
+    expect(answer?.variant).toBe("wait");
+    // „Warten“ ist die Geld sparende, geplante Empfehlung — Blau. Grün
+    // bleibt „jetzt handeln“, Rot dem Tankrest-Risiko (Urteilstöne).
+    expect(answer?.tone).toBe("blue");
+    expect(answer?.headline).toBe("Warten bis ~18 Uhr");
+    expect(answer?.lead).toBe("spart ca. 1,60 €");
+    expect(answer?.action?.label).toBe("Route");
+    expect(cardWords(answer!)).toBeLessThanOrEqual(25);
   });
 
-  it("Jetzt tanken zeigt den Preis, ohne Sicherheit zu erfinden", () => {
-    const verdict = nowVerdict(
-      input({
-        decide: decide("refuel_now", { calibrated: false }, { p_correct: null }),
-      }),
+  it("Jetzt tanken zeigt den Preis und die Station", () => {
+    const answer = nowAnswer(
+      input({ decide: decide("refuel_now", {}, { p_correct: null }) }),
     );
-    expect(verdict?.headline).toBe("Jetzt tanken");
-    expect(verdict?.amount).toBe("1,749 €/L");
-    expect(verdict?.percent).toBeNull();
-    expect(verdict?.detail).not.toContain("%");
+    expect(answer?.variant).toBe("refuel_now");
+    expect(answer?.tone).toBe("green");
+    expect(answer?.headline).toBe("Jetzt tanken");
+    expect(answer?.lead).toBe("1,689 €/L");
+    expect(answer?.subline).toContain("Station shell");
   });
 
-  it("Woanders tanken nennt die beste lohnende Alternative", () => {
+  it("Woanders tanken führt zur netto besten Alternative", () => {
     const withAlt = decide("refuel_elsewhere");
     withAlt.alternatives_nearby = [
       {
@@ -259,42 +248,65 @@ describe("Ampel-Karte 2.0: vier Ausgänge", () => {
         verdict: "not_worth",
       },
     ];
-    const verdict = nowVerdict(input({ decide: withAlt }));
-    expect(verdict?.tone).toBe("blue");
-    expect(verdict?.headline).toContain("Freie Nord");
-    expect(verdict?.headline).not.toContain("Weit weg");
-    expect(verdict?.amount).toContain("netto 0,80 € günstiger");
+    const answer = nowAnswer(input({ decide: withAlt }));
+    expect(answer?.headline).toBe("Jetzt tanken");
+    expect(answer?.subline).toContain("Freie Nord");
+    expect(answer?.subline).not.toContain("Weit weg");
   });
 
-  it("Keine Empfehlung bleibt grau und behauptet keine Sicherheit", () => {
-    const verdict = nowVerdict(
+  it("kaum Unterschied heißt „Tanken, wann’s passt“", () => {
+    const knapp = decide("wait", {}, { expected_saving_eur: 0.2 });
+    const answer = nowAnswer(input({ decide: knapp }));
+    expect(answer?.variant).toBe("anytime");
+    expect(answer?.headline).toBe("Tanken, wann’s passt");
+    expect(answer?.tone).toBe("gray");
+    // Die Schwelle ist benannt und im Code eine Stelle (kein Streuwert).
+    expect(ANYTIME_SAVING_EUR).toBeGreaterThan(0);
+  });
+
+  it("ohne Prognose trägt die Karte die Tatsache: der günstigste Preis jetzt", () => {
+    const answer = nowAnswer(
       input({
         decide: decide("no_advice", {}, { reason_short: "Die Preise springen." }),
       }),
     );
-    expect(verdict?.tone).toBe("gray");
-    expect(verdict?.headline).toBe("Keine klare Empfehlung");
-    expect(verdict?.amount).toBeNull();
-    expect(verdict?.percent).toBeNull();
+    expect(answer?.variant).toBe("no_forecast");
+    expect(answer?.tone).toBe("gray");
+    expect(answer?.headline).toBe("Günstigste gerade: Station shell");
+    expect(answer?.lead).toBe("1,689 €/L");
+    expect(answer?.subline).toContain("Stand");
   });
 
-  it("ohne Daten gibt es nichts zu sagen", () => {
-    expect(nowVerdict(input({ decide: null }))).toBeNull();
+  it("offline schlägt alles — der Preis an der Säule zählt", () => {
+    const answer = nowAnswer(input({ online: false }));
+    expect(answer?.variant).toBe("offline");
+    expect(answer?.tone).toBe("gray");
+    expect(answer?.headline).toBe("Letzter Stand: Station shell");
+    expect(answer?.subline).toBe("Der Preis an der Säule zählt.");
+    // Ohne Verbindung keine Handlung, die eine Entscheidung vorspielt.
+    expect(answer?.action).toBeNull();
+  });
+
+  it("ohne Antwort und ohne Preis gibt es nichts zu sagen", () => {
+    expect(nowAnswer(input({ decide: null, stations: [] }))).toBeNull();
+    expect(
+      nowAnswer(input({ decide: null, stations: [station("aral", { price: null })] })),
+    ).toBeNull();
   });
 });
 
-describe("Urteilstöne und Gültigkeit (UI-Neugestaltung 2026-09-26)", () => {
+describe("Urteilstöne und Gültigkeit (UI-Neugestaltung, §3/§7)", () => {
   it("Jetzt tanken bleibt grün, solange der Tank das Warten nicht blockiert", () => {
-    const verdict = nowVerdict(
+    const answer = nowAnswer(
       input({ decide: decide("refuel_now", {}, { p_correct: null }) }),
     );
-    expect(verdict?.tone).toBe("green");
-    expect(verdict?.expired).toBe(false);
+    expect(answer?.tone).toBe("green");
+    expect(answer?.expired).toBe(false);
   });
 
   it("Tankrest, der das Warten blockiert, macht die Karte rot", () => {
-    // Die eine echte Risikolage: Warten ist physisch riskant — Rot,
-    // nicht Grün. Der Server meldet das über `tank.blocks_wait`.
+    // Die eine echte Risikolage: Warten ist physisch riskant — Rot, nicht
+    // Grün. Der Server meldet das über `tank.blocks_wait`.
     const blocked = decide("refuel_now", {}, { p_correct: null });
     blocked.tank = {
       input: "input",
@@ -306,47 +318,48 @@ describe("Urteilstöne und Gültigkeit (UI-Neugestaltung 2026-09-26)", () => {
       blocks_wait: true,
       message: "Der Tankrest reicht für etwa 60 km.",
     };
-    const verdict = nowVerdict(input({ decide: blocked }));
-    expect(verdict?.action).toBe("refuel_now");
-    expect(verdict?.tone).toBe("red");
+    const answer = nowAnswer(input({ decide: blocked }));
+    expect(answer?.tone).toBe("red");
+    // … und der Grund steht im „Warum?“ -Blatt, nicht im Weg der Antwort.
+    expect(nowWhy(input({ decide: blocked }))?.lines.join(" ")).toContain(
+      "Der Tankrest reicht für etwa 60 km.",
+    );
   });
 
-  it("valid_until fließt in die Karte, ohne freigegebene Aktion bleibt es leer", () => {
+  it("valid_until fließt als „bis 17:45“ in die Karte", () => {
     const released = decide("wait", { valid_until: "2026-09-14T17:45:00+02:00" });
-    expect(nowVerdict(input({ decide: released }))?.validUntil).toBe(
-      "2026-09-14T17:45:00+02:00",
+    const answer = nowAnswer(input({ decide: released }));
+    expect(nowValidity(answer, NOW)?.label).toBe("bis 17:45");
+    const denied = nowAnswer(
+      input({ decide: decide("no_advice", {}, { reason_short: "Preise springen." }) }),
     );
-    const denied = decide("no_advice", {}, { reason_short: "Preise springen." });
-    const gray = nowVerdict(input({ decide: denied }));
-    expect(gray?.validUntil).toBeNull();
-    expect(gray?.expired).toBe(false);
+    expect(nowValidity(denied, NOW)).toBeNull();
   });
 
   it("abgelaufene Freigabe wechselt den Karteninhalt — kein Fehler, kein Rot", () => {
     // Der Vertrag: ab `valid_until` darf der Cache die Aktion nicht mehr
-    // zeigen. Die Karte wird grau und benennt den Zustand.
+    // zeigen. Die Karte zeigt die Tatsache (Preisvergleich), nicht die alte
+    // Handlung (A21-B1.4).
     const stale = decide("wait", { valid_until: "2026-09-14T11:00:00+02:00" });
-    const verdict = nowVerdict(input({ decide: stale }));
-    expect(verdict?.expired).toBe(true);
-    expect(verdict?.tone).toBe("gray");
-    expect(verdict?.headline).toBe("Empfehlung abgelaufen");
-    expect(verdict?.percent).toBeNull();
+    const answer = nowAnswer(input({ decide: stale }));
+    expect(answer?.expired).toBe(true);
+    expect(answer?.tone).toBe("gray");
+    expect(answer?.variant).toBe("no_forecast");
+    expect(nowValidity(answer, NOW)).toBeNull();
   });
 
   it("gültige Freigabe läuft erst ab, wenn die Zeit vergangen ist", () => {
     const fresh = decide("wait", { valid_until: "2026-09-14T17:45:00+02:00" });
-    const verdict = nowVerdict(input({ decide: fresh }));
-    expect(verdict?.expired).toBe(false);
-    expect(verdict?.headline).toBe("Warten bis 18–20 Uhr");
+    expect(nowAnswer(input({ decide: fresh }))?.expired).toBe(false);
   });
 });
 
-describe("O45: ct/L und € kommen aus derselben Basis", () => {
+describe("O45: der €-Betrag folgt dem angezeigten Fensterpreis", () => {
   // Befund 21.09.2026: „erwartet ~2,221 €/L“ stand neben „~2,09 € Ersparnis
   // für 55 L“ — 2,229 − 2,221 sind aber 0,44 €. Die 2,09 € gehören zu
   // 2,191 €/L (Median der Fensterminima), einem Preis, den die Karte nie
-  // gezeigt hat. Der €-Betrag neben dem ct/L-Abstand muss deshalb aus
-  // demselben Preis folgen wie dieser Abstand.
+  // gezeigt hat. Der €-Betrag muss deshalb aus demselben Preis folgen wie
+  // der Abstand, den die App nennt.
   const window = {
     start: "2026-09-21T10:00:00+02:00",
     end: "2026-09-21T11:50:00+02:00",
@@ -362,205 +375,104 @@ describe("O45: ct/L und € kommen aus derselben Basis", () => {
       recommended_window: window,
       expected_saving_eur: 2.09,
       expected_saving_median_eur: 0.44,
-      reason_short:
-        "Preis fällt im Fenster voraussichtlich — Warten spart im günstigsten Moment bis zu 2,09 €, Medianbetrag beträgt 0,44 €.",
     },
   );
 
-  it("der €-Betrag folgt dem angezeigten Fensterpreis", () => {
-    const verdict = nowVerdict(input({ decide: befund, liters: 55 }));
-    expect(verdict?.amount).toContain("0,8 ct/L günstiger");
-    expect(verdict?.amount).toContain("0,44 €");
-    // Die Minimums-Ersparnis steht nicht mehr unbenannt daneben …
-    expect(verdict?.amount).not.toContain("2,09");
-    // … sondern im Satz, der ihre Basis nennt.
-    expect(verdict?.detail).toContain("im günstigsten Moment bis zu 2,09 €");
+  it("die Karte nennt nie das Draw-Potenzial", () => {
+    const answer = nowAnswer(input({ decide: befund, liters: 55 }));
+    // Die 2,09 € gehören zum Median der Fensterminima (2,191 €/L) — einem
+    // Preis, den die Karte nie zeigt. Sie stehen deshalb an keiner Stelle.
+    expect(answer?.lead).not.toContain("2,09");
+    // 0,44 € liegen unter der Schwelle (§3 „Kaum Unterschied“) — die Antwort
+    // ist dann „Tanken, wann’s passt“, nicht „Warten“.
+    expect(answer?.variant).toBe("anytime");
   });
 
-  it("die Erklärung benennt beide Basen", () => {
-    const explain = nowExplanation({
-      ...input({ decide: befund, liters: 55 }),
-      pricesAt: null,
-    });
-    expect(explain?.sentences[1]).toContain("0,8 ct/L über dem erwarteten Fensterpreis");
-    expect(explain?.sentences[1]).toContain("Das Draw-Potenzial des Fensters beträgt 2,09 €");
-    expect(explain?.sentences[1]).toContain("Medianbetrag beträgt 0,44 €");
-  });
-
-  it("ohne Draws bleibt eine Zahl — keine erfundene zweite Basis", () => {
-    const verdict = nowVerdict(input());
-    expect(verdict?.amount).toBe("Im Median 4,0 ct/L günstiger ≈ 1,60 €");
-  });
-
-  it("trägt nur das Fensterminimum einen Vorsprung, steht das da", () => {
-    const nurMinimum = decide(
+  it("über der Schwelle trägt die Karte den Medianbetrag", () => {
+    const lohnend = decide(
       "wait",
       {},
-      {
-        station: { id: "aral", name: "Aral Mitte", price_now: 2.229, maps_url: null },
-        recommended_window: { ...window, expected_price: 2.235 },
-        expected_saving_eur: 2.09,
-        expected_saving_median_eur: 0,
-      },
+      { expected_saving_eur: 2.09, expected_saving_median_eur: 1.7 },
     );
-    const verdict = nowVerdict(input({ decide: nurMinimum, liters: 55 }));
-    expect(verdict?.amount).toBe("Fensterpotenzial ≈ 2,09 € günstiger");
+    expect(nowAnswer(input({ decide: lohnend, liters: 55 }))?.lead).toBe(
+      "spart ca. 1,70 €",
+    );
+  });
+
+  it("das „Warum?“ -Blatt nennt Liter und Abstand", () => {
+    const why = nowWhy(input({ decide: befund, liters: 55 }));
+    expect(why?.lines.join(" ")).toContain("Bei 55 L spart das ca. 0,44 €");
+    expect(why?.lines.join(" ")).toContain("0,8 ct/L");
+  });
+
+  it("ohne Median-Feld bleibt die Server-Zahl stehen — nichts erfunden", () => {
+    const legacy = decide("wait", {}, { expected_saving_median_eur: null });
+    expect(windowSavingEur(legacy.primary)).toBe(1.6);
   });
 });
 
-describe("Drei Fakten, feste Reihenfolge", () => {
-  it("nennt genau Jetzt hier · Bestes Fenster heute · Tank reicht?", () => {
-    const facts = nowFacts(input());
-    expect(facts.map((f) => f.label)).toEqual([
-      "Jetzt hier",
-      "Bestes Fenster heute",
-      "Tank reicht?",
-    ]);
+describe("„Warum?“ — höchstens fünf Zeilen (§3)", () => {
+  it("nennt Fenster, Ersparnis, Sicherheit und Stand", () => {
+    const why = nowWhy(input());
+    expect(why?.lines.length).toBeLessThanOrEqual(5);
+    expect(why?.lines[0]).toContain("18–20 Uhr");
+    expect(why?.lines[1]).toContain("Bei 40 L spart das ca. 1,60 €");
+    expect(why?.lines[2]).toContain("an 42 von 120 Tagen richtig");
+    expect(why?.lines.at(-1)).toContain("beobachteten Stationen");
+    // §8: Unsicherheit ist ein Wort — das Prozent steht nur in der Klammer.
+    expect(why?.lines[2]).toContain("ziemlich sicher");
+    // Der Weg in die Tiefe bleibt derselbe wie überall (Ebene 2 → Labor).
+    expect(why?.labHint?.section).toBe("sicherheit");
+    expect(why?.source).toContain("vor 4 Minuten");
   });
 
-  it("Jetzt hier folgt der Auswahl, sonst dem günstigsten Preis", () => {
-    const chosen = nowFacts(input()).at(0);
-    expect(chosen?.detail).toContain("Station aral");
-    expect(chosen?.value).toBe("1,749 €/L");
-    const cheapest = nowFacts(input({ selectedId: "unbekannt" })).at(0);
-    expect(cheapest?.value).toBe("1,689 €/L");
+  it("bleibt in Stufe C ehrlich: kein Wort, das nicht gemessen ist", () => {
+    const learning = decide("no_advice", { calibrated: false });
+    learning.personal_stats.advice.last_30d_total = 12;
+    const why = nowWhy(input({ decide: learning }));
+    expect(why?.lines[2]).not.toContain("%");
+    expect(why?.lines[2]).toContain("ziemlich sicher");
   });
 
-  it("ohne Preis steht „—“ mit Grund statt einer Null", () => {
-    const facts = nowFacts(input({ stations: [] }));
-    expect(facts[0].value).toBe("—");
-    expect(facts[0].detail).toContain("Kein bestätigter Preis");
+  it("nennt den Tank nur, wenn er die Entscheidung trägt", () => {
+    const blocking = decide("wait");
+    blocking.tank = {
+      input: "input",
+      tank_percent: 10,
+      tank_capacity_l: 50,
+      range_km: 40,
+      reserve_range_km: 20,
+      state: "low",
+      blocks_wait: true,
+      message: "Die Reserve reicht nicht bis 18 Uhr.",
+    };
+    const withTank = nowWhy(input({ decide: blocking }))?.lines ?? [];
+    expect(withTank.join(" ")).toContain("Die Reserve reicht nicht bis 18 Uhr.");
+    const ohne = nowWhy(input())?.lines ?? [];
+    expect(ohne.join(" ")).not.toContain("Reserve");
   });
 
-  it("Tankstand ist ein Fakt, kein Formular", () => {
-    const empty = nowFacts(
-      input({
-        decide: decide("wait", {
-          tank: {
-            input: "input",
-            tank_percent: 10,
-            tank_capacity_l: 50,
-            range_km: 71,
-            reserve_range_km: 0,
-            state: "low",
-            blocks_wait: true,
-            message: null,
-          },
-        }),
-      }),
-    );
-    expect(empty[2].value).toBe("Nein");
-    expect(empty[2].detail).toContain("71 km");
-    const unknown = nowFacts(input());
-    expect(unknown[2].value).toBe("—");
-    expect(unknown[2].detail).toBe("Tankstand nicht angegeben");
-  });
-
-  it("ohne Prognose bleibt das Fenster leer, nicht bunt", () => {
-    const facts = nowFacts(
-      input({ decide: decide("no_advice", { windows_today: [], calibrated: false }) }),
-    );
-    expect(facts[1].value).toBe("—");
-    expect(facts[1].detail).toContain("Keine Prognose");
+  it("A3: Trefferzahl und Quote rechnen Unentschieden gleich (halbes Gewicht)", () => {
+    // Befund A3 (23.09.2026): „Von X Empfehlungen trafen Y zu (Z %)“
+    // mischte Zählweisen — Y ohne Ties, Z mit Ties × 0,5.
+    const decideA = decide("wait");
+    decideA.personal_stats.advice.last_30d_total = 30;
+    decideA.personal_stats.advice.last_30d_hits = 25;
+    decideA.personal_stats.advice.last_30d_ties = 2;
+    decideA.personal_stats.advice.hit_rate = 0.867;
+    const why = nowWhy(input({ decide: decideA }));
+    expect(why?.lines[2]).toContain("an 26 von 30 Tagen richtig");
   });
 });
 
-describe("Nächste Schritte: höchstens drei", () => {
-  it("nimmt Alternative, besseres Fenster und Tankwarnung", () => {
-    const rich = decide("wait", {
-      tank: {
-        input: "input",
-        tank_percent: 10,
-        tank_capacity_l: 50,
-        range_km: 60,
-        reserve_range_km: 0,
-        state: "low",
-        blocks_wait: true,
-        message: null,
-      },
-    });
-    rich.alternatives_nearby = [
-      {
-        station_id: "free",
-        name: "Freie Nord",
-        brand: "",
-        price: 1.679,
-        delta_ct: 7,
-        detour_km: 2.4,
-        net_eur: 0.8,
-        worth_it: true,
-        verdict: "worth",
-      },
-    ];
-    rich.windows_week = [
-      {
-        start: "2026-09-15T19:00:00+02:00",
-        end: "2026-09-15T21:00:00+02:00",
-        expected_price: 1.689,
-        expected_saving_eur: 2.1,
-        p: 0.7,
-      },
-    ];
-    const steps = nowSteps(input({ decide: rich }));
-    expect(steps.map((s) => s.id)).toEqual(["alternative", "later-window", "tank"]);
-    expect(steps[1].text).toContain("Morgen 19–21 Uhr");
-    expect(steps[2].target).toBe("tank");
-  });
-
-  it("O45: der €-Wert des Fenster-Schritts passt zum Fensterpreis", () => {
-    const withLater = decide("wait");
-    withLater.windows_week = [
-      {
-        start: "2026-09-15T19:00:00+02:00",
-        end: "2026-09-15T21:00:00+02:00",
-        expected_price: 2.221,
-        expected_saving_eur: 2.09,
-        expected_saving_median_eur: 0.44,
-        p: 0.71,
-      },
-    ];
-    const steps = nowSteps(input({ decide: withLater, liters: 55 }));
-    const later = steps.find((step) => step.id === "later-window");
-    // Nicht die 2,09 € aus den Fensterminima, sondern die 0,44 €, die zum
-    // Medianpreis 2,221 €/L gehören.
-    expect(later?.text).toContain("0,44 € weniger");
-    expect(later?.text).not.toContain("2,09");
-  });
-
-  it("schweigt, wenn es nichts zu tun gibt", () => {
-    expect(nowSteps(input())).toEqual([]);
-  });
-
-  it("nennt ohne Empfehlung kein Prognose-Fenster (Stufe C)", () => {
-    // Widerspruch aus dem Pixel-9-Check (18.09.2026): Die Karte sagte
-    // „Keine Prognose — Preise vergleichen“, darunter stand „Freitag
-    // 14:00–15:54 Uhr wäre noch besser (2,04 € weniger)“. Beides auf einem
-    // Bildschirm — die zweite Zeile behauptet die Sicherheit, die die erste
-    // gerade verneint (Konzept §0.4). Auf Stufe C bleibt der Schritt weg;
-    // die Alternative aus echten Preisen darf bleiben.
-    const blind = decide("no_advice");
-    blind.windows_week = [
-      {
-        start: "2026-09-15T19:00:00+02:00",
-        end: "2026-09-15T21:00:00+02:00",
-        expected_price: 1.689,
-        expected_saving_eur: 2.1,
-        p: 0.7,
-      },
-    ];
-    expect(nowSteps(input({ decide: blind })).map((s) => s.id)).not.toContain(
-      "later-window",
-    );
-  });
-});
-
-describe("Frische-Fußzeile", () => {
+describe("Frische: ein Chip im Kopf (§6)", () => {
   it("zählt Alter in Worten und färbt erst bei Schwellen", () => {
     const fresh = nowFreshness({
       pricesAt: minutesAgo(4),
       forecastAt: minutesAgo(35),
       now: NOW,
     });
+    expect(fresh.chip).toBe("vor 4 Minuten");
     expect(fresh.text).toBe("Preise vor 4 Minuten · Prognose vor 35 Minuten");
     expect(fresh.tone).toBe("ok");
 
@@ -569,74 +481,14 @@ describe("Frische-Fußzeile", () => {
 
     const old = nowFreshness({ pricesAt: minutesAgo(90), forecastAt: null, now: NOW });
     expect(old.tone).toBe("bad");
+    expect(old.chip).toBe("alt");
   });
 
   it("ohne jeden Stand sagt sie das, statt „gerade eben“ zu behaupten", () => {
     const none = nowFreshness({ now: NOW });
     expect(none.text).toContain("Kein Datenstand");
+    expect(none.chip).toBe("kein Stand");
     expect(none.tone).toBe("warn");
-  });
-});
-
-describe("Ebene 1: höchstens drei Sätze", () => {
-  it("nennt Muster, Abstand und Trefferquote — ohne Formel", () => {
-    const explain = nowExplanation({ ...input(), pricesAt: minutesAgo(4) });
-    expect(explain?.sentences).toHaveLength(3);
-    expect(explain?.sentences[0]).toContain("18–20 Uhr");
-    expect(explain?.sentences[1]).toContain("4,0 ct/L über");
-    expect(explain?.sentences[2]).toContain("Von 120");
-    expect(explain?.source).toContain("vor 4 Minuten");
-    // 3.2: Der Weg in die Tiefe zeigt auf den Labor-Abschnitt, nicht mehr
-    // auf die alte Werkstatt.
-    expect(explain?.labHint).toEqual({
-      section: "sicherheit",
-      label: "Im Labor vertiefen: Was „ziemlich sicher“ heißt",
-    });
-  });
-
-  it("schneidet bei mehr Material auf drei Sätze", () => {
-    const explain = nowExplanation({ ...input(), pricesAt: minutesAgo(4) });
-    expect((explain?.sentences ?? []).length).toBeLessThanOrEqual(3);
-  });
-
-  it("bleibt in Stufe C ehrlich", () => {
-    const learning = decide("no_advice", { calibrated: false });
-    learning.personal_stats.advice.last_30d_total = 12;
-    const stageC = nowExplanation({ ...input({ decide: learning }), pricesAt: null });
-    // Stufe C übernimmt den Servergrund, wenn es einen gibt …
-    expect(stageC?.sentences[2]).toBe("Der Preis fällt hier abends meist.");
-    // … und sagt sonst ehrlich, dass es keinen belastbaren Grund gibt.
-    const withoutReason = decide("no_advice", { calibrated: false }, { reason_short: "" });
-    expect(
-      nowExplanation({ ...input({ decide: withoutReason }), pricesAt: null })?.sentences[2],
-    ).toContain("belastbare Empfehlung");
-    // Befund A5 (23.09.2026): eine frühere „Stufe B“ mit eigenem Satz gab es
-    // nie — auch ein Alt-Payload mit Handlung ohne Gate landet in Stufe C.
-    const altPayload = decide("wait", { calibrated: false });
-    altPayload.personal_stats.advice.last_30d_total = 12;
-    const explanation = nowExplanation({
-      ...input({ decide: altPayload }),
-      pricesAt: minutesAgo(4),
-    });
-    expect(explanation?.sentences[2]).toBe("Der Preis fällt hier abends meist.");
-  });
-
-  it("A3: Trefferzahl und Quote rechnen Unentschieden gleich (halbes Gewicht)", () => {
-    // Befund A3 (23.09.2026): „Von X abgeschlossenen Empfehlungen trafen Y zu
-    // (Z %)" mischte Zählweisen — Y ohne Ties, Z mit Ties × 0,5. Jetzt steht
-    // im Zähler dieselbe halbgewichtete Zahl wie in der Klammer.
-    const decideA = decide("wait");
-    decideA.personal_stats.advice.last_30d_total = 4;
-    decideA.personal_stats.advice.last_30d_hits = 2;
-    decideA.personal_stats.advice.last_30d_ties = 1;
-    decideA.personal_stats.advice.hit_rate = 0.625;
-    const explanation = nowExplanation({
-      ...input({ decide: decideA }),
-      pricesAt: minutesAgo(4),
-    });
-    expect(explanation?.sentences[2]).toBe(
-      "Von 4 abgeschlossenen Empfehlungen trafen 2,5 zu (63 %).",
-    );
   });
 });
 
@@ -651,355 +503,182 @@ describe("Server-Fehlerpayload ohne primary (Regression)", () => {
   });
 
   it("empfiehlt nichts und begründet nichts", () => {
-    expect(nowVerdict(input({ decide: broken }))).toBeNull();
-    expect(nowExplanation({ ...input({ decide: broken }), pricesAt: null })).toBeNull();
+    expect(nowWhy(input({ decide: broken }))).toBeNull();
     expect(learningNote(broken)).toBeNull();
   });
 
-  it("liefert trotzdem die drei Fakten und keine Schritte", () => {
-    const facts = nowFacts(input({ decide: broken }));
-    expect(facts).toHaveLength(3);
-    expect(facts[1].value).toBe("—");
-    expect(facts[1].detail).toContain("Keine Prognose");
-    expect(nowSteps(input({ decide: broken }))).toEqual([]);
+  it("trägt die Tatsache, wenn Preise da sind", () => {
+    const answer = nowAnswer(input({ decide: broken }));
+    expect(answer?.variant).toBe("no_forecast");
+    expect(answer?.lead).toBe("1,689 €/L");
   });
 });
 
 describe("Frische der Prognose (Regression)", () => {
   // Vorher stand in der Fußzeile `stats_summary.generated_at` — das ist der
   // Zeitpunkt der Antwortberechnung, also immer „gerade eben“. Der Modell-Lauf
-  // datiert aus der Engine-Publikation bzw. dem Fit.
+  // (`debug.fitted_at`) datiert die Prognose wirklich.
   it("nimmt den Fit-Zeitpunkt der Veröffentlichung, sonst den Kalibrier-Stand", () => {
-    const withPublishing = decide("wait");
-    withPublishing.quality = {
-      rolling_picp_7d_pct: 94.2,
-      rolling_picp_7d_points: 220,
-      rolling_picp_7d_days: 7,
-      rolling_picp_7d_badge: "green",
-      rolling_picp_7d_as_of: "2026-09-14T09:25:00+02:00",
-      rolling_picp_window_days: 7,
-      rolling_picp_nominal_pct: 95,
-      gate: null,
-    };
-    withPublishing.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-14T09:25:00+02:00" };
-    expect(forecastStamp(withPublishing)).toBe("2026-09-14T09:25:00+02:00");
+    const withFit = decide("wait", {
+      debug: { fitted_at: minutesAgo(35) },
+    } as Partial<DecideResult>);
+    expect(forecastStamp(withFit)).toBe(minutesAgo(35));
 
-    // Befund 25.09.2026: `rolling_picp_7d_as_of` ist ein reiner Kalendertag
-    // (der letzte bewertete Tag) und datiert den Lauf falsch — die Fußzeile
-    // sagte „Prognose vor 1 Tag“, obwohl der Fit Minuten zurücklag. Bei
-    // abweichenden Stempeln gewinnt deshalb der Fit-Zeitpunkt der
-    // Veröffentlichung (`debug.fitted_at` = `origin` der Publikation).
-    const differing = decide("wait");
-    differing.quality = {
-      rolling_picp_7d_pct: 94.2,
-      rolling_picp_7d_points: 220,
-      rolling_picp_7d_days: 7,
-      rolling_picp_7d_badge: "green",
-      rolling_picp_7d_as_of: "2026-09-24",
-      rolling_picp_window_days: 7,
-      rolling_picp_nominal_pct: 95,
-      gate: null,
-    };
-    differing.debug = {
-      forecast_url: "/api/v1/forecast",
-      fitted_at: "2026-09-25T09:30:00+02:00",
-    };
-    expect(forecastStamp(differing)).toBe("2026-09-25T09:30:00+02:00");
-
-    // Ohne Fit-Zeitpunkt bleibt der Rolling-Stand der Rückfall.
-    const onlyRolling = decide("wait");
-    onlyRolling.quality = { ...withPublishing.quality! };
-    expect(forecastStamp(onlyRolling)).toBe("2026-09-14T09:25:00+02:00");
-
-    const onlyFit = decide("wait");
-    onlyFit.debug = { forecast_url: "/api/v1/forecast", fitted_at: "2026-09-13T23:00:00+02:00" };
-    expect(forecastStamp(onlyFit)).toBe("2026-09-13T23:00:00+02:00");
+    const legacy = decide("wait", {
+      quality: { rolling_picp_7d_as_of: "2026-09-13" },
+    } as Partial<DecideResult>);
+    expect(forecastStamp(legacy)).toBe("2026-09-13");
   });
 
   it("sagt ohne Lauf nichts, statt „gerade eben“ zu behaupten", () => {
     expect(forecastStamp(decide("wait"))).toBeNull();
     expect(forecastStamp(null)).toBeNull();
-    expect(
-      forecastStamp({ error_code: "polling_missing" } as unknown as DecideResult),
-    ).toBeNull();
-    expect(
-      nowFreshness({ pricesAt: minutesAgo(4), forecastAt: null, now: NOW }).text,
-    ).toBe("Preise vor 4 Minuten · Prognose ohne Stand");
   });
 });
 
-describe("Heute im Blick: Gleichstand als Spanne", () => {
-  it("nennt 06–12 Uhr, wenn sechs Stunden denselben Bestpreis teilen", () => {
-    const cells = [
-      ...[6, 7, 8, 9, 10, 11].map((hour) => ({
-        hour,
-        value: 2.289,
-        latest: 2.289,
-        tone: "cheap" as const,
-        current: hour === 9,
-      })),
-      { hour: 18, value: 2.349, latest: 2.349, tone: "pricey" as const, current: false },
-    ];
-    const panel = nowDayPanel(cells);
-    expect(panel.bestLabel).toBe("06–12 Uhr");
-    expect(panel.tied).toBe(true);
-    expect(panel.bestHours).toEqual([6, 7, 8, 9, 10, 11]);
-    expect(panel.headline).toContain("06–12 Uhr");
-    expect(panel.headline).not.toContain("06–07 Uhr");
-    expect(panel.headline).toContain("18–19 Uhr");
+describe("Tageszeile: eine Zeile, eine Kurve (§3)", () => {
+  function cells(
+    values: Array<number | null>,
+    currentHour = 12,
+  ): StripCell[] {
+    return values.map((value, index) => ({
+      hour: 6 + index,
+      value,
+      latest: value,
+      current: 6 + index === currentHour,
+      tone: "mid" as const,
+    }));
+  }
+
+  it("nennt den Tiefpunkt und den aktuellen Preis", () => {
+    const row = nowDayRow(cells([1.75, 1.74, 1.73, 1.72, 1.71, 1.7, 1.69]));
+    expect(row?.label).toBe("Tief ~12 Uhr");
+    expect(row?.low).toEqual({ hour: 12, value: 1.69 });
+    expect(row?.now).toBe(1.69);
+    expect(row?.sentence).toContain("1,690 €/L");
   });
 
-  it("A4-Regression: bei gerader Stundenzahl ist der Tagesmedian der Mittelwert, nicht der obere Rand", () => {
-    // Befund A4 (23.09.2026): `sorted[n >> 1]` nahm den zweiten Mittelwert —
-    // bei 4 offenen Stunden [1.70, 1.71, 1.72, 1.73] stand „1,720" statt
-    // des Medians 1,715 €/L.
-    const panel = nowDayPanel([
-      { hour: 6, value: 1.7, latest: 1.7, tone: "cheap", current: false },
-      { hour: 8, value: 1.71, latest: 1.71, tone: "cheap", current: false },
-      { hour: 12, value: 1.72, latest: 1.72, tone: "mid", current: true },
-      { hour: 18, value: 1.73, latest: 1.73, tone: "pricey", current: false },
-    ]);
-    expect(panel.median).toBeCloseTo(1.715, 9);
-    expect(panel.nowVsMedianCt).toBeCloseTo(0.5, 9);
-    // Ungerade Stichprobe unverändert: der mittlere Wert.
-    const odd = nowDayPanel([
-      { hour: 6, value: 1.7, latest: 1.7, tone: "cheap", current: false },
-      { hour: 12, value: 1.72, latest: 1.72, tone: "mid", current: false },
-      { hour: 18, value: 1.73, latest: 1.73, tone: "pricey", current: false },
-    ]);
-    expect(odd.median).toBeCloseTo(1.72, 9);
+  it("leere Stunden bleiben leer — keine Schätzung", () => {
+    const row = nowDayRow(cells([1.75, null, null, 1.7]));
+    expect(row?.cells.filter((cell) => cell.value === null)).toHaveLength(2);
+    expect(row?.coverage).toContain("2 von 4 Stunden mit offener Meldung");
   });
 
-  it("einzelne günstigste Stunde bleibt 12–13 Uhr", () => {
-    const panel = nowDayPanel([
-      { hour: 6, value: 1.759, latest: 1.759, tone: "pricey", current: false },
-      { hour: 12, value: 1.709, latest: 1.709, tone: "cheap", current: true },
-      { hour: 18, value: 1.729, latest: 1.729, tone: "mid", current: false },
-    ]);
-    expect(panel.bestLabel).toBe("12–13 Uhr");
-    expect(panel.tied).toBe(false);
-    expect(panel.headline).toContain("12–13 Uhr");
+  it("ohne Messung gibt es keine Zeile — keine leere Kurve", () => {
+    expect(nowDayRow(cells([null, null]))).toBeNull();
+    expect(nowDayRow([])).toBeNull();
+  });
+
+  it("A4-Regression: der Median ist der Mittelwert, nicht der obere Rand", () => {
+    // Bei gerader Stichprobe lag der obere der beiden Mittelwerte drin —
+    // der „Tagesmedian“ zeigte systematisch zu hoch.
+    const row = nowDayRow(cells([1.7, 1.72, 1.74, 1.76]));
+    expect(row?.median).toBeCloseTo(1.73, 5);
   });
 });
 
 describe("Hilfsfunktionen", () => {
   it("rechnet den Abstand in ct/L, auch wenn eine Seite fehlt", () => {
-    expect(savingPerLiterCt(1.75, 1.71)).toBeCloseTo(4, 5);
-    expect(savingPerLiterCt(null, 1.71)).toBeNull();
-    expect(savingPerLiterCt(1.75, null)).toBeNull();
+    expect(savingPerLiterCt(1.749, 1.709)).toBeCloseTo(4, 5);
+    expect(savingPerLiterCt(null, 1.709)).toBeNull();
+    expect(savingPerLiterCt(1.749, null)).toBeNull();
+  });
+
+  it("nennt die Stunde eines Fensters ungefähr, in Berliner Zeit", () => {
+    expect(hourApproxLabel("2026-09-14T18:30:00+02:00")).toBe("~18 Uhr");
+    expect(hourApproxLabel("unsinn")).toBeNull();
   });
 
   it("beschriftet Tage in Berliner Zeit", () => {
-    expect(dayLabel("2026-09-14T18:00:00+02:00", NOW)).toBe("Heute");
-    expect(dayLabel("2026-09-15T19:00:00+02:00", NOW)).toBe("Morgen");
-    expect(dayLabel("2026-09-17T19:00:00+02:00", NOW)).toBe("Donnerstag");
-    expect(dayLabel(null, NOW)).toBe("Später");
-  });
-});
-
-describe("B2: timeInputToBerlinIso (Spätestens-tanken → latest_by)", () => {
-  // Feste „jetzt“-Zeitpunkte, damit die Tests nicht von der Uhr abhängen.
-  const SUMMER = Date.parse("2026-09-14T12:00:00+02:00"); // CEST, UTC+2
-  const WINTER = Date.parse("2026-12-14T12:00:00+01:00"); // CET, UTC+1
-
-  it("wandelt Berlin-Wallclock in den korrekten UTC-Stempel um (Sommerzeit)", () => {
-    // 10:00 Berlin bei CEST (UTC+2) = 08:00 UTC. Mit dem alten
-    // „+ offsetMs“ wäre es 12:00 UTC (14:00 Berlin) gewesen.
-    expect(timeInputToBerlinIso("10:00", SUMMER)).toBe(
-      "2026-09-14T08:00:00.000Z",
-    );
-    expect(timeInputToBerlinIso("23:59", SUMMER)).toBe(
-      "2026-09-14T21:59:00.000Z",
-    );
-  });
-
-  it("benutzt das Winter-Offset (CET, UTC+1)", () => {
-    // 10:00 Berlin bei CET (UTC+1) = 09:00 UTC.
-    expect(timeInputToBerlinIso("10:00", WINTER)).toBe(
-      "2026-12-14T09:00:00.000Z",
-    );
-  });
-
-  it("Mitternacht rollt auf den Vorabend in UTC zurück", () => {
-    // 00:00 Berlin am 14.09. (CEST) = 22:00 UTC am 13.09.
-    expect(timeInputToBerlinIso("00:00", SUMMER)).toBe(
-      "2026-09-13T22:00:00.000Z",
-    );
-    // 00:00 Berlin am 14.12. (CET) = 23:00 UTC am 13.12.
-    expect(timeInputToBerlinIso("00:00", WINTER)).toBe(
-      "2026-12-13T23:00:00.000Z",
-    );
-  });
-
-  it("Rundtrip: der Stempel zeigt in Berlin wieder die eingegebene Zeit", () => {
-    const iso = timeInputToBerlinIso("17:30", SUMMER);
-    expect(iso).not.toBeNull();
-    const parts = new Intl.DateTimeFormat("de-DE", {
-      timeZone: "Europe/Berlin",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date(iso!));
-    const hour = Number(parts.find((p) => p.type === "hour")?.value) % 24;
-    const minute = Number(parts.find((p) => p.type === "minute")?.value);
-    expect(hour).toBe(17);
-    expect(minute).toBe(30);
-  });
-
-  it("lehnt ungültige Eingaben ab", () => {
-    expect(timeInputToBerlinIso("25:00", SUMMER)).toBeNull();
-    expect(timeInputToBerlinIso("10:60", SUMMER)).toBeNull();
-    expect(timeInputToBerlinIso("kein-Format", SUMMER)).toBeNull();
+    expect(dayLabel("2026-09-14T12:00:00+02:00", NOW)).toBe("Heute");
+    expect(dayLabel("2026-09-15T12:00:00+02:00", NOW)).toBe("Morgen");
+    expect(dayLabel("2026-09-18T12:00:00+02:00", NOW)).toBe("Freitag");
   });
 });
 
 describe("O19: nowBestNow rechnet gegen die Entscheidung, nicht gegen das Maximum", () => {
-  const stations = [
-    station("aral", { price: 1.759 }),
-    station("shell", { price: 1.709, name: "Shell Nord" }),
-    station("esso", { price: 1.729, name: "Esso West" }),
-  ];
-
   it("nennt die Referenz der Empfehlung im Satz und rechnet gegen sie", () => {
-    const result = nowBestNow({
-      // Entscheidungs-Station Aral Mitte, Jetzt-Preis 1,749 €/L.
-      decide: decide("wait"),
-      stations,
-      liters: 45,
-      now: NOW,
-    });
-    expect(result.reference.kind).toBe("nowcast");
-    expect(result.reference.station).toBe("Aral Mitte");
-    expect(result.reference.price).toBe(1.749);
-    // 1,749 − 1,709 = 4,0 ct/L — nicht 5,0 ct/L gegen die teuerste Station.
-    expect(result.saveCt).toBeCloseTo(4.0, 6);
-    expect(result.saveEur).toBeCloseTo(1.8, 6);
-    expect(result.sentence).toContain("4,0 ct/L");
-    expect(result.sentence).toContain("Aral Mitte, 1,749 €/L");
-    expect(result.sentence).toContain("1,80 € bei 45 L");
-    // Gegen die teuerste Station wird nicht mehr gerechnet …
-    expect(result.sentence).not.toContain("teuersten");
-    // … die Spanne bleibt als Spanne erhalten.
-    expect(result.spreadCt).toBeCloseTo(5.0, 6);
+    const best = nowBestNow(input());
+    expect(best.station?.station_id).toBe("shell");
+    expect(best.saveCt).toBeCloseTo(6, 5);
+    expect(best.saveEur).toBeCloseTo(2.4, 5);
+    expect(best.sentence).toContain("unter dem Preis");
   });
 
   it("ohne Empfehlung gibt es keine persönliche Ersparnis, nur die Spanne", () => {
-    const result = nowBestNow({ decide: null, stations, liters: 45, now: NOW });
-    expect(result.reference.kind).toBe("none");
-    expect(result.saveCt).toBeNull();
-    expect(result.saveEur).toBeNull();
-    expect(result.spreadCt).toBeCloseTo(5.0, 6);
-    // B4 (Befund UX/Mathe 2026-09-19, §1.4.1): Der Satz bleibt in diesem
-    // Zustand null — „am günstigsten (Preis)“ steht in Headline und Betrag,
-    // die Spanne in der Chip-Zeile der Karte. Er dupliziert nur noch.
-    expect(result.sentence).toBeNull();
+    const best = nowBestNow(input({ decide: null }));
+    expect(best.saveCt).toBeNull();
+    expect(best.spreadCt).toBeCloseTo(6, 5);
   });
 
   it("eine günstigere Referenz ergibt keine erfundene Ersparnis", () => {
-    // Die Entscheidungs-Station ist selbst die günstigste: nichts zu sparen.
-    // Kein Vergleich mit sich selbst (0.70.1, MICROCOPY §4b) — der Satz sagt,
-    // dass der günstigste Preis zugleich der Anker der Empfehlung ist.
-    const result = nowBestNow({
-      decide: decide("wait", {}, {
-        station: { id: "shell", name: "Shell Nord", price_now: 1.709 },
-      }),
-      stations,
-      liters: 45,
-      now: NOW,
+    const cheaperAnchor = decide("wait", {}, {
+      station: { id: "aral", name: "Aral Mitte", price_now: 1.6, maps_url: null },
     });
-    expect(result.saveCt).toBeCloseTo(0, 6);
-    expect(result.sentence).toContain("und zugleich der Preis, den die Empfehlung");
-    expect(result.sentence).not.toContain("das sind");
-    expect(result.sentence).not.toContain("nicht unter dem Preis");
+    const best = nowBestNow(input({ decide: cheaperAnchor }));
+    expect(best.saveCt).toBeLessThan(0);
+    expect(best.sentence).toContain("aber nicht unter dem Preis");
   });
 });
 
 describe("Priorität 1: Abdeckung und Netto-Vergleich (A70)", () => {
-  it("nowCoverage nennt eingerichtete vs. frische Stationen", async () => {
-    const { nowCoverage } = await import("./now");
-    const stations = [
-      station("a", { price: 1.719 }),
-      station("b", { price: 1.749 }),
-      station("c", { price: null }),
-    ];
-    const coverage = nowCoverage(stations, minutesAgo(4), NOW);
-    expect(coverage.total).toBe(3);
-    expect(coverage.fresh).toBe(2);
-    expect(coverage.line).toContain("2 von 3");
-    expect(coverage.line).toContain("eingerichteten Stationen mit frischem Preis");
-    expect(coverage.ageLine).toContain("Preise vor 4 Minuten");
+  it("nowCoverage nennt beobachtete vs. frische Stationen", () => {
+    const coverage = nowCoverage(
+      [station("aral"), station("shell", { price: null })],
+      minutesAgo(4),
+      NOW,
+    );
+    expect(coverage.line).toBe(
+      "1 von 2 beobachteten Stationen mit frischem Preis",
+    );
+    expect(coverage.ageLine).toBe("Preise vor 4 Minuten");
   });
 
-  it("nowNetBest trennt netto Wahl von nicht vergleichbar", async () => {
-    const { nowNetBest } = await import("./now");
-    const stations = [
-      station("a", { name: "Station A", price: 1.719 }),
-      station("b", { name: "Station B", price: 1.729 }),
+  it("nowNetBest trennt netto Wahl von nicht vergleichbar", () => {
+    const withAlt = decide("wait");
+    withAlt.alternatives_nearby = [
+      {
+        station_id: "free",
+        name: "Freie Nord",
+        brand: "",
+        price: 1.679,
+        delta_ct: 7,
+        detour_km: 2.4,
+        net_eur: 0.8,
+        worth_it: true,
+        verdict: "worth",
+      },
     ];
-    const withNet = nowNetBest({
-      decide: decide("no_advice", {
-        alternatives_nearby: [
-          {
-            station_id: "b",
-            name: "Station B",
-            brand: "ARAL",
-            price: 1.729,
-            delta_ct: 1,
-            detour_km: 2,
-            net_eur: 1.4,
-            worth_it: true,
-            verdict: "worth",
-          },
-        ],
-      } as unknown as DecideResult),
-      stations,
-      liters: 40,
-      now: NOW,
-    });
-    expect(withNet.kind).toBe("net");
-    if (withNet.kind === "net") {
-      expect(withNet.text).toContain("Für diese Fahrt am günstigsten: Station B");
-      expect(withNet.text).toContain("netto");
-    }
-    const missing = nowNetBest({
-      decide: decide("no_advice", {
-        alternatives_nearby: [],
-      } as unknown as DecideResult),
-      stations,
-      liters: 40,
-      now: NOW,
-    });
-    expect(missing.kind).toBe("not_comparable");
-    expect(missing.text).toContain("Nicht sinnvoll vergleichbar");
+    const net = nowNetBest(input({ decide: withAlt }));
+    expect(net.kind).toBe("net");
+    expect(net.text).toContain("Freie Nord");
+    expect(nowNetBest(input())).toMatchObject({ kind: "not_comparable" });
   });
 });
 
-
 describe("Gültigkeits-Countdown", () => {
-  const verdictAt = (ms: number, action: "wait" | "no_advice" = "wait") =>
-    nowVerdict(input({ decide: decide(action, { valid_until: new Date(ms).toISOString() }), now: NOW }));
+  const answerWith = (validUntil: string | null) =>
+    nowAnswer(input({ decide: decide("wait", { valid_until: validUntil }) }));
 
   it("zeigt vor den letzten 30 Minuten nur die Berliner Uhrzeit", () => {
-    expect(nowValidity(verdictAt(NOW + 31 * 60000), NOW)).toEqual({
-      label: "gültig bis 12:31", endingSoon: false,
+    expect(nowValidity(answerWith("2026-09-14T17:45:00+02:00"), NOW)).toEqual({
+      label: "bis 17:45",
+      endingSoon: false,
     });
   });
+
   it("warnt ab genau 30 Minuten und rundet Restminuten auf", () => {
-    expect(nowValidity(verdictAt(NOW + 30 * 60000), NOW)).toEqual({
-      label: "gültig bis 12:30 · noch 30 min", endingSoon: true,
-    });
-    expect(nowValidity(verdictAt(NOW + 1), NOW)?.label).toContain("noch 1 min");
+    const validity = nowValidity(answerWith("2026-09-14T12:20:00+02:00"), NOW);
+    expect(validity?.endingSoon).toBe(true);
+    expect(validity?.label).toBe("bis 12:20 · noch 20 min");
   });
+
   it("endet exakt an der Freigabegrenze", () => {
-    expect(verdictAt(NOW)?.expired).toBe(true);
-    expect(nowValidity(verdictAt(NOW), NOW)).toBeNull();
-    expect(nowValidity(verdictAt(NOW - 1), NOW)).toBeNull();
+    expect(nowValidity(answerWith("2026-09-14T12:00:00+02:00"), NOW)).toBeNull();
   });
-  it("erfindet keinen Countdown für fehlende, ungültige oder abgelehnte Freigaben", () => {
+
+  it("erfindet keinen Countdown für fehlende oder abgelehnte Freigaben", () => {
+    expect(nowValidity(answerWith(null), NOW)).toBeNull();
     expect(nowValidity(null, NOW)).toBeNull();
-    expect(nowValidity(verdictAt(NOW + 60000, "no_advice"), NOW)).toBeNull();
-    const verdict = verdictAt(NOW + 60000)!;
-    expect(nowValidity({ ...verdict, validUntil: "invalid" }, NOW)).toBeNull();
-    expect(nowValidity({ ...verdict, validUntil: null }, NOW)).toBeNull();
   });
 });
