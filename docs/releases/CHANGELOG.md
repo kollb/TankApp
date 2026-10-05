@@ -4,6 +4,47 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.74.0] – 2026-10-05
+
+**UX-Neuentwurf, Batch 2 — Vertrauen neu: das Labor beantwortet drei Fragen**
+([Planung](../planung/UX-NEUENTWURF.md) §5, §10; Entscheidungen vom
+05.10.2026).
+
+- **Labor: drei Blöcke, sonst nichts.** Block 1 „Kann ich vertrauen?“ trägt
+  **einen** Satz als Zählung („An 26 von 30 Tagen lag die Empfehlung richtig.“,
+  kein Prozent) und darunter das filterbare Prognose-Tagebuch
+  (Alle/Richtig/Daneben/Unentschieden/Nicht bewertbar). Block 2 „Wie gut ist
+  die Prognose?“ zeigt eine Kurve (erwartet vs. echt, Blickweite 24 h/3/7 Tage)
+  und einen Satz mit dem mittleren Fehler in ct/L. Block 3 „Wie rechnet die
+  App?“ nennt drei Schritte in Alltagssprache; Formeln, die acht Modell-
+  Bausteine, die Fachwerte und die Heatmap liegen gebündelt hinter „Details
+  für Neugierige“.
+- **Labor: Streichliste.** Sub-Tabs (Überblick/Modell/Güte/Daten), Spielplatz,
+  Experimente, Tankprofil-Rechner, Einflüsse-Balken, Güte-Panel (Reliability,
+  Brier, CUSUM, zwei MASE-Werte, Beta-Intervall), Heatmap-Schalter und das
+  eingebettete Glossar sind entfernt. Fachjargon steht nur noch hinter
+  „Details für Neugierige“ oder im Tooltip.
+- **Rohdaten als Betreiber-Sicht.** Die drei Roh-Tabellen, die vier
+  CSV-Exporte (Tagebuch, Verlauf, Auswahl, Prognose), die Datenreichweite und
+  der M8-Winter-Hinweis wohnen jetzt in „System“ (`views/SystemRohdaten.tsx`)
+  über dem API-Explorer — ohne Neuaufbau, nur Umzug.
+- **Stationen verdichtet.** Der δ̂-Beweis wohnt hier: das Detail der gewählten
+  Station nennt den **Preis-Abstand zum Stadt-Median** (mit Signifikanz-Hinweis
+  oder ehrlichem Messstand). Die Liste öffnet fest nach Preis; Netto-€ und
+  Entfernung bleiben Zusätze in der Zeile, „Referenz“ steht nur noch an der
+  gewählten Station. Frische bleibt die `FreshnessLine` im Fuß.
+- **Ich verdichtet.** Die Frage des gestrichenen Tankprofil-Rechners
+  („Was bringt es mir?“) beantwortet genau eine Zeile im Fahrzeug-Bereich;
+  der Tankstand bleibt am einzigen Ort der Pflege.
+- **Alte Links bleiben gültig.** `?tab=labor&section=…` springt weiter auf
+  den passenden Block; `?subtab=ueberblick|modell|guete|daten` übersetzt
+  `sectionFromLegacySubTab`. **Kein API-Vertragsbruch:** der Server liefert
+  unverändert, nur die GUI zeigt weniger davon.
+- **Abnahme:** Labor-Unit-Tests auf die drei Blöcke umgeschrieben,
+  Streichlisten-Ratchets für die entfernten Bausteine, E2E-Suiten
+  (mobil 390 px und Desktop) auf Block-Anker und neue Überschriften
+  ausgerichtet; MICROCOPY auf unter 150 Zeilen verdichtet (§4c neu).
+
 ## [0.73.0] – 2026-10-04
 
 **UX-Neuentwurf, Batch 1 — „Jetzt“ und „Woche“ antworten statt zu berichten**

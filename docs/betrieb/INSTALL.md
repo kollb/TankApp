@@ -213,9 +213,12 @@ noch in Archiv-Dokumenten.
   (E3/E4). Keine Tankbuchung ohne Station, keine als netto ausgegebene
   Umweg-Ersparnis.
 - **Stationen:** Preis-Atlas — Karte mit Netto-€-Pins (die Referenzstation ist
-  beschriftet, Zuhause trägt das Haus-Symbol), sortierte Liste, Verlauf der
-  gewählten Station (24 h/3 Tage/7 Tage mit Achsen) und „A gegen B“ mit der
-  Vorauswahl Top 1 gegen Top 2.
+  beschriftet, Zuhause trägt das Haus-Symbol), Liste **fest nach Preis
+  sortiert** (Netto-€ und Entfernung stehen als Zusatz in der Zeile), Verlauf
+  der gewählten Station (24 h/3 Tage/7 Tage mit Achsen) und „A gegen B“ mit
+  der Vorauswahl Top 1 gegen Top 2. Der δ̂-Beweis wohnt hier: die Einordnung
+  der gewählten Station nennt den **Preis-Abstand zum Stadt-Median** samt
+  Signifikanz-Hinweis oder ehrlich den fehlenden Messstand.
 - **Woche:** Bestenliste aus `windows_week` (seit 0.73.0): höchstens drei
   Einträge, sortiert nach Ersparnis — je Tag und Uhrzeit, erwarteter Preis,
   Ersparnis in Euro und die Sicherheit als **ein** Wort (keine Sterne, keine
@@ -231,23 +234,25 @@ noch in Archiv-Dokumenten.
   Bilanz (Monats-/Jahresbilanz, A4) und Einstellungen am Wirkungsort — dazu
   die aktiven Entscheidungsschwellen read-only und die Dark/Light-Umschaltung
   (0.24.0, C4).
-- **Labor:** fünf Aufklapp-Abschnitte (1 Prognose, 2 Sicherheit, 3 Stationen,
-  4 Lernen, 5 Glossar), der Spielplatz (Orakel, ε-Scan, „Eine Station
-  sezieren“, Rohpreise 24/72/168 h, CSV/SVG-Export) und das Prognose-Tagebuch,
-  das jede Empfehlung nach Fensterende gegen die echten Preise zeigt. Hier
-  wohnen jetzt tatsächlicher Preisverlauf mit Lücken, Modell-Ausblick und
-  Backtestwerte samt Datenbasis (fehlende/alte Modelle sichtbar markiert),
-  Heatmaps DoW×Stunde (B3.9) **mit Tages-Zusammenfassung, hervorgehobener
-  heutiger Zeile und Fazit-Satz** (C10), seit 0.11.0 mit wählbarem Zeitraum
-  (4/6/12 Wochen, E5) und umschaltbarer Vergleichs-Basis der „Wahrscheinlichkeit
-  für günstig“ (Cheap-Probability) ohne Station (Stunden-Median statt
-  Gesamtmedian, B12) sowie Meine Stationen mit Ranking nach Preis-Abstand (δ̂),
-  Bootstrap-KI, Ampel-Stärke (AV-Score) und billigster Stunde (B3.10). Seit
-  0.15.0 stehen die Begriffe im Primärtext deutsch, das Fachwort im Tooltip
-  (F2) — ab 0.36.0 je Aufklapp-Abschnitt statt in einem Panel-Stapel.
+- **Labor:** seit 0.74.0 (Batch 2) **drei Blöcke, sonst nichts** —
+  1) „Kann ich vertrauen?“: ein Satz als Zählung („An 26 von 30 Tagen lag die
+  Empfehlung richtig.“, kein Prozent) plus das filterbare Prognose-Tagebuch,
+  das jede Empfehlung nach Fensterende gegen die echten Preise zeigt;
+  2) „Wie gut ist die Prognose?“: eine Kurve (erwartet vs. echt, Blickweite
+  24 h/3 Tage/7 Tage) und ein Satz mit dem mittleren Fehler in ct/L;
+  3) „Wie rechnet die App?“: drei Schritte in Alltagssprache (Tagesmuster der
+  Stadt, aktuelle Lage, 12-Uhr-Regel). Darunter „Details für Neugierige“ mit
+  den acht Modell-Bausteinen, den Fachwerten (u. a. Backtest-Tage, MASE 24 h,
+  PICP 95, Anteil richtiger Regeln) und der Heatmap als einziger Grafik.
+  Gestrichen: Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
+  Einflüsse-Balken, Güte-Panel und das eingebettete Glossar (nur noch
+  verlinkt). Fachwörter stehen deutsch im Text, das Fachwort im Tooltip (F2).
 - **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
   Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
-  Trigger-Statistik (Issue 50). Neu (0.10.0): geführte
+  Trigger-Statistik (Issue 50). Seit 0.74.0 zusätzlich die **Betreiber-Sicht
+  auf die Rohdaten**: Datenreichweite & Herkunft, drei Roh-Tabellen (letzte
+  Preise, Stations-Auswahl, Prognose-Quantile), die vier CSV-Exporte und der
+  API-Explorer — unverändert aus dem aufgelösten Labor-Datenbereich. Neu (0.10.0): geführte
   **Einrichtungs-Checkliste** (C1), **M7-Fortschritts-Kachel** „n/100
   Empfehlungen, Brier …“ (A7) und **CSV-Export der eigenen Tankbelege** (A6).
   Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine

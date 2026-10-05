@@ -1,6 +1,6 @@
 # Notwendige nächste Schritte
 
-> Stand: 04.10.2026 · App-Version 0.73.0
+> Stand: 05.10.2026 · App-Version 0.74.0
 
 ## Inhaltsverzeichnis
 

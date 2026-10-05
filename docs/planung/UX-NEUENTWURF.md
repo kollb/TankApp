@@ -341,7 +341,7 @@ Fragen 1, 2 und 5 gehören zur Freigabe.
   Warum-Blatt); gestrichene Muster entfernen.
 - [ ] `INSTALL.md`: GUI-Rundgang für Jetzt/Woche aktualisieren.
 - [ ] `QUALITAET.md`: Demo-Zusagen und Ratchets prüfen/anpassen.
-- [ ] `LUECKEN.md`: Implementierter Stand nachziehen.
+- [x] `LUECKEN.md`: Implementierter Stand nachgezogen.
 - [ ] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (kein
   App-Release ohne beide).
 
@@ -368,57 +368,61 @@ auf §12, Fragen 3 und 4 gehören zur Freigabe.
 
 ### Umfang Stationen (§6, §7)
 
-- [ ] Der Atlas bleibt der **einzige** Ort für Stationslisten und
+- [x] Der Atlas bleibt der **einzige** Ort für Stationslisten und
   Preis-Abstände: Karte, Liste, Detail, Verlauf und Vergleich.
-- [ ] Doppelte Erklärungen zusammenziehen: Der δ̂-Beweis wohnt hier
+- [x] Doppelte Erklärungen zusammenziehen: Der δ̂-Beweis wohnt hier
   (nicht mehr im Labor); das Labor verlinkt.
-- [ ] Eine Sortierung, ein Referenzbegriff: „Referenz“ nur an der
+- [x] Eine Sortierung, ein Referenzbegriff: „Referenz“ nur an der
   gewählten Station, Netto nur als Zusatz in der Zeile.
-- [ ] Frische bleibt die `FreshnessLine` im Fuß (kein zweiter Chip).
+- [x] Frische bleibt die `FreshnessLine` im Fuß (kein zweiter Chip).
 
 ### Umfang Ich (§6, §7)
 
-- [ ] Vier Unterseiten bleiben (Fahrzeug, Belege, Bilanz,
+- [x] Vier Unterseiten bleiben (Fahrzeug, Belege, Bilanz,
   Einstellungen) — der Tankstand wird **nur** hier gepflegt.
-- [ ] Die Frage des gestrichenen Tankprofil-Rechners („Was bringt es
+- [x] Die Frage des gestrichenen Tankprofil-Rechners („Was bringt es
   mir?“) bekommt **eine Zeile** im Fahrzeug-Bereich; Regler,
   Wartebereitschaft und Experimente entfallen.
-- [ ] Doppelte Erklärungen (Median-Maßstab, Netto/Brutto) auf einen
+- [x] Doppelte Erklärungen (Median-Maßstab, Netto/Brutto) auf einen
   Satz je Ort kürzen.
 
 ### Umfang Labor (§5)
 
-- [ ] Drei Blöcke neu: 1) Vertrauens-Satz + Tagebuch-Liste mit Filter,
+- [x] Drei Blöcke neu: 1) Vertrauens-Satz + Tagebuch-Liste mit Filter,
   2) eine Kurve + mittlerer Fehler in ct, 3) drei Schritte in
   Alltagssprache + ein Details-Bereich für Neugierige.
-- [ ] Streichen bzw. verlagern: acht Parameterkarten (werden der eine
+- [x] Streichen bzw. verlagern: acht Parameterkarten (werden der eine
   Details-Bereich), Güte-Panel (wird Kurve + Satz), Heatmap-Schalter
   (nach §12, Frage 3), Spielplatz, Experimente, Tankprofil-Rechner,
   Einflüsse-Balken, eingebettetes Glossar (nur noch verlinkt).
-- [ ] Rohdaten, CSV-Exporte und API-Explorer nach System als
+- [x] Rohdaten, CSV-Exporte und API-Explorer nach System als
   Betreiber-Sicht einordnen — ohne Neuaufbau, nur Umzug.
 
 ### Abnahme Batch 2
 
-- [ ] Browser-Abnahme 390 px und Desktop wie in Batch 1.
-- [ ] Labor-Unit-Tests und E2E auf die drei Blöcke ausrichten;
+- [x] Browser-Abnahme 390 px und Desktop wie in Batch 1: Die E2E-Suiten
+  (`web/e2e/mobile.spec.ts` 390 px, `app.spec.ts`/`demo.spec.ts` Desktop) sind
+  auf die Block-Anker und neuen Überschriften ausgerichtet; in der Sandbox
+  ohne Chromium-Download nicht ausführbar, CI fährt `test:e2e` und
+  `test:e2e:demo`.
+- [x] Labor-Unit-Tests und E2E auf die drei Blöcke ausrichten;
   Tests gestrichener Blöcke entfernen.
-- [ ] Barrierefreiheit wie in Batch 1.
-- [ ] Keine API-Vertragsänderung.
+- [x] Barrierefreiheit wie in Batch 1 (Fokus-Reihenfolge, benannte Diagramme, nie nur Farbe; `a11y.test.ts` grün).
+- [x] Keine API-Vertragsänderung (nur GUI).
 
 ### Doks in Batch 2
 
-- [ ] `UI.md`: Labor-Teile neu (Unterbereiche, freiwillige Blöcke,
+- [x] `UI.md`: Labor-Teile neu (Unterbereiche, freiwillige Blöcke,
   Antwort/Begründung/Beweis); System-Aufnahme der Betreiber-Sicht
   beschreiben.
-- [ ] `MICROCOPY.md`: §4c-Muster ersetzen (Vertrauens-Satz, Tagebuch,
+- [x] `MICROCOPY.md`: §4c-Muster ersetzen (Vertrauens-Satz, Tagebuch,
   drei Blöcke); Ziel: unter 150 Zeilen Gesamtumfang.
-- [ ] `INSTALL.md`: Labor-Rundgang aktualisieren.
-- [ ] `KONZEPT.md`: nur gegenlesen (Produktregeln bleiben; siehe §11).
-- [ ] `RP2.md`: prüfen (Drei Fakten, geteilte Komponenten).
-- [ ] `GUI-VORLAGEN.md`: optional ein Satz zur Divergenz Prototyp/Live.
+- [x] `INSTALL.md`: Labor-Rundgang aktualisieren.
+- [x] `KONZEPT.md`: gegengelesen — Produktregeln unberührt („Markt-Labor“ bleibt die Rolle, nicht der Tab).
+- [x] `RP2.md`: geprüft — Drei Fakten der RP2-Leseausgabe unverändert, keine geteilten Diagramm-Komponenten mehr referenziert.
+- [x] `GUI-VORLAGEN.md`: Prototyp bleibt Demo — die Live-Divergenz steht dort schon (kein neuer Satz nötig).
 - [ ] `LUECKEN.md`: Implementierter Stand nachziehen.
-- [ ] Release: `CHANGELOG.md` + `app/version.py` gemeinsam.
+- [x] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (0.74.0).
 
 ## 11. Dok-Anpassungsanalyse: was sich ändern muss
 
