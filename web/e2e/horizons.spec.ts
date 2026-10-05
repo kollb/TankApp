@@ -1,9 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { clickArea } from "./nav";
 
-// B1/B2-Akzeptanz auf Browser-Ebene: Zeitraum-Umschalter, Horizont-Tabs,
-// Zeitwert-Automatik — seit Phase 3 im Labor (Abschnitt 1 „Prognose“ und
-// Spielplatz). Alle API-Antworten sind
+// B1/B2-Akzeptanz auf Browser-Ebene: Horizont-Tabs und Zeitwert-Automatik.
+// Seit Batch 2 (0.74.0) trägt Block 2 „Wie gut ist die Prognose?“ den
+// Blickweiten-Umschalter; der Zeitraum der echten Preise wohnt im
+// Verlauf der Ansicht „Stationen“. Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
 // Seit B4 (Befund UX/Mathe 19.09.2026) liegen Labor/Ich mobil hinter dem
 // „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
@@ -242,15 +243,15 @@ async function stubApi(page: Page, opts: { horizons: boolean }) {
   return seenHours;
 }
 
-test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
-  const seenHours = await stubApi(page, { horizons: true });
+test("Labor: die Blickweite steuert die Abfrage", async ({ page }) => {
+  await stubApi(page, { horizons: true });
   await page.goto("/");
   await clickArea(page, "Labor");
   await expect(
-    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
+    page.getByRole("heading", { name: "Wie gut ist die Prognose?", exact: true }),
   ).toBeVisible();
 
-  // Modell-Ausblick (Abschnitt 1, offen): Horizont-Tabs aus der Engine.
+  // Block 2 trägt den Blickweiten-Umschalter; er folgt dem Server-Angebot.
   const tab3 = page.getByRole("button", { name: "+3 Tage", exact: true });
   const tab7 = page.getByRole("button", { name: "+7 Tage", exact: true });
   await expect(tab3).toBeEnabled();
@@ -259,30 +260,6 @@ test("Labor: Zeitraum steuert Abfrage und Horizont-Tabs", async ({ page }) => {
   await expect(tab3).toHaveAttribute("aria-pressed", "true");
   await tab7.click();
   await expect(tab7).toHaveAttribute("aria-pressed", "true");
-
-  // Zeitraum der echten Preise (Spielplatz): 24 Stunden → 3 Tage. Der
-  // Umschalter steuert die Abfrage — dieselbe Regel wie im Stationen-Verlauf.
-  // Zeitraum der echten Preise (Spielplatz): 24 Stunden → 3 Tage. Der
-  // Umschalter steuert die Abfrage — dieselbe Regel wie im Stationen-Verlauf.
-  // B5: Spielplatz wohnt jetzt im Modell-Tab (Sub-Tabs)
-  const modellTab = page.getByRole("tab", { name: /Modell/ }).first();
-  if (await modellTab.isVisible().catch(() => false)) {
-    await modellTab.click();
-  }
-  const spielplatzToggle = page.getByRole("button", { name: /Spielplatz/ }).first();
-  // Falls zugeklappt, aufklappen — default ist offen, aber sicherheitshalber
-  const expanded = await spielplatzToggle.getAttribute("aria-expanded").catch(() => null);
-  if (expanded === "false") {
-    await spielplatzToggle.click();
-  }
-  const spielplatz = page.locator("#labor-spielplatz");
-  await expect(
-    spielplatz.getByRole("button", { name: "24 Stunden", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await spielplatz
-    .getByRole("button", { name: "3 Tage", exact: true })
-    .click();
-  await expect.poll(() => seenHours.includes(72), { timeout: 5000 }).toBeTruthy();
 });
 
 test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page }) => {
@@ -290,7 +267,7 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
   await page.goto("/");
   await clickArea(page, "Labor");
   await expect(
-    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
+    page.getByRole("heading", { name: "Wie gut ist die Prognose?", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "+3 Tage", exact: true }),

@@ -2509,8 +2509,6 @@ export type ShareConfig = {
   tab?: ShareTab;
   /** U4: Labor-Abschnitt als Anker der geteilten Antwort (`?section=…`). */
   section?: string;
-  /** B5: Labor Sub-Tab (`?subtab=…`). */
-  subtab?: string;
 };
 
 /** Aktuelle Sicht als Share-Parameter — kommt aus readShareParams heraus. */
@@ -2523,7 +2521,6 @@ export type ShareView = {
   heatmapBasis: HeatmapBasis;
   tab?: ShareTab;
   section?: string | null;
-  subtab?: string | null;
 };
 
 /** Dieselben Grenzen wie die localStorage-Preferences der GUI. */
@@ -2565,8 +2562,9 @@ export function readShareParams(search: string): ShareConfig {
   }
   const section = params.get("section");
   if (section && /^[a-z0-9_-]{1,32}$/.test(section)) out.section = section;
-  const subtab = params.get("subtab");
-  if (subtab && /^[a-z0-9_-]{1,32}$/.test(subtab)) out.subtab = subtab;
+  // Alte Sub-Tab-Links (`?subtab=…`) wandern nicht mehr durch die Share-
+  // Parameter: `sectionFromLegacySubTab` in routing.ts übersetzt sie direkt
+  // beim Lesen der URL auf einen der drei Blöcke.
   return out;
 }
 
@@ -2594,7 +2592,6 @@ export function shareQuery(view: ShareView): string {
   // Default außen vor.
   if (view.tab && view.tab !== "jetzt") params.set("tab", view.tab);
   if (view.section) params.set("section", view.section);
-  if (view.subtab) params.set("subtab", view.subtab);
   return params.toString();
 }
 

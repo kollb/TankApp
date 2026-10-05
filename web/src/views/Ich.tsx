@@ -174,8 +174,9 @@ function VehiclePanelSection({ vehicle, settings }: IchViewProps) {
     <div>
       <VehiclePanel {...vehicle} />
       <p className="mt-3 text-xs leading-relaxed text-slate-500">
-        Kraftstoff und Stadt liegen unter „Einstellungen“ — sie gelten für
-        alle Ansichten, nicht nur für das Fahrzeug.
+        Was es bringt, rechnet „Jetzt“ in Euro — mit dieser Menge: mehr Liter,
+        mehr Betrag. Kraftstoff und Stadt liegen unter „Einstellungen“ — sie
+        gelten für alle Ansichten, nicht nur für das Fahrzeug.
         {settings.version ? ` · TankApp ${settings.version}` : ""}
       </p>
     </div>

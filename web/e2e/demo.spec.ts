@@ -278,30 +278,25 @@ test("O17: der Beleg trägt den eingetragenen Preis, nie die Prognose", async ({
   expect(mine.price_source).toBe("manuell");
 });
 
-test("O16: Labor zeigt δ̂-Balken mit Konfidenzintervall aus der Selektion", async ({
-  page,
-}) => {
-  // Die Balken im Abschnitt „Stationen“ lesen /api/v1/selection — vor 0.46.0
-  // blieb der Balken dauerhaft leer, weil das Feld im Backtest-Block nie
-  // gesendet wurde. Der Demo-Stapel bringt ein echtes Selektions-Artefakt mit.
+test("O16: Labor rechnet den Preis-Abstand aus der Selektion", async ({ page }) => {
+  // Der δ̂-Beweis wohnt seit Batch 2 in „Stationen“ (eine Zeile im Detail);
+  // das Labor nennt die Spanne in seinen Fachwerten. Beide lesen
+  // /api/v1/selection — vor 0.46.0 blieb die Angabe dauerhaft leer, weil das
+  // Feld im Backtest-Block nie gesendet wurde. Der Demo-Stapel bringt ein
+  // echtes Selektions-Artefakt mit.
   await page.goto("/?tab=labor&section=stationen");
-
-  const body = page.locator("#labor-stationen-body");
-  await expect(body).toBeVisible({ timeout: 30_000 });
-
-  // Die Selektion ist geladen und zeichnet: Die Lesehilfe unter dem Chart
-  // („Werte aus der Stations-Auswahl …“) rendert nur im gefüllten Zweig —
-  // steht sie, hat die Ansicht δ̂, KI und Signifikanz aus /api/v1/selection
-  // bekommen. (Die Zeile „Auswahl-Set: …“ steht im Abschnitt „Lernen“ und
-  // ist hier zugeklappt — bewusst kein Prüfziel.)
-  await expect(body).toContainText("Werte aus der Stations-Auswahl", {
+  const details = page.locator("#labor-details");
+  await expect(details).toBeVisible({ timeout: 30_000 });
+  // Die Fachwert-Zeile rendert nur mit geladener Selektion als Zahl.
+  await expect(details).toContainText("Preis-Abstand der Stationen", {
     timeout: 30_000,
   });
-  await expect
-    .poll(async () => body.locator("svg rect").count(), { timeout: 30_000 })
-    .toBeGreaterThan(0);
-  // Mindestens ein Whisker (drei Linien je Intervall) plus Nulllinie.
-  expect(await body.locator("svg line").count()).toBeGreaterThanOrEqual(4);
-  await expect(body).toContainText("Konfidenzintervall");
-  await expect(body).not.toContainText("Noch kein Preis-Abstand messbar");
+  await expect(details).toContainText(/ct\/L/, { timeout: 30_000 });
+
+  // Der sichtbare Beleg steht im Stations-Detail (Einordnung): δ̂ zum
+  // Stadt-Median derselben Stunde, nie eine erfundene Zahl.
+  await page.goto("/?tab=stationen");
+  await expect(page.getByText("Preis-Abstand zum Stadt-Median", { exact: false }).first()).toBeVisible({
+    timeout: 30_000,
+  });
 });
