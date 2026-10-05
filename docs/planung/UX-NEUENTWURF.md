@@ -1,6 +1,7 @@
 # UX-Neuentwurf: Jetzt, Woche, Labor
 
-> Stand: 04.10.2026 · Status: **Entwurf, nicht beschlossen** · Anlass:
+> Stand: 05.10.2026 · Status: **Batch 1 abgenommen (0.73.0), Batch 2
+> beauftragt und in Umsetzung.** · Anlass:
 > Nutzer-Feedback „Ich finde nie die Informationen, die ich brauche.
 > Die Texte überwältigen oder sind unintuitiv.“
 > Betrifft: `web/src/views/Jetzt.tsx`, `web/src/views/Woche.tsx`,
@@ -350,6 +351,41 @@ Ziel: Das Labor beantwortet drei Fragen (§5); die Doku ist danach
 wieder konsistent. Beginnt erst nach abgenommenem Batch 1; Antworten
 auf §12, Fragen 3 und 4 gehören zur Freigabe.
 
+**Freigabe 05.10.2026 (Entscheidungen).**
+
+1. **Umfang:** Batch 2 umfasst Labor **und** die Verdichtung der noch
+   nicht umgebauten Alltagsbereiche Stationen und Ich (§6, §7). Die
+   Stand-Zeile in `LUECKEN.md` („Stationen, Ich, Labor/System“) bleibt
+   damit zutreffend; der Plan war enger formuliert.
+2. **Heatmap (§12, Frage 3):** bleibt als **einzige Grafik** in
+   „Details für Neugierige“ (Block 3). Block 2 zeigt weiter nur eine
+   Kurve. Die drei Schalter (Art, Wochen, Basis) entfallen — die
+   Heatmap läuft mit den Standardwerten.
+3. **Tagebuch (§12, Frage 4):** Die Liste ist **Kern von Block 1**
+   (filterbar, wie in §5 skizziert). Der Vertrauens-Satz steht
+   darüber; die Rohdaten des Ledgers wandern zusätzlich als
+   CSV-Export nach System.
+
+### Umfang Stationen (§6, §7)
+
+- [ ] Der Atlas bleibt der **einzige** Ort für Stationslisten und
+  Preis-Abstände: Karte, Liste, Detail, Verlauf und Vergleich.
+- [ ] Doppelte Erklärungen zusammenziehen: Der δ̂-Beweis wohnt hier
+  (nicht mehr im Labor); das Labor verlinkt.
+- [ ] Eine Sortierung, ein Referenzbegriff: „Referenz“ nur an der
+  gewählten Station, Netto nur als Zusatz in der Zeile.
+- [ ] Frische bleibt die `FreshnessLine` im Fuß (kein zweiter Chip).
+
+### Umfang Ich (§6, §7)
+
+- [ ] Vier Unterseiten bleiben (Fahrzeug, Belege, Bilanz,
+  Einstellungen) — der Tankstand wird **nur** hier gepflegt.
+- [ ] Die Frage des gestrichenen Tankprofil-Rechners („Was bringt es
+  mir?“) bekommt **eine Zeile** im Fahrzeug-Bereich; Regler,
+  Wartebereitschaft und Experimente entfallen.
+- [ ] Doppelte Erklärungen (Median-Maßstab, Netto/Brutto) auf einen
+  Satz je Ort kürzen.
+
 ### Umfang Labor (§5)
 
 - [ ] Drei Blöcke neu: 1) Vertrauens-Satz + Tagebuch-Liste mit Filter,
@@ -417,8 +453,11 @@ geprüft, welche Doks ihn beschreiben. Ergebnis:
 2. **Primärhandlung bei „Warten“**: Erinnerung stellen (Vorschlag) oder
    weiter Route anbieten? (Zur Freigabe von Batch 1.)
 3. **Heatmap**: ersatzlos streichen oder als einzige Grafik in „Details
-   für Neugierige“ behalten? (Zur Freigabe von Batch 2.)
+   für Neugierige“ behalten? (Zur Freigabe von Batch 2.) →
+   **Entschieden 05.10.2026:** als einzige Grafik in „Details für
+   Neugierige“ behalten, ohne Schalter.
 4. **Tagebuch**: Wie wichtig ist die Liste vergangener Empfehlungen —
    Kern von Block 1 oder auch verzichtbar? (Zur Freigabe von Batch 2.)
+   → **Entschieden 05.10.2026:** Kern von Block 1 (filterbar).
 5. **Umfang**: Alle drei Bereiche neu — oder erst „Jetzt“, dann sehen?
    (Zur Freigabe von Batch 1.)
