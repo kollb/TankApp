@@ -84,7 +84,11 @@ function LabBlockCard({
       className={`${panel} scroll-mt-24 p-4 sm:p-5`}
     >
       <h2 id={`${id}-title`} className="text-sm font-semibold text-slate-100">
-        <span className="mr-1.5 font-mono text-violet-300">{entry.number} ·</span>
+        {/* Die Nummer ist Dekoration: Sie ordnet die drei Fragen, gehört
+            aber nicht in den vorgelesenen Namen des Abschnitts. */}
+        <span className="mr-1.5 font-mono text-violet-300" aria-hidden="true">
+          {entry.number} ·
+        </span>
         {entry.question}
       </h2>
       <div className="mt-2">{children}</div>
