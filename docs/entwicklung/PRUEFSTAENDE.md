@@ -15,7 +15,6 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 
 | Dokument | Letzter angegebener Prüfstand |
 |---|---|
-| [README.md](../../README.md) | 0.70.0 |
 | [API.md](../referenz/API.md) | 0.70.0 |
 | [0003-MODELL-UND-FREIGABE.md](../adr/0003-MODELL-UND-FREIGABE.md) | 0.70.0 |
 | [ENGINE.md](../referenz/ENGINE.md) | 0.70.0 |
@@ -25,12 +24,10 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [BETRIEB.md](../betrieb/BETRIEB.md) | 0.68.0 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.68.0 |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 0.59.1 |
-| [ADR-Index](../adr/README.md) | 0.59.1 |
 | [DOKUMENTATION.md](DOKUMENTATION.md) | 0.59.1 |
 | [REGIME.md](../planung/REGIME.md) | 0.59.1 |
 | [INSTALL.md](../betrieb/INSTALL.md) | 0.38.0 |
 | [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md) | 0.38.0 |
-| [QUALITAET.md](QUALITAET.md) | 0.53.0 |
 | [SPEICHER.md](../betrieb/SPEICHER.md) | 0.66.0 |
 | [PRUEFSTAENDE.md](PRUEFSTAENDE.md) | 0.70.0 |
 | [ANALYSE.md](../referenz/ANALYSE.md) | 0.70.0 |

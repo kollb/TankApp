@@ -315,10 +315,9 @@ test.describe("Mobil: kein Querlauf", () => {
     //   ① die Antwort-Überschrift endet im ersten Viewport;
     //   ② die Tageszeile ist der einzige Weg in die Tiefe und zu;
     //   ③ die gestrichenen Bausteine sind weg (Streichliste §7).
-    // Dieselbe Einschränkung wie beim B4-Ratchet unten: Die KPI gilt bei der
-    // Entwurfsbreite 390 px (mobile-Projekt). 320 px ist die Störbreite der
-    // Überlauf-Prüfung — dort trägt dieselbe Ansicht die globale Kopfzeile
-    // (Shell, 0.73.0 noch drei Steuerreihen) und kommt naturgemäß tiefer.
+    // Die Entwurfsbreite dieser Abnahme ist 390 px (mobile-Projekt). Das
+    // 320-px-Raster hat seit C13 eine eigene Prüfung für die kompakte
+    // Kopfzeile und dieselbe Antwort im ersten Viewport (Test darunter).
     test.skip(
       testInfo.project.name !== "mobile",
       "Die KPI gilt bei der Entwurfsbreite 390 px (mobile-Projekt).",
@@ -381,6 +380,46 @@ test.describe("Mobil: kein Querlauf", () => {
     await expect(dialog).toHaveCount(0);
   });
 
+  test("320 px: Kopfzeile kompakt, Antwort-Überschrift im ersten Viewport (C13)", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "narrow",
+      "Die C13-Abnahme gilt für das schmale 320 × 720-Raster.",
+    );
+    await page.goto("/");
+    await settled(page);
+    await expectArea(page, AREAS[0]);
+
+    const viewportHeight = page.viewportSize()?.height ?? 720;
+    const context = page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" });
+    const city = context.locator("span.min-w-0.truncate");
+    await expect(city).toHaveText("Demostadt");
+    await expect(context).toContainText("E10");
+    expect(
+      await city.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      "Der sichtbare Stadtnamen-Chip wird bei 320 px abgeschnitten.",
+    ).toBe(true);
+
+    const header = page.locator("header.app-header");
+    const headerBox = await header.boundingBox();
+    expect(headerBox, "Die Kopfzeile hat keine messbare Fläche.").not.toBeNull();
+    expect(
+      headerBox!.height,
+      `Die Kopfzeile ist ${Math.round(headerBox!.height)} px hoch — C13 verlangt eine kompakte Zeile.`,
+    ).toBeLessThanOrEqual(80);
+
+    const headline = page.locator("#jetzt-headline");
+    await expect(headline, "Die Antwortkarte fehlt.").toBeVisible();
+    const headlineBox = await headline.boundingBox();
+    expect(headlineBox, "Die Antwort-Überschrift hat keine messbare Fläche.").not.toBeNull();
+    expect(
+      headlineBox!.y + headlineBox!.height,
+      `Die Antwort-Überschrift endet bei ${Math.round(headlineBox!.y + headlineBox!.height)} px; ` +
+        `bei ${viewportHeight} px wäre Scrollen nötig.`,
+    ).toBeLessThanOrEqual(viewportHeight);
+  });
+
   test("Jetzt: Scrolltiefe ≤ 1,5 Viewports (B4-Ratchet)", async ({
     page,
   }, testInfo) => {
@@ -389,15 +428,11 @@ test.describe("Mobil: kein Querlauf", () => {
     // Entscheidungsbildschirm selbst — die `section` vom „Jetzt“-H1 bis zur
     // Frische-Fußzeile — gegen das Viewport (844 px im Mobile-Projekt).
     //
-    // Warum die Section und nicht das ganze Dokument: Die globale Kopfzeile
-    // (mobil 3 Steuerreihen) und der globale Fuß sind Shell — die
-    // Einzeilen-Kopfzeile ist ausweislich des Befund-Wireframes
-    // „C13-Folge“ (LUECKEN: bewusst offener Arbeitspunkt C13) und gehört
-    // nicht zu B4. B4 ist parallel zu B2/B3 angelegt und darf an keinen
-    // späteren Batch koppeln; der Ratchet hält deshalb genau das, wofür
-    // B4 zeichnet: den Entscheidungsbildschirm. Die Dokumenttiefe wird
-    // weiterhin geloggt — ab C13 darf dieser Test auf die
-    // Dokument-Scrollhöhe verschärft werden.
+    // Warum die Section und nicht das ganze Dokument: B4 misst nur den
+    // Entscheidungsbildschirm; Shell und globale Navigation liegen außerhalb
+    // dieses Vertrags. C13 (0.75.0) hat einen eigenen Ratchet für die
+    // Kopfzeile und die Antwort-Überschrift bei 320 × 720. B4 bleibt bei
+    // seiner Entwurfsbreite 390 px und ist nicht an spätere Batches gekoppelt.
     //
     // Gemessen wird bei der Wireframe-Entwurfsbreite (Befund §1.4:
     // „390 px gedacht“), nicht im `narrow`-Projekt: 320 px ist die

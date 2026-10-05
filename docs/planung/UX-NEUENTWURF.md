@@ -1,13 +1,13 @@
 # UX-Neuentwurf: Jetzt, Woche, Labor
 
-> Stand: 05.10.2026 · Status: **Batch 1 abgenommen (0.73.0), Batch 2
-> beauftragt und in Umsetzung.** · Anlass:
+> Stand: 05.10.2026 · Status: **Batch 1–3 abgenommen (0.73.0–0.75.0).** · Anlass:
 > Nutzer-Feedback „Ich finde nie die Informationen, die ich brauche.
 > Die Texte überwältigen oder sind unintuitiv.“
 > Betrifft: `web/src/views/Jetzt.tsx`, `web/src/views/Woche.tsx`,
-> `web/src/views/Labor.tsx` + `labor/*`, `now.ts`, `week.ts`, `guide.ts`.
+> `web/src/views/Labor.tsx` + `labor/*`, `now.ts`, `week.ts`, `guide.ts`,
+> `web/src/components/AppHeader.tsx`.
 > Kein Code in diesem Dokument — erst lesen, dann entscheiden, dann bauen.
-> Umsetzung in zwei Batches (§9, §10); betroffene Bestands-Doks in §11.
+> Umsetzung in drei Batches (§9, §10, §13); betroffene Bestands-Doks in §11.
 
 ## Inhaltsverzeichnis
 
@@ -23,6 +23,7 @@
 - [10. Batch 2: Vertrauen neu (Labor und Doku)](#10-batch-2-vertrauen-neu-labor-und-doku)
 - [11. Dok-Anpassungsanalyse: was sich ändern muss](#11-dok-anpassungsanalyse-was-sich-ändern-muss)
 - [12. Offene Fragen](#12-offene-fragen)
+- [13. Batch 3: Kopfzeile entlasten (C13)](#13-batch-3-kopfzeile-entlasten-c13)
 
 ## 1. Befund: warum die drei Bereiche überfordern
 
@@ -291,58 +292,58 @@ Fragen 1, 2 und 5 gehören zur Freigabe.
 
 ### Umfang Jetzt (§3)
 
-- [ ] Antwortkarte neu mit den fünf Varianten aus §3: max. 25 Wörter,
+- [x] Antwortkarte neu mit den fünf Varianten aus §3: max. 25 Wörter,
   eine Leit-Zahl in €, genau eine primäre Handlung.
-- [ ] Primärhandlung bei „Warten“ nach §12, Frage 2 (Vorschlag:
+- [x] Primärhandlung bei „Warten“ nach §12, Frage 2 (Vorschlag:
   Erinnerung; sonst Route).
-- [ ] „Warum?“-Blatt (max. fünf Zeilen) und Tageszeile (Mini-Kurve +
+- [x] „Warum?“-Blatt (max. fünf Zeilen) und Tageszeile (Mini-Kurve +
   Tief) als einzige Ebene-2-Orte bauen.
-- [ ] Streichen: Was-wäre-wenn-Annahmen, Feedback-Intents, nächste
+- [x] Streichen: Was-wäre-wenn-Annahmen, Feedback-Intents, nächste
   Schritte, Drei-Fakten-Karten, Heute-im-Blick-Karten und 19-Zellen-
   Raster, Benefit-Block, Confidence-Balken (wird ein Wort),
   Gültigkeits-Chip (wird `bis HH:MM` in kleiner Schrift).
-- [ ] Frische als Chip in den Kopf (`vor 4 Min` / `alt`); Fußzeile weg.
-- [ ] Maximal ein Banner gleichzeitig (Rangfolge: offline → keine
+- [x] Frische als Chip in den Kopf (`vor 4 Min` / `alt`); Fußzeile weg.
+- [x] Maximal ein Banner gleichzeitig (Rangfolge: offline → keine
   Prognose → Hinweis).
-- [ ] Fällig-Prompt nach §12, Frage 1 entscheiden und umsetzen.
-- [ ] RP2-Leseausgabe und Python-Notausgabe prüfen: Sie teilen
+- [x] Fällig-Prompt nach §12, Frage 1 entscheiden und umsetzen.
+- [x] RP2-Leseausgabe und Python-Notausgabe prüfen: Sie teilen
   Guide-Komponenten bzw. Verträge und dürfen nicht brechen.
 
 ### Umfang Woche (§4)
 
-- [ ] Bestenliste (max. drei Einträge) ersetzt 7-Tage-Raster,
+- [x] Bestenliste (max. drei Einträge) ersetzt 7-Tage-Raster,
   Detailkarte, zweite Liste und Wochenlinie.
-- [ ] Je Eintrag: Tag + Uhrzeit, erwarteter Preis, Ersparnis in €,
+- [x] Je Eintrag: Tag + Uhrzeit, erwarteter Preis, Ersparnis in €,
   Sicherheit als ein Wort. Sterne, Prozente, p-Tooltips und
   Kalibrierungs­etiketten entfallen; dafür ein Satz
   („Ab Tag 5 wird die Prognose unsicher.“).
-- [ ] Tageskurve pro Eintrag als Detail (ein Tipp).
-- [ ] Tank nur als Anzeige-Chip; Pflege an genau einem Ort (mit „Ich“
+- [x] Tageskurve pro Eintrag als Detail (ein Tipp).
+- [x] Tank nur als Anzeige-Chip; Pflege an genau einem Ort (mit „Ich“
   abstimmen, kein zweiter Slider).
 
 ### Abnahme Batch 1
 
-- [ ] Browser-Abnahme 390 px (Primärfall) und Desktop: Antwort ohne
+- [x] Browser-Abnahme 390 px (Primärfall) und Desktop: Antwort ohne
   Scrollen sichtbar, Details genau einen Tipp entfernt.
-- [ ] Unit-Tests gestrichener Logik (`now.ts`-, `week.ts`-,
+- [x] Unit-Tests gestrichener Logik (`now.ts`-, `week.ts`-,
   `guide.ts`-Anteile) entfernen, neue Antwort-Logik testen.
-- [ ] E2E auf die neuen Antworten ausrichten; Scroll- und Text-Ratchets
+- [x] E2E auf die neuen Antworten ausrichten; Scroll- und Text-Ratchets
   anpassen statt lockern.
-- [ ] Barrierefreiheit erhalten: Fokus­führung, benannte Diagramme,
+- [x] Barrierefreiheit erhalten: Fokus­führung, benannte Diagramme,
   keine Information nur per Farbe.
-- [ ] Keine API-Vertragsänderung: Der Server liefert weiter alles
+- [x] Keine API-Vertragsänderung: Der Server liefert weiter alles
   (u. a. Intents, Fenster, p-Felder), die GUI zeigt weniger.
 
 ### Doks in Batch 1
 
-- [ ] `UI.md`: Jetzt- und Woche-Teile neu (Tank-Guide, Bereiche-Tabelle,
+- [x] `UI.md`: Jetzt- und Woche-Teile neu (Tank-Guide, Bereiche-Tabelle,
   Frische-Regel, Banner-Rang).
-- [ ] `MICROCOPY.md`: §4b-Muster ersetzen (Antwortkarte, Bestenliste,
+- [x] `MICROCOPY.md`: §4b-Muster ersetzen (Antwortkarte, Bestenliste,
   Warum-Blatt); gestrichene Muster entfernen.
-- [ ] `INSTALL.md`: GUI-Rundgang für Jetzt/Woche aktualisieren.
-- [ ] `QUALITAET.md`: Demo-Zusagen und Ratchets prüfen/anpassen.
+- [x] `INSTALL.md`: GUI-Rundgang für Jetzt/Woche aktualisieren.
+- [x] `QUALITAET.md`: Demo-Zusagen und Ratchets prüfen/anpassen.
 - [x] `LUECKEN.md`: Implementierter Stand nachgezogen.
-- [ ] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (kein
+- [x] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (kein
   App-Release ohne beide).
 
 ## 10. Batch 2: Vertrauen neu (Labor und Doku)
@@ -421,7 +422,7 @@ auf §12, Fragen 3 und 4 gehören zur Freigabe.
 - [x] `KONZEPT.md`: gegengelesen — Produktregeln unberührt („Markt-Labor“ bleibt die Rolle, nicht der Tab).
 - [x] `RP2.md`: geprüft — Drei Fakten der RP2-Leseausgabe unverändert, keine geteilten Diagramm-Komponenten mehr referenziert.
 - [x] `GUI-VORLAGEN.md`: Prototyp bleibt Demo — die Live-Divergenz steht dort schon (kein neuer Satz nötig).
-- [ ] `LUECKEN.md`: Implementierter Stand nachziehen.
+- [x] `LUECKEN.md`: Implementierter Stand nachziehen.
 - [x] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (0.74.0).
 
 ## 11. Dok-Anpassungsanalyse: was sich ändern muss
@@ -431,12 +432,12 @@ geprüft, welche Doks ihn beschreiben. Ergebnis:
 
 | Dokument | Urteil | Begründung | Batch |
 |---|---|---|---|
-| `produkt/UI.md` | anpassen | Beschreibt Tank-Guide, Fallback-Stufen, Urteilstöne, „Heute im Blick“, Frische-Fußzeile, Labor-Unterbereiche und freiwillige Blöcke im Detail — alles Umbau­gebiet | 1 + 2 |
-| `produkt/MICROCOPY.md` | anpassen | Feste Muster §4b (Jetzt) und §4c (Labor) regeln genau die gestrichenen Blöcke; neue Muster (Antwortkarte, Bestenliste, drei Blöcke) aufnehmen | 1 + 2 |
-| `betrieb/INSTALL.md` | anpassen | GUI-Rundgang beschreibt Jetzt (drei Fakten, Tagesstreifen), Woche (Sterne-Raster) und Labor (fünf Abschnitte, Spielplatz, Heatmap-Schalter) — veraltet mit dem Umbau | 1 + 2 |
-| `entwicklung/QUALITAET.md` | anpassen | Demo-Zusagen nennen „Heute im Blick“ (19 Zellen); Scroll- und Text-Ratchets hängen an der alten Struktur | 1 |
-| `planung/LUECKEN.md` | anpassen | Stand-Tabelle (Oberfläche, Labor) und Offene Arbeit nach jedem Batch nachziehen | 1 + 2 |
-| `releases/CHANGELOG.md` + `app/version.py` | pro Release | Je Batch ein Release-Eintrag; beide Dateien gemeinsam pflegen (kein Vorab­eintrag im Entwurf) | 1 + 2 |
+| `produkt/UI.md` | anpassen | Tank-Guide, Labor und die kompakte responsive Kopfzeile samt Steuerungsblatt beschreiben | 1 + 2 + 3 |
+| `produkt/MICROCOPY.md` | anpassen | Muster für Antwortkarte, Bestenliste, Labor-Blöcke und die sichtbaren Kopfzeilen-Aktionen führen | 1 + 2 + 3 |
+| `betrieb/INSTALL.md` | anpassen | GUI-Rundgang für Jetzt/Woche/Labor und die Kopfzeile auf schmalen Geräten aktualisieren | 1 + 2 + 3 |
+| `entwicklung/QUALITAET.md` | anpassen | Ratchets für Antwort im ersten Viewport bei 390 px und 320 px sowie Header-Höhe ergänzen | 1 + 3 |
+| `planung/LUECKEN.md` | anpassen | Stand-Tabelle und umgesetzte Batch-Arbeit nachziehen | 1 + 2 + 3 |
+| `releases/CHANGELOG.md` + `app/version.py` | pro Release | Je Batch ein Release-Eintrag; beide Dateien gemeinsam pflegen (kein Vorab­eintrag im Entwurf) | 1 + 2 + 3 |
 | `betrieb/RP2.md` | prüfen | Leseausgabe teilt Guide-Komponenten; „Drei Fakten“ der Notausgabe gegen neue Antwortkarte prüfen | 1 + 2 |
 | `produkt/KONZEPT.md` | nur gegenlesen | F1–F3, Gates und Ehrlichkeits­regeln sind Produkt­ebene und bleiben; der Verweis auf `UI.md` bleibt gültig | 2 |
 | `produkt/GUI-VORLAGEN.md` | optional ein Satz | Prototyp in `web/src/concept/` bleibt als Design-Lab unangetastet; Divergenz zur Live-App ist dort schon als Grenze geführt | 2 |
@@ -445,23 +446,69 @@ geprüft, welche Doks ihn beschreiben. Ergebnis:
 | `architektur/ARCHITEKTUR.md` | unverändert | Geräte und Datenfluss ändern sich nicht | — |
 | `betrieb/BETRIEB.md` (+ Abnahme, Speicher, Tausch) | unverändert | Heatmap/Selektion/Kalibrierung sind dort Betriebs­sicht (Jobs, Env); allenfalls ein GUI-Satz beim Gegenlesen | — |
 | `entwicklung/DOKUMENTATION.md`, `PRUEFSTAENDE.md` | unverändert | Kein Bezug zum Umbau­gebiet | — |
-| `adr/*` | kein neues ADR | Rückbau innerhalb des beschlossenen Umfangs, kein neuer Umfang; Führung in `LUECKEN.md` genügt | — |
-| `README.md` (Root) | unverändert | Navigation 3+1 bleibt; nur Inhalte ändern sich | — |
-| `planung/TODO.md` | bewusst nicht | Enthält nur P0-Korrekturen (A14, N1); die Batches leben hier, bis sie beauftragt sind | — |
+| `adr/0002-PRODUKTUMFANG.md` | C13-Entscheidung ergänzen | Die explizite Freigabe für Batch 3 begrenzt die frühere C13-Sperre; alle Funktionen bleiben erreichbar, ohne ein neues ADR anzulegen | 3 |
+| `README.md` (Root) | Stand-Zeile nachziehen | Die Navigation 3+1 bleibt; der Versionsstand folgt dem Release | 3 |
+| `planung/TODO.md` | Versionsstand nachziehen | Keine neue P0-Aufgabe aus dem UX-Batch; A14 und NP2 bleiben die ausführbaren Aufträge | 3 |
 | `README.md` (docs-Index) | unverändert | Kein neues Dokument; dieses ist bereits eingetragen | — |
 
 ## 12. Offene Fragen
 
 1. **Fällig-Prompt** („Fenster vorbei — gerade getankt?“): nach „Ich“
-   verschieben oder ganz streichen? (Zur Freigabe von Batch 1.)
-2. **Primärhandlung bei „Warten“**: Erinnerung stellen (Vorschlag) oder
-   weiter Route anbieten? (Zur Freigabe von Batch 1.)
+   verschieben oder ganz streichen? → **Entschieden 04.10.2026:** ersatzlos
+   streichen; ein Beleg wird dort bestätigt, wo Belege gepflegt werden.
+2. **Primärhandlung bei „Warten“**: Erinnerung stellen oder Route anbieten?
+   → **Entschieden 04.10.2026:** „Route“ bleibt in allen Fällen die Handlung;
+   ein Erinnerungs-Feature wird nicht eingeführt.
 3. **Heatmap**: ersatzlos streichen oder als einzige Grafik in „Details
-   für Neugierige“ behalten? (Zur Freigabe von Batch 2.) →
-   **Entschieden 05.10.2026:** als einzige Grafik in „Details für
-   Neugierige“ behalten, ohne Schalter.
-4. **Tagebuch**: Wie wichtig ist die Liste vergangener Empfehlungen —
-   Kern von Block 1 oder auch verzichtbar? (Zur Freigabe von Batch 2.)
-   → **Entschieden 05.10.2026:** Kern von Block 1 (filterbar).
+   für Neugierige“ behalten? → **Entschieden 05.10.2026:** dort behalten,
+   ohne Schalter.
+4. **Tagebuch**: Liste vergangener Empfehlungen – Kern von Block 1 oder
+   verzichtbar? → **Entschieden 05.10.2026:** Kern von Block 1 (filterbar).
 5. **Umfang**: Alle drei Bereiche neu — oder erst „Jetzt“, dann sehen?
-   (Zur Freigabe von Batch 1.)
+   → **Entschieden 04.10.2026:** Jetzt und Woche zuerst, danach Labor;
+   alle drei Bereiche werden umgesetzt. Die Verdichtung der Kopfzeile kam
+   als eigener Batch 3 hinzu (05.10.2026).
+
+## 13. Batch 3: Kopfzeile entlasten (C13)
+
+Ziel: Die globale Shell lässt der Antwort auf schmalen Displays Platz. Der
+alte Prüfpunkt C13 war im UX/Mathe-Befund zunächst bewusst ausgenommen
+(0.59.0); nach Batch 1 und 2 wurde er am **05.10.2026** als eigener
+Umfang freigegeben und schließt die 320-px-Lücke aus
+[`LUECKEN.md`](LUECKEN.md#bewusste-grenzen).
+
+### Umfang
+
+- [x] Unter `xl` (1280 px) steht die Kopfzeile in **einer Zeile**: Marke,
+  Stadt/Kraftstoff und — falls vorhanden — Alarmstatus. Stadt und Kraftstoff
+  bleiben direkt auswählbar.
+- [x] Profilwechsel, Profilverwaltung, Teilen und Aktualisieren liegen
+  gebündelt im Blatt „Profil und Aktionen“; kein bestehender Weg entfällt.
+- [x] Ab `xl` bleiben Profil, Alarm, Teilen und Aktualisieren direkt in der
+  Kopfzeile. Netzwerk-/Installationshinweise und das Update-Banner bleiben
+  sichtbar im normalen Seitenfluss, nicht versteckt im Blatt.
+- [x] Der Compact-Header ändert weder die Navigation 3+1 noch den API-Vertrag;
+  RP2-Lese- und Python-Notausgabe bleiben unberührt.
+
+### Abnahme
+
+- [x] Bei 320 × 720 ist der Kopf höchstens 80 px hoch; Stadt „Demostadt“
+  und Kraftstoff „E10“ sind im Prüfchip nicht abgeschnitten und die Antwort-
+  Überschrift endet im ersten Viewport. Die Seite scrollt nicht horizontal.
+- [x] Bei 390 px und auf dem Desktop bleiben die Abnahmen aus Batch 1/2 grün;
+  auf breiten Displays sind die direkten Steuerungen weiter verfügbar.
+- [x] Das Steuerungsblatt benennt seine Bedienelemente; Fokus startet im Blatt,
+  Escape kehrt zum Auslöser zurück, Profilverwaltung öffnet keinen verschachtelten
+  Dialog, alle Tippziele bleiben mindestens 44 px.
+
+### Doks in Batch 3
+
+- [x] `UI.md`, `MICROCOPY.md` und `INSTALL.md`: kompakte Kopfzeile und
+  „Profil und Aktionen“ beschreiben.
+- [x] `QUALITAET.md`: Header-Höhe und Antwort im ersten Viewport bei 320 px
+  als Browser-Ratchet festhalten.
+- [x] `LUECKEN.md`, Root-`README.md` und `TODO.md`: Implementierten Stand bzw.
+  Versionszeile nachziehen.
+- [x] `ADR 0002`: Die erneute, begrenzte Freigabe von C13 nachvollziehbar
+  festhalten; keine Funktion wird entfernt.
+- [x] Release: `CHANGELOG.md` + `app/version.py` gemeinsam (0.75.0).

@@ -1,7 +1,7 @@
-// U8: Die Kopfzeile der App-Shell — eine Zeile mit den globalen
-// Steuerungen (Stadt, Kraftstoff, Profil, Alarm, Teilen, Aktualisieren).
-// Vorher stand sie inline in Dashboard.tsx; die Daten kommen aus dem
-// OverviewContext.
+// U8: Die Kopfzeile der App-Shell — Ort und Kraftstoff bleiben direkt
+// erreichbar. Auf schmalen und mittleren Viewports liegen Profil und seltene
+// App-Aktionen gemeinsam in einem Blatt, damit die Antwort nicht unter einer
+// mehrzeiligen Steuerzeile verschwindet.
 import {
   Car,
   Check,
@@ -17,18 +17,217 @@ import { BottomSheet } from "./BottomSheet";
 import type { Fuel } from "../data";
 import type { OverviewState } from "../state/overview";
 
+type HeaderOverview = Pick<
+  OverviewState,
+  | "activeCity"
+  | "data"
+  | "setCity"
+  | "setSelectedId"
+  | "fuel"
+  | "setFuel"
+  | "activeProfileId"
+  | "handleActivateProfile"
+  | "activeProfile"
+  | "profilesRes"
+  | "profilesBusy"
+  | "setProfileManagerOpen"
+  | "h"
+  | "alarms"
+  | "errorAlarms"
+  | "warnAlarms"
+  | "shareNote"
+  | "copyShareLink"
+  | "prices"
+  | "setRefresh"
+>;
+
+function ProfileSelector({
+  ov,
+  compact = false,
+}: {
+  ov: HeaderOverview;
+  compact?: boolean;
+}) {
+  return (
+    <label
+      className={`flex shrink-0 items-center gap-2 border border-outline-variant bg-sc-lowest text-xs ${
+        compact
+          ? "w-full rounded-lg px-3 py-2.5"
+          : "rounded-full px-3 py-2 hover:bg-sc-low"
+      }`}
+    >
+      <Car size={14} className="shrink-0 text-primary" aria-hidden="true" />
+      <span className="sr-only">Fahrzeug-Profil</span>
+      <select
+        aria-label="Fahrzeug-Profil"
+        value={ov.activeProfileId}
+        onChange={(event) => {
+          void ov.handleActivateProfile(event.target.value || null);
+        }}
+        title={
+          ov.activeProfile
+            ? `Aktives Profil „${ov.activeProfile.name}“ — Felder gelten haushaltsweit`
+            : "Kein Profil aktiv — Einstellungen gelten nur auf diesem Gerät"
+        }
+        className={`min-w-0 bg-transparent pr-1 text-on-surface ${
+          compact ? "flex-1" : "max-w-40"
+        }`}
+      >
+        <option value="">Kein Profil (nur dieses Gerät)</option>
+        {(ov.profilesRes.data?.profiles ?? []).map((profile) => (
+          <option key={profile.id} value={profile.id}>
+            {profile.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ProfileManagerButton({
+  ov,
+  compact = false,
+  onOpen,
+}: {
+  ov: HeaderOverview;
+  compact?: boolean;
+  onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Fahrzeug-Profile verwalten"
+      title="Profile anlegen, umbenennen, löschen (A1)"
+      onClick={() => {
+        onOpen?.();
+        ov.setProfileManagerOpen(true);
+      }}
+      disabled={ov.profilesBusy}
+      className={`flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low ${
+        compact
+          ? "min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 text-sm font-semibold"
+          : "h-10 w-10"
+      }`}
+    >
+      <SquarePen size={16} aria-hidden="true" />
+      {compact && <span>Fahrzeug-Profile verwalten</span>}
+    </button>
+  );
+}
+
+function AlarmStatus({ ov, compact = false }: { ov: HeaderOverview; compact?: boolean }) {
+  if (!ov.h || ov.alarms.length === 0) return null;
+  const statusText = ov.errorAlarms.length
+    ? `${ov.errorAlarms.length} Alarm${ov.errorAlarms.length > 1 ? "e" : ""}`
+    : ov.warnAlarms.length
+      ? `${ov.warnAlarms.length} Hinweis${ov.warnAlarms.length > 1 ? "e" : ""}`
+      : "Alles ok";
+  const statusCount = ov.errorAlarms.length || ov.warnAlarms.length || ov.alarms.length;
+  return (
+    <span
+      role="status"
+      title={ov.alarms.map((alarm) => alarm.message).join(" · ")}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border font-semibold ${
+        compact
+          ? "gap-1 px-1.5 py-1.5 text-[0.625rem] sm:gap-1.5 sm:px-2 sm:text-xs"
+          : "px-2.5 py-1.5 text-xs"
+      } ${
+        ov.errorAlarms.length
+          ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+          : ov.warnAlarms.length
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 shrink-0 rounded-full sm:h-2 sm:w-2 ${
+          ov.errorAlarms.length
+            ? "bg-rose-400"
+            : ov.warnAlarms.length
+              ? "bg-amber-400"
+              : "bg-emerald-400"
+        }`}
+      />
+      <span className="max-[359px]:sr-only sm:not-sr-only">{statusText}</span>
+      {compact && (
+        <span
+          aria-hidden="true"
+          className="hidden max-[359px]:inline sm:hidden"
+        >
+          {statusCount}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ShareButton({ ov, compact = false }: { ov: HeaderOverview; compact?: boolean }) {
+  return (
+    <span className={`relative inline-flex ${compact ? "w-full" : ""}`}>
+      <button
+        type="button"
+        aria-label="Ansicht als Link teilen"
+        title="Ansicht als Link kopieren"
+        onClick={ov.copyShareLink}
+        className={`flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low ${
+          compact
+            ? "min-h-11 w-full gap-2 rounded-lg px-3 py-2 text-sm font-semibold"
+            : "h-10 w-10"
+        }`}
+      >
+        <Share2 size={16} aria-hidden="true" />
+        {compact && <span>Ansicht teilen</span>}
+      </button>
+      <span role="status" aria-live="polite" className="sr-only">
+        {ov.shareNote ?? ""}
+      </span>
+      {ov.shareNote && (
+        <span
+          role="status"
+          className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-outline-variant bg-sc-lowest p-2.5 text-xs leading-snug text-on-surface shadow-xl"
+        >
+          {ov.shareNote}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function RefreshButton({ ov, compact = false }: { ov: HeaderOverview; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label="Daten aktualisieren"
+      title="Datenansicht aktualisieren"
+      onClick={() => ov.setRefresh((value) => value + 1)}
+      disabled={ov.prices.pending}
+      className={`flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low disabled:opacity-50 ${
+        compact
+          ? "min-h-11 w-full gap-2 rounded-lg px-3 py-2 text-sm font-semibold"
+          : "h-10 w-10"
+      }`}
+    >
+      <RefreshCw
+        size={16}
+        aria-hidden="true"
+        className={ov.prices.pending ? "animate-spin text-primary" : ""}
+      />
+      {compact && <span>Daten aktualisieren</span>}
+    </button>
+  );
+}
+
 export function AppHeader({
   ov,
   ready,
 }: {
   ov: OverviewState;
-  /** Erst-Paint-Gate (0.41.1): Die Steuerungen erscheinen gemeinsam mit dem
-      fertigen Inhalt — vorher würden Stadt-/Profil-Auswahl und der Alarm-Punkt
-      nachträglich in die Zeile springen und alles daneben verschieben
-      (Lighthouse-Gate `cumulative-layout-shift`). */
+  /** Erst-Paint-Gate: Die Steuerungen erscheinen mit dem fertigen Inhalt. */
   ready: boolean;
 }) {
   const [contextOpen, setContextOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const {
     activeCity,
     data,
@@ -36,42 +235,23 @@ export function AppHeader({
     setSelectedId,
     fuel,
     setFuel,
-    activeProfileId,
-    handleActivateProfile,
     activeProfile,
-    profilesRes,
-    profilesBusy,
-    setProfileManagerOpen,
-    h,
-    alarms,
-    errorAlarms,
-    warnAlarms,
-    shareNote,
-    copyShareLink,
-    prices,
-    setRefresh,
   } = ov;
+  const fuelName = fuel === "diesel" ? "Diesel" : fuel.toUpperCase();
+  const contextName = `${activeCity || "Stadt auswählen"} · ${fuelName}`;
+
   return (
     <header className="app-header z-40 border-b border-outline-variant bg-surface/95 backdrop-blur-md sm:sticky sm:top-0">
-      {/* U3 (überarbeitet 16.09.2026): Auf schmalen Viewports **bricht** die
-          Steuerzeile um, statt seitlich zu scrollen. Der Streifen war 748 px
-          breit und zeigte in 209 px Fensterbreite kaum zwei Steuerungen — wer
-          das Profil wechseln wollte, musste erst schieben („verschiedene
-          Dinge die scrollen müssen“). Dafür entfällt auf dem Handy die
-          Wortmarke (das Symbol bleibt), und die Kopfzeile klebt erst ab `sm`
-          am oberen Rand: zwei Steuerzeilen dauerhaft über dem Inhalt wären
-          der nächste Platzverlust. */}
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        {/* 0.55.1: `tap-44`, weil auf dem Handy nur das 40-px-Symbol übrig
-            bleibt (die Wortmarke steht erst ab `sm`) — als Link ohne die
-            Klasse greift die 44-px-Regel nicht, siehe C5-Ratchet. */}
+      {/* Unter xl bleibt die Shell einzeilig: Kontext ist direkt da, die
+          Fahrzeug- und App-Aktionen wohnen gemeinsam im Profil-Blatt. */}
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:gap-4 sm:px-6 sm:py-3 lg:px-8">
         <a
           href="/"
           className="tap-44 flex shrink-0 items-center gap-3"
           aria-label="TankApp Startseite"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-on-primary">
-            <FuelIcon size={21} />
+            <FuelIcon size={21} aria-hidden="true" />
           </div>
           <div className="hidden sm:block">
             <h1 className="text-lg font-black tracking-tight text-on-surface">
@@ -82,172 +262,139 @@ export function AppHeader({
             </p>
           </div>
         </a>
-        {/* min-w-0: als Flex-Kind sonst so breit wie der Inhalt — dann
-            scrollt nichts und die Zeile sprengt schmale Viewports
-            (e2e-Check `scrollWidth <= innerWidth`). relative: hält
-            absolut positionierte Kinder (sr-only-Status) im Clip der
-            Zeile, sonst erweitern sie die Dokument-Breite. */}
-        <a href="/?konzept=1" className="tap-44 hidden shrink-0 items-center rounded-full border border-outline-variant px-3 py-2 text-xs font-semibold text-primary lg:inline-flex">Neue GUI ↗</a>
+        <a
+          href="/?konzept=1"
+          className="tap-44 hidden shrink-0 items-center rounded-full border border-outline-variant px-3 py-2 text-xs font-semibold text-primary lg:inline-flex"
+        >
+          Neue GUI ↗
+        </a>
         {ready && (
-        <div className="relative flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-          <button onClick={() => setContextOpen(true)} aria-label="Stadt und Kraftstoff auswählen"
-            aria-haspopup="dialog" className="flex min-w-0 items-center gap-1.5 rounded-full border border-outline-variant bg-sc-lowest py-2 pl-3 pr-2 text-xs font-bold hover:bg-sc-low">
-            <MapPin size={14} className="shrink-0 text-primary" />
-            <span className="truncate">{activeCity || "Stadt auswählen"} · {fuel === "diesel" ? "Diesel" : fuel.toUpperCase()}</span>
-            <ChevronDown size={14} className="shrink-0 text-on-surface-variant" />
-          </button>
-          <BottomSheet open={contextOpen} title="Stadt und Kraftstoff" onClose={() => setContextOpen(false)}>
-            <div className="flex flex-wrap gap-4">
-          <label className="flex shrink-0 items-center gap-2 rounded-lg border border-outline-variant bg-sc-lowest px-3 py-2 text-xs">
-            <MapPin size={14} className="text-primary" />
-            <span className="sr-only">Stadt</span>
-            <select
-              aria-label="Stadt"
-              value={activeCity}
-              onChange={(e) => {
-                setCity(e.target.value);
-                setSelectedId("");
-              }}
-              disabled={!data?.cities.length}
-              className="max-w-40 bg-transparent pr-1 text-on-surface"
-            >
-              {data?.cities.length ? (
-                data.cities.map((label) => (
-                  <option key={label}>{label}</option>
-                ))
-              ) : (
-                <option value="">Keine Stadt eingerichtet</option>
-              )}
-            </select>
-          </label>
-          {/* M3 Filter Chips (Konzept v2): Häkchen bei der Auswahl. */}
-          <div
-            role="group"
-            aria-label="Kraftstoff"
-            className="flex shrink-0 flex-wrap items-center gap-2"
-          >
-            {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
-              <button
-                key={value}
-                aria-pressed={fuel === value}
-                onClick={() => setFuel(value)}
-                className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${fuel === value ? "border-transparent bg-secondary-container text-on-secondary-container" : "border-outline-variant text-on-surface-variant hover:bg-sc-low"}`}
-              >
-                {fuel === value && <Check size={16} aria-hidden="true" />}
-                {value === "diesel" ? "Diesel" : value.toUpperCase()}
-              </button>
-            ))}
-          </div>
-            </div>
-            <button onClick={() => setContextOpen(false)} className="m3-btn-now mt-5 rounded-full px-5 py-2.5 text-sm font-semibold">Auswahl übernehmen</button>
-          </BottomSheet>
-          {/* A1: Profil-Umschalter — das aktive Profil liefert Verbrauch,
-              Zeitwert, Tankmenge, Kraftstoff, Tempo und Tankgröße für alle
-              Geräte im Haushalt. Änderungen schreiben zurück (entprellt). */}
-          <label className="flex shrink-0 items-center gap-2 rounded-full border border-outline-variant bg-sc-lowest px-3 py-2 text-xs hover:bg-sc-low">
-            <Car size={14} className="text-primary" />
-            <span className="sr-only">Fahrzeug-Profil</span>
-            <select
-              aria-label="Fahrzeug-Profil"
-              value={activeProfileId}
-              onChange={(e) => {
-                void handleActivateProfile(e.target.value || null);
-              }}
-              title={
-                activeProfile
-                  ? `Aktives Profil „${activeProfile.name}“ — Felder gelten haushaltsweit`
-                  : "Kein Profil aktiv — Einstellungen gelten nur auf diesem Gerät"
-              }
-              className="max-w-40 bg-transparent pr-1 text-on-surface"
-            >
-              <option value="">Kein Profil (nur dieses Gerät)</option>
-              {(profilesRes.data?.profiles ?? []).map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            aria-label="Fahrzeug-Profile verwalten"
-            title="Profile anlegen, umbenennen, löschen (A1)"
-            onClick={() => setProfileManagerOpen(true)}
-            disabled={profilesBusy}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
-          >
-            <SquarePen size={16} aria-hidden="true" />
-          </button>
-          {/* B4: aggregierter System-Alarm als roter/gelber/grüner Punkt. */}
-          {h && alarms.length > 0 && (
-            <span
-              role="status"
-              title={
-                alarms.length
-                  ? alarms.map((a) => a.message).join(" · ")
-                  : "Alles ok — keine Alarme"
-              }
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold ${
-                errorAlarms.length
-                  ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                  : warnAlarms.length
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={`h-2 w-2 rounded-full ${
-                  errorAlarms.length
-                    ? "bg-rose-400"
-                    : warnAlarms.length
-                      ? "bg-amber-400"
-                      : "bg-emerald-400"
-                }`}
-              />
-              {errorAlarms.length
-                ? `${errorAlarms.length} Alarm${errorAlarms.length > 1 ? "e" : ""}`
-                : warnAlarms.length
-                  ? `${warnAlarms.length} Hinweis${warnAlarms.length > 1 ? "e" : ""}`
-                  : "Alles ok"}
-            </span>
-          )}
-          {/* A6: aktuelle Sicht als Link teilen (Haushalt/Bookmark). */}
-          <span className="relative inline-flex">
+          <div className="relative flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 xl:flex-none">
             <button
-              aria-label="Ansicht als Link teilen"
-              title="Ansicht als Link kopieren"
-              onClick={copyShareLink}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
+              type="button"
+              onClick={() => setContextOpen(true)}
+              aria-label="Stadt und Kraftstoff auswählen"
+              aria-haspopup="dialog"
+              aria-expanded={contextOpen}
+              title={contextName}
+              className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-outline-variant bg-sc-lowest py-2 pl-2 pr-2 text-xs font-bold hover:bg-sc-low sm:gap-1.5 sm:pl-3 xl:flex-none xl:shrink-0"
             >
-              <Share2 size={16} aria-hidden="true" />
+              <MapPin size={14} className="hidden shrink-0 text-primary sm:block" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{activeCity || "Stadt auswählen"}</span>
+              <span className="shrink-0">{fuelName}</span>
+              <ChevronDown
+                size={14}
+                className="shrink-0 text-on-surface-variant max-[359px]:hidden"
+                aria-hidden="true"
+              />
             </button>
-            <span role="status" aria-live="polite" className="sr-only">
-              {shareNote ?? ""}
-            </span>
-            {shareNote && (
-              <span
-                role="status"
-                className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-outline-variant bg-sc-lowest p-2.5 text-xs leading-snug text-on-surface shadow-xl"
+            <BottomSheet
+              open={contextOpen}
+              title="Stadt und Kraftstoff"
+              onClose={() => setContextOpen(false)}
+            >
+              <div className="flex flex-wrap gap-4">
+                <label className="flex shrink-0 items-center gap-2 rounded-lg border border-outline-variant bg-sc-lowest px-3 py-2 text-xs">
+                  <MapPin size={14} className="text-primary" aria-hidden="true" />
+                  <span className="sr-only">Stadt</span>
+                  <select
+                    aria-label="Stadt"
+                    value={activeCity}
+                    onChange={(event) => {
+                      setCity(event.target.value);
+                      setSelectedId("");
+                    }}
+                    disabled={!data?.cities.length}
+                    className="max-w-40 bg-transparent pr-1 text-on-surface"
+                  >
+                    {data?.cities.length ? (
+                      data.cities.map((label) => (
+                        <option key={label}>{label}</option>
+                      ))
+                    ) : (
+                      <option value="">Keine Stadt eingerichtet</option>
+                    )}
+                  </select>
+                </label>
+                <div
+                  role="group"
+                  aria-label="Kraftstoff"
+                  className="flex shrink-0 flex-wrap items-center gap-2"
+                >
+                  {(["e10", "e5", "diesel"] as Fuel[]).map((value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      aria-pressed={fuel === value}
+                      onClick={() => setFuel(value)}
+                      className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${fuel === value ? "border-transparent bg-secondary-container text-on-secondary-container" : "border-outline-variant text-on-surface-variant hover:bg-sc-low"}`}
+                    >
+                      {fuel === value && <Check size={16} aria-hidden="true" />}
+                      {value === "diesel" ? "Diesel" : value.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setContextOpen(false)}
+                className="m3-btn-now mt-5 rounded-full px-5 py-2.5 text-sm font-semibold"
               >
-                {shareNote}
-              </span>
-            )}
-          </span>
-          <button
-            aria-label="Daten aktualisieren"
-            title="Datenansicht aktualisieren"
-            onClick={() => setRefresh((value) => value + 1)}
-            disabled={prices.pending}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-outline-variant bg-sc-lowest text-on-surface-variant hover:bg-sc-low"
-          >
-            <RefreshCw
-              size={16}
-              className={
-                prices.pending ? "animate-spin text-primary" : ""
-              }
-            />
-          </button>
-        </div>
+                Auswahl übernehmen
+              </button>
+            </BottomSheet>
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5 xl:hidden">
+              <AlarmStatus ov={ov} compact />
+              <button
+                type="button"
+                aria-label="Fahrzeug-Profil und Aktionen"
+                aria-haspopup="dialog"
+                aria-expanded={actionsOpen}
+                title={activeProfile ? `Aktives Profil: ${activeProfile.name}` : "Profil und App-Aktionen"}
+                onClick={() => setActionsOpen(true)}
+                className="flex h-11 min-w-11 shrink-0 items-center gap-1 rounded-full border border-outline-variant bg-sc-lowest px-2 text-xs font-semibold text-on-surface-variant hover:bg-sc-low"
+              >
+                <Car size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />
+                <span>Profil</span>
+                <ChevronDown size={14} className="hidden sm:block" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="hidden min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 xl:flex">
+              <ProfileSelector ov={ov} />
+              <ProfileManagerButton ov={ov} />
+              <AlarmStatus ov={ov} />
+              <ShareButton ov={ov} />
+              <RefreshButton ov={ov} />
+            </div>
+            <BottomSheet
+              open={actionsOpen}
+              title="Profil und Aktionen"
+              onClose={() => setActionsOpen(false)}
+            >
+              <div className="space-y-5">
+                <section aria-labelledby="header-profile-title" className="space-y-2">
+                  <h3 id="header-profile-title" className="text-sm font-semibold text-on-surface">
+                    Fahrzeug-Profil
+                  </h3>
+                  <ProfileSelector ov={ov} compact />
+                  <ProfileManagerButton
+                    ov={ov}
+                    compact
+                    onOpen={() => setActionsOpen(false)}
+                  />
+                </section>
+                <section aria-labelledby="header-actions-title" className="space-y-2">
+                  <h3 id="header-actions-title" className="text-sm font-semibold text-on-surface">
+                    App-Aktionen
+                  </h3>
+                  <div role="group" aria-label="App-Aktionen" className="grid grid-cols-1 gap-2">
+                    <ShareButton ov={ov} compact />
+                    <RefreshButton ov={ov} compact />
+                  </div>
+                </section>
+              </div>
+            </BottomSheet>
+          </div>
         )}
       </div>
     </header>

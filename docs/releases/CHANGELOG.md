@@ -4,6 +4,27 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.75.0] – 2026-10-05
+
+**UX-Neuentwurf, Batch 3 — kompakte mobile Kopfzeile (C13)**
+([Planung](../planung/UX-NEUENTWURF.md) §13; Freigabe vom 05.10.2026).
+
+- **Eine kompakte Zeile unter 1280 px.** Marke, Stadt/Kraftstoff und ein
+  vorhandener Alarmstatus bleiben in der Kopfzeile. Der Orts-/Kraftstoff-Chip
+  öffnet die Auswahl weiterhin direkt; Profilwechsel, Profilverwaltung,
+  Teilen und Aktualisieren liegen im benannten Blatt „Profil und Aktionen“.
+  Ab 1280 px bleiben alle Steuerungen direkt sichtbar. Keine Funktion und
+  kein API-Vertrag entfällt.
+- **320 × 720 geprüft.** Die Kopfzeile bleibt höchstens 80 px hoch; im
+  Prüfraster sind „Demostadt“ und „E10“ vollständig sichtbar und die Antwort-
+  Überschrift endet im ersten Viewport. Der Alarmstatus bleibt farblich
+  markiert; die schmale Darstellung zeigt den Zähler und erhält den vollen
+  Status-Text für Screenreader.
+- **Interaktion und Abnahme.** Das Aktionsblatt hat benannte Bedienelemente,
+  Fokusführung und Escape-Rückkehr; Profilverwaltung öffnet keinen
+  verschachtelten Dialog. Desktop-, 390-px- und 320-px-E2E-Abnahmen ergänzen
+  die vorhandenen Mobil-Ratchets.
+
 ## [0.74.0] – 2026-10-05
 
 **UX-Neuentwurf, Batch 2 — Vertrauen neu: das Labor beantwortet drei Fragen**

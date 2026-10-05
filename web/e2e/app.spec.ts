@@ -354,3 +354,46 @@ test("Kontext-Sheet: Escape und Tastaturfokus kehren zum Auslöser zurück", asy
   await expect(sheet).toBeHidden();
   await expect(trigger).toBeFocused();
 });
+
+test("Kompakte Kopfzeile: Profil und Aktionen bleiben per Blatt erreichbar", async ({ page }) => {
+  await page.goto("/");
+  const width = page.viewportSize()?.width ?? 1440;
+  const trigger = page.getByRole("button", { name: "Fahrzeug-Profil und Aktionen" });
+  const visibleProfile = page.getByLabel("Fahrzeug-Profil", { exact: true }).filter({ visible: true });
+  const visibleShare = page.getByRole("button", { name: "Ansicht als Link teilen" }).filter({ visible: true });
+  const visibleRefresh = page.getByRole("button", { name: "Daten aktualisieren" }).filter({ visible: true });
+
+  if (width >= 1280) {
+    await expect(trigger).toBeHidden();
+    await expect(visibleProfile).toHaveCount(1);
+    await expect(visibleShare).toHaveCount(1);
+    await expect(visibleRefresh).toHaveCount(1);
+    return;
+  }
+
+  await expect(trigger).toBeVisible();
+  await expect(visibleProfile).toHaveCount(0);
+  await expect(visibleShare).toHaveCount(0);
+  await expect(visibleRefresh).toHaveCount(0);
+  await trigger.click();
+
+  const sheet = page.getByRole("dialog", { name: "Profil und Aktionen", exact: true });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Profil und Aktionen schließen" })).toBeFocused();
+  await expect(sheet.locator('select[aria-label="Fahrzeug-Profil"]')).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Fahrzeug-Profile verwalten" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Ansicht als Link teilen" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Daten aktualisieren" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await sheet.getByRole("button", { name: "Fahrzeug-Profile verwalten" }).click();
+  await expect(sheet).toBeHidden();
+  const manager = page.getByRole("dialog", { name: "Fahrzeug-Profile", exact: true });
+  await expect(manager).toBeVisible();
+  await manager.getByRole("button", { name: "Profil-Verwaltung schließen" }).click();
+  await expect(manager).toBeHidden();
+});

@@ -1,12 +1,14 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 05.10.2026 · App-Version **0.74.0** · gilt für `web/src/**`,
+> Stand: 05.10.2026 · App-Version **0.75.0** · gilt für `web/src/**`,
 > `web/rp2/**`, `rp2/fallback_gui.py`, Fehlertexte in `app/**` und die
 > Push-Texte in `app/notify.py`. Neu mit 0.74.0 (UX-NEUENTWURF Batch 2):
 > das Labor hat drei Blöcke, Rohdaten und CSV wohnen in „System“, Stationen
-> und Ich sind verdichtet. **Entfallen:** Sub-Tabs, Spielplatz, Experimente,
-> Tankprofil-Rechner, Einflüsse-Balken, Güte-Panel, eingebettetes Glossar,
-> Heatmap-Schalter, Fachjargon im Alltag.
+> und Ich sind verdichtet. Neu mit 0.75.0 (Batch 3): Profil und seltene
+> App-Aktionen liegen auf schmalen Displays gebündelt im Kopfzeilen-Blatt.
+> **Entfallen:** Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
+> Einflüsse-Balken, Güte-Panel, eingebettetes Glossar, Heatmap-Schalter,
+> Fachjargon im Alltag.
 
 ## Inhaltsverzeichnis
 
@@ -14,6 +16,7 @@
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
+  - [Kopfzeile: feste Muster](#4e-kopfzeile-feste-muster)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -106,6 +109,18 @@ Drei Blöcke, sonst nichts; die Fragen stehen genau einmal in `lab.ts` (`LAB_BLO
 ### 4d. Bereich „System“: feste Muster
 
 Hier dürfen Datei- und Endpunktnamen stehen (`TECH_TEXT_ALLOWED` in `microcopy.test.ts`): Herkunft `Quelle: /api/v1/…`, Winter-Hinweis zur 12-Uhr-Regel, `Alles ok` · `Hinweise` · `Störungen` im Kopf. Rohdaten- und CSV-Blöcke nennen **was** exportiert wird und **woher** es kommt, nie nur „Export“.
+
+### 4e. Kopfzeile: feste Muster
+
+Unter 1280 px heißt der sichtbare Auslöser `Profil` (Screenreader-Name
+`Fahrzeug-Profil und Aktionen`); das Blatt heißt `Profil und Aktionen`.
+Darin stehen `Fahrzeug-Profil`, `Fahrzeug-Profile verwalten`, `Ansicht teilen`
+und `Daten aktualisieren`. Der Stadt-/Kraftstoff-Chip bleibt mit
+`Stadt und Kraftstoff auswählen` direkt erreichbar. Auf 320 px bleibt der
+Stadt-/Kraftstoff-Wert im Prüfraster lesbar; der Alarmstatus zeigt dort visuell
+den farbigen Zähler, sein vollständiger Text bleibt für Screenreader erhalten.
+Auf breiten Displays bleiben die Aktionen direkt sichtbar. Verfügbare Updates
+und andere Meldungen stehen weiter im Seitenfluss, nicht versteckt im Blatt.
 
 ## 5. Zustände: leer, lädt, Fehler
 

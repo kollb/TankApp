@@ -1,7 +1,7 @@
 # Oberfläche und Interaktion
 
-> Stand: 05.10.2026 · App-Version 0.74.0
-> Beschreibt die implementierte Navigation einschließlich der drei Labor-Blöcke.
+> Stand: 05.10.2026 · App-Version 0.75.0
+> Beschreibt die implementierte Navigation einschließlich der drei Labor-Blöcke und der kompakten Kopfzeile.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
@@ -11,10 +11,13 @@
 > ([Release 0.71.0](../releases/CHANGELOG.md#0710--2026-09-27)).
 > Neu in 0.73.0: „Jetzt“ und „Woche“ antworten statt zu berichten — eine
 > Frage, eine Antwort ([Release 0.73.0](../releases/CHANGELOG.md#0730--2026-10-04)).
+> Neu in 0.75.0: kompakte Kopfzeile unter 1280 px — Profil und seltene
+> Aktionen liegen in einem zugänglichen Blatt ([Release 0.75.0](../releases/CHANGELOG.md#0750--2026-10-05)).
 
 ## Inhaltsverzeichnis
 
 - [Navigation](#navigation)
+  - [Kompakte Kopfzeile](#kompakte-kopfzeile)
 - [Bereiche](#bereiche)
 - [Tank-Guide: eine Frage, eine Antwort](#tank-guide-eine-frage-eine-antwort)
 - [Jetzt: eine Antwort, ein Tipp in die Tiefe](#jetzt-eine-antwort-ein-tipp-in-die-tiefe)
@@ -63,6 +66,25 @@ Bestehende URLs bleiben erreichbar: `?tab=labor`, `?tab=ich`, `?tab=system`,
 `?tab=glossar` und zugehörige `?section=…`-Sprünge. Alarm-Pille und
 Update-Banner bleiben global. Die Navigation darf keine Inhalte verstecken,
 die nur über einen alten Haupttab erreichbar waren.
+
+### Kompakte Kopfzeile
+
+Seit 0.75.0 (UX-Neuentwurf Batch 3 / C13) bleibt die Kopfzeile unter
+1280 px eine Zeile: Marke, Stadt/Kraftstoff und ein aktiver Alarmstatus
+(falls vorhanden). Der Kontext-Chip öffnet wie bisher die Auswahl für Stadt
+und Kraftstoff. Profilwechsel und -verwaltung, Teilen und Aktualisieren
+liegen gemeinsam hinter dem Knopf „Profil und Aktionen“ im gleichnamigen
+Blatt. Die Steuerungen behalten ihre deutschen Namen und Touch-Ziele; beim
+Öffnen liegt der Fokus im Blatt, Escape schließt es und gibt den Fokus an den
+Auslöser zurück. Die Profilverwaltung schließt das Blatt zuerst, damit nie
+zwei Dialoge ineinander liegen.
+
+Ab 1280 px bleiben Profil, Alarm, Teilen und Aktualisieren direkt in der
+Kopfzeile. Meldungen, Installationshinweise und ein verfügbares Update bleiben
+im normalen Seitenfluss sichtbar — sie verschwinden nicht im Aktionsblatt.
+Die 320 × 720-Abnahme hält die Kopfzeile bei höchstens 80 px; Stadt und
+Kraftstoff sind im Prüfraster nicht abgeschnitten, die Antwort-Überschrift
+steht im ersten Viewport und Hinweise bleiben sichtbar.
 
 ## Bereiche
 

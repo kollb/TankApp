@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 05.10.2026 · App-Version 0.74.0
+> Stand: 05.10.2026 · App-Version 0.75.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | Datenerhebung | Mehrstadt-Collector, RAM-Ring, Heartbeat, Upload mit Ack und Wiederholung | [Architektur](../architektur/ARCHITEKTUR.md) |
 | NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup | [Betrieb](../betrieb/BETRIEB.md) |
-| Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe. **Seit 0.73.0 (Batch 1):** „Jetzt“ antwortet (fünf Ausgänge, eine Zahl, eine Handlung), „Woche“ zeigt eine Bestenliste (≤ 3 Einträge). **Seit 0.74.0 (Batch 2):** das Labor beantwortet drei Fragen mit einem Satz als Zählung, einer Kurve und drei Rechenschritten; Stationen und Ich sind verdichtet; Rohdaten, CSV und API-Explorer wohnen in „System“ | [UI](../produkt/UI.md) |
+| Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe. **Seit 0.73.0 (Batch 1):** „Jetzt“ antwortet (fünf Ausgänge, eine Zahl, eine Handlung), „Woche“ zeigt eine Bestenliste (≤ 3 Einträge). **Seit 0.74.0 (Batch 2):** das Labor beantwortet drei Fragen mit einem Satz als Zählung, einer Kurve und drei Rechenschritten; Stationen und Ich sind verdichtet; Rohdaten, CSV und API-Explorer wohnen in „System“. **Seit 0.75.0 (Batch 3/C13):** Kopfzeile unter 1280 px in einer Zeile; bei 320 × 720 sind Stadt-/Kraftstoff-Chip und Antwort-Überschrift im ersten Viewport nicht abgeschnitten, Profil und Aktionen liegen in einem Blatt | [UI](../produkt/UI.md) |
 | Labor | Drei Blöcke (§5): Vertrauens-Satz + filterbares Tagebuch · eine Kurve + mittlerer Fehler · drei Rechenschritte; acht Bausteine, Fachwerte und Heatmap hinter „Details für Neugierige“; Layout-Regressionsschutz für lange Bezeichner bei 390 px | [UI](../produkt/UI.md#labor-drei-fragen) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
@@ -35,11 +35,12 @@ eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 ## Offene Arbeit
 
-**UX-Neuentwurf Batch 2 (0.74.0).** Labor, Stationen, Ich und System sind
-verdichtet (§5–§7): drei Fragen statt Sammelakte, eine Sortierung mit einem
-Referenzbegriff, Rohdaten als Betreiber-Sicht. Offen bleibt die Verdichtung
-der globalen Kopfzeile (C13) — sie ist der Grund, warum die KPI „Antwort im
-ersten Viewport“ bei 320 px übersprungen wird.
+**UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0).** Jetzt und Woche, Labor,
+Stationen und Ich sind verdichtet; Rohdaten sind Betreiber-Sicht in „System“.
+Batch 3 setzt die zuvor ausgeklammerte Verdichtung der globalen Kopfzeile
+(C13) um: Unter 1280 px bleibt die Shell einzeilig, die Antwort-Überschrift
+passt bei 320 × 720 in den ersten Viewport. Die 390-px- und Desktop-Abnahmen
+bleiben bestehen. Aus diesem Neuentwurf ist kein UX-Auftrag mehr offen.
 
 In [TODO](TODO.md) stehen unmittelbar ausführbare Korrekturen:
 **A14** klärt die Rechts-/Terminbasis vor weiteren Regime-Eingriffen.
@@ -48,8 +49,9 @@ B5 ist im [Release 0.59.2](../releases/CHANGELOG.md#0592--2026-09-20) dokumentie
 und wird nicht erneut beauftragt.
 
 Der NAS-/Pi-Befund vom 20.09.2026
-ergänzt bestätigte Integrationsfehler. Batch 1/2 und der konservative
-Failover aus Batch 3 sind im Code korrigiert; verbleibende Arbeit steht in
+ergänzt bestätigte Integrationsfehler. Die UX-Batches 1–3 sowie der
+konservative Failover aus **NAS/Pi Batch 3** sind im Code korrigiert;
+verbleibende Arbeit steht in
 [TODO](TODO.md#n1-naspi-integrationsfehler-beheben). Es gelten folgende Grenzen:
 
 - **Datenintegrität:** Outbox, fail-closed Stores und konsistente Publikation
@@ -163,7 +165,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
 | Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
-| UX-Neuentwurf, Batch 1 (0.73.0) | Umgesetzt für **Jetzt** und **Woche** (§3/§4/§9). Gestrichen und bewusst nicht zurückgeholt: Was-wäre-wenn-Annahmen, Feedback-Intents, Fällig-Prompt, „Nächste Schritte“, drei Fakten, 19-Zellen-Raster „Heute im Blick“, Benefit-Block, Konfidenz-Balken/Sterne, Frische-Fußzeile. Der **Serververtrag bleibt unverändert**: Intents, Fenster, p-Felder und `regime_notice` werden weiter geliefert, die GUI zeigt weniger. Nachgezogen mit **Batch 2 (0.74.0)**: Labor in drei Blöcken (§5), Stationen/Ich verdichtet (§6/§7), Rohdaten als Betreiber-Sicht in „System“. Offen bleibt die Verdichtung der globalen Kopfzeile (C13) — bis dahin zählt die KPI „Antwort im ersten Viewport“ nur bei 390 px, nicht bei 320 px |
+| UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0) | Umgesetzt: **Jetzt** und **Woche** (§3/§4), Labor in drei Blöcken (§5), Stationen/Ich verdichtet (§6/§7), Rohdaten als Betreiber-Sicht in „System“ und kompakte globale Kopfzeile (C13/§13). Was-wäre-wenn-Annahmen, Feedback-Intents, Fällig-Prompt, „Nächste Schritte“, drei Fakten, 19-Zellen-Raster, Benefit-Block, Konfidenz-Balken/Sterne und Frische-Fußzeile bleiben gestrichen. Der **Serververtrag bleibt unverändert**. C13 ist seit 0.75.0 umgesetzt: bei 320 × 720 endet die Antwort-Überschrift im ersten Viewport; unter 1280 px liegen Profil und Aktionen im Kopfzeilen-Blatt |
 | ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt jetzt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der Vorlage `sample/good gui`. Die namentlich vorbereiteten `GUIDE_TONE_CLASS`-Sätze in `views/guide.ts` bleiben bestehen; sie sind mit den styles.css-Klassen deckungsgleich |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte
