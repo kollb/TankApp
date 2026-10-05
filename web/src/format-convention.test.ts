@@ -24,11 +24,6 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
     reason:
       "Vorbelegung des Beleg-Preises (Ich → Belege): Punkt wie beim Tippen (commaToDot)",
   },
-  "components/LabCharts.tsx": {
-    count: 2,
-    reason:
-      "SVG-Pfad-Koordinaten (T13: die Prozent in <title> laufen über percentLabel)",
-  },
   "components/LineChart.tsx": {
     count: 6,
     reason: "SVG-Pfad- und Band-Koordinaten",
@@ -73,11 +68,7 @@ const CLEAN = [
   "views/Labor.tsx",
   "system.ts",
   "views/System.tsx",
-  "views/labor/Ueberblick.tsx",
-  "views/labor/Modell.tsx",
-  "views/labor/Guete.tsx",
-  "views/labor/Daten.tsx",
-  "views/labor/components.tsx",
+  "views/SystemRohdaten.tsx",
 ];
 
 function read(relativePath: string): string {

@@ -13,9 +13,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  accuracyDots,
-  dayPosition,
-  priceDrivers,
   fillAmount,
   guideBanner,
   guideLevel,
@@ -146,10 +143,6 @@ const GUIDE_FILES = [
   "components/GuideBanner.tsx",
   "components/DayCurve.tsx",
   "components/FreshnessChip.tsx",
-  "components/LabAccuracy.tsx",
-  "components/LabExperiments.tsx",
-  "components/LabProfile.tsx",
-  "components/PriceDrivers.tsx",
   "views/Jetzt.tsx",
   "views/Woche.tsx",
 ];
@@ -227,80 +220,5 @@ describe("Sprache des Guides (MICROCOPY §4b)", () => {
     const open = (text.match(/„/g) ?? []).length;
     const close = (text.match(/“/g) ?? []).length;
     expect(close, `${file}: ${open}× „ aber ${close}× “`).toBe(open);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Labor: Treffsicherheit und Einflüsse — nur mit echtem Messwert
-// ---------------------------------------------------------------------------
-describe("Treffsicherheit als Punkte-Raster", () => {
-  it("ein Punkt je Empfehlung, in der Reihenfolge richtig/daneben", () => {
-    const grid = accuracyDots({ hits: 26, ties: 2, total: 30 });
-    expect(grid?.dots).toHaveLength(30);
-    expect(grid?.hits).toBe(26);
-    expect(grid?.ties).toBe(2);
-    expect(grid?.misses).toBe(2);
-    expect(grid?.dots.slice(0, 26).every((d) => d === "hit")).toBe(true);
-    expect(grid?.dots.slice(28).every((d) => d === "miss")).toBe(true);
-  });
-
-  it("ohne Zählung keine Punkte — der Lernstand tritt an ihre Stelle", () => {
-    expect(accuracyDots({ hits: 0, total: 0 })).toBeNull();
-    expect(accuracyDots({ hits: null, total: null })).toBeNull();
-  });
-
-  it("unmögliche Zählungen werden begrenzt, nicht erfunden", () => {
-    const grid = accuracyDots({ hits: 40, ties: 10, total: 30 });
-    expect(grid?.dots).toHaveLength(30);
-    expect(grid?.hits).toBe(30);
-    expect(grid?.ties).toBe(0);
-  });
-});
-
-describe("Was den Preis gerade bewegt", () => {
-  it("die Tagesspielraum-Lage ist eine beobachtete Größe", () => {
-    expect(dayPosition({ nowPrice: 1.75, dayMin: 1.7, dayMax: 1.8 })).toBeCloseTo(50, 6);
-    expect(dayPosition({ nowPrice: 1.7, dayMin: 1.7, dayMax: 1.8 })).toBe(0);
-    expect(dayPosition({ nowPrice: 1.8, dayMin: 1.7, dayMax: 1.8 })).toBe(100);
-  });
-
-  it("ohne Spielraum keine Lage — flacher Tag ist keine Aussage", () => {
-    expect(dayPosition({ nowPrice: 1.7, dayMin: 1.7, dayMax: 1.7 })).toBeNull();
-    expect(dayPosition({ nowPrice: null, dayMin: 1.7, dayMax: 1.8 })).toBeNull();
-  });
-
-  it("oben im Spielraum drückt, unten treibt", () => {
-    const high = priceDrivers({ nowPrice: 1.79, dayMin: 1.7, dayMax: 1.8, spreadCt: 5 });
-    expect(high[0].direction).toBe("down");
-    expect(high[0].strength).toBeCloseTo(90, 6);
-    const low = priceDrivers({ nowPrice: 1.71, dayMin: 1.7, dayMax: 1.8, spreadCt: 5 });
-    expect(low[0].direction).toBe("up");
-  });
-
-  it("die Auswahl vor Ort trägt einen echten Messwert", () => {
-    const [zeit, konkurrenz] = priceDrivers({
-      nowPrice: 1.75,
-      dayMin: 1.7,
-      dayMax: 1.8,
-      spreadCt: 5,
-    });
-    expect(konkurrenz.direction).toBe("down");
-    expect(konkurrenz.strength).toBeCloseTo(50, 6);
-    expect(konkurrenz.value).toContain("5 Cent");
-    expect(zeit.value).toContain("%");
-  });
-
-  it("Faktoren ohne Datenpfad stehen sichtbar da — ohne Balken", () => {
-    const drivers = priceDrivers({
-      nowPrice: null,
-      dayMin: null,
-      dayMax: null,
-      spreadCt: null,
-    });
-    expect(drivers).toHaveLength(3);
-    for (const driver of drivers) {
-      expect(driver.strength).toBeNull();
-      expect(driver.note).toContain("Kein Messwert");
-    }
   });
 });

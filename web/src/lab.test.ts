@@ -1,12 +1,11 @@
-// Labor: die reine Logik (UI-NEUENTWURF §6/§7) — Abschnitte, Sprung,
-// Tagebuch-Sprache.
+// Labor: die reine Logik (UX-NEUENTWURF §5, Batch 2 / 0.74.0) — drei
+// Blöcke, der Adressraum der alten Abschnitte und die Tagebuch-Sprache.
 //
-// Getestet werden die drei Zusagen, die die Checkliste 3.1/3.2 einklagt:
-//   * Fünf Abschnitte in fester Reihenfolge plus Spielplatz ohne Nummer —
-//     diese Liste ist der Adressraum der Sprungleiste.
-//   * Ebene 2 findet ihr Ziel: `labHint` nennt den Abschnitt. Eine gemerkte
-//     Herkunft gibt es seit U5 nicht mehr — der Rückweg ist das
-//     Browser-Zurück (U4-Routing).
+// Getestet werden die Zusagen, die der Umbau einklagt:
+//   * Drei Blöcke in fester Reihenfolge — kein Sub-Tab, kein vierter Block.
+//   * Jede alte Abschnitts-Kennung (`?section=…`) zeigt auf genau einen
+//     dieser Blöcke; die acht Bausteine bleiben in Kettenreihenfolge.
+//   * Ebene 2 findet ihr Ziel: `labHint` nennt den Abschnitt.
 //   * Das Tagebuch spricht Alltag: Ergebnis-Wort, Grund und Formatter-Zahlen
 //     — nie Fachsprache, nie eine Zahl ohne Einheit.
 
@@ -14,17 +13,20 @@ import { describe, expect, it } from "vitest";
 import { timeLabel } from "./data";
 import type { AdviceDiaryEntry } from "./data";
 import {
+  LAB_BLOCKS,
   LAB_SECTIONS,
+  PARAM_CARDS,
   diaryActionWord,
   diaryCountLabel,
   diaryEmptyNote,
   diaryOutcome,
   diaryStamp,
   groupDiaryEntries,
+  labBlockAnchor,
+  labBlockForSection,
   labHint,
   labSection,
   labSectionButtonLabel,
-  trustSentence,
   voidReasonWord,
   type LabSectionId,
 } from "./lab";
@@ -56,56 +58,82 @@ function entry(overrides: Partial<AdviceDiaryEntry>): AdviceDiaryEntry {
   };
 }
 
-describe("Labor: Abschnitte und Sprung (§6)", () => {
-  it("führt fünf nummerierte Abschnitte in fester Reihenfolge plus Spielplatz", () => {
-    expect(LAB_SECTIONS.map((section) => section.id)).toEqual([
-      "prognose",
+describe("Labor: drei Blöcke und ihr Adressraum (§5)", () => {
+  it("hat genau drei Blöcke in fester Reihenfolge", () => {
+    expect(LAB_BLOCKS.map((block) => block.id)).toEqual([
       "sicherheit",
-      "stationen",
-      "lernen",
-      "glossar",
-      "spielplatz",
+      "prognose",
+      "rechenweg",
     ]);
-    expect(LAB_SECTIONS.map((section) => section.number)).toEqual([
-      1, 2, 3, 4, 5, null,
-    ]);
-  });
-
-  it("fragt in jeder Überschrift nach dem Alltag, nicht nach dem Fachwort", () => {
-    for (const section of LAB_SECTIONS) {
-      expect(section.question.length).toBeGreaterThan(0);
-      expect(section.short.length).toBeGreaterThan(0);
-      // Der Spielplatz ist ein Werkzeug; alle fünf Abschnitte sind Fragen.
-      if (section.id !== "spielplatz" && section.id !== "glossar") {
-        expect(section.question.endsWith("?")).toBe(true);
-      }
+    expect(LAB_BLOCKS.map((block) => block.number)).toEqual([1, 2, 3]);
+    for (const block of LAB_BLOCKS) {
+      expect(block.question.length).toBeGreaterThan(0);
+      expect(block.lead.length).toBeGreaterThan(0);
+      expect(labBlockAnchor(block.id)).toBe(`labor-${block.id}`);
     }
   });
 
-  it("hält die Kurzform je Abschnitt eindeutig (Sprungleiste ist adressierbar)", () => {
-    const shorts = LAB_SECTIONS.map((section) => section.short);
-    expect(new Set(shorts).size).toBe(shorts.length);
+  it("übersetzt jede alte Abschnitts-Kennung auf genau einen Block", () => {
+    expect(labBlockForSection("sicherheit")).toBe("sicherheit");
+    expect(labBlockForSection("lernen")).toBe("sicherheit");
+    expect(labBlockForSection("prognose")).toBe("prognose");
+    expect(labBlockForSection("stationen")).toBe("rechenweg");
+    expect(labBlockForSection("glossar")).toBe("rechenweg");
   });
 
-  it("liefert zu jeder Id die Überschrift — und zu Unbekanntem keinen Absturz", () => {
-    expect(labSection("lernen").question).toBe("Wie lernt die App aus Fehlern?");
+  it("führt fünf URL-Abschnitte — der Spielplatz ist keiner mehr", () => {
+    expect(LAB_SECTIONS.map((section) => section.id)).toEqual([
+      "sicherheit",
+      "prognose",
+      "stationen",
+      "lernen",
+      "glossar",
+    ]);
+    expect(LAB_SECTIONS.map((section) => section.short)).not.toContain("Spielplatz");
+    for (const section of LAB_SECTIONS) {
+      expect(labBlockForSection(section.id)).toBeTruthy();
+    }
+  });
+
+  it("liefert zu jeder Id eine Kurzform — und zu Unbekanntem keinen Absturz", () => {
+    expect(labSection("lernen").short).toBe("Wie die App aus Fehlern lernt");
+    expect(labSection("sicherheit").short).toBe("Ob die Empfehlung stimmt");
     // Durchgereichte Zeichenkette (nicht im Typ): die Ansicht bleibt bedienbar.
-    expect(labSection("gibtsnicht" as LabSectionId).id).toBe("glossar");
+    expect(labSection("gibtsnicht" as LabSectionId).id).toBe("sicherheit");
   });
 
-  it("beschriftet die Sprungleiste mit Nummer, der Spielplatz ohne", () => {
-    expect(labSectionButtonLabel("prognose")).toBe("1 · Was die App vorhersagt");
-    expect(labSectionButtonLabel("spielplatz")).toBe("Spielplatz");
+  it("beschriftet Sprungknöpfe mit Nummer, das Glossar ohne", () => {
+    expect(labSectionButtonLabel("prognose")).toBe("2 · Wie gut die Prognose ist");
+    expect(labSectionButtonLabel("stationen")).toBe("3 · Wie die App rechnet");
+    expect(labSectionButtonLabel("glossar")).toBe("Glossar von A–Z");
   });
 
-  it("nennt in Ebene 2 den Abschnitt, der die Zahl beweist (§7)", () => {
+  it("nennt in Ebene 2 den Block, der die Zahl beweist (§7)", () => {
     expect(labHint("sicherheit")).toEqual({
       section: "sicherheit",
-      label: "Im Labor vertiefen: Was „ziemlich sicher“ heißt",
+      label: "Im Labor vertiefen: Ob die Empfehlung stimmt",
     });
     expect(labHint("stationen").section).toBe("stationen");
   });
 
+  it("hält die acht Bausteine in Kettenreihenfolge", () => {
+    expect(PARAM_CARDS.map((card) => card.id)).toEqual([
+      "struktur",
+      "ar2",
+      "bootstrap",
+      "projektion",
+      "ensemble",
+      "selektion",
+      "schwellen",
+      "regime",
+    ]);
+    expect(PARAM_CARDS.map((card) => card.number)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    for (const card of PARAM_CARDS) {
+      expect(card.anchor).toBe(`karte-${card.number}-${card.id}`);
+    }
+  });
 });
 
 describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
@@ -185,16 +213,6 @@ describe("Labor: Tagebuch in Alltagssprache (§7.4)", () => {
       "beginnt mit der ersten Empfehlung aus „Jetzt“",
     );
     expect(diaryEmptyNote(null)).toBe("Noch keine Einträge im Tagebuch.");
-  });
-
-  it("spricht die Trefferquote erst aus, wenn Fälle abgerechnet sind", () => {
-    expect(trustSentence({ promises: null, hits: null })).toContain(
-      "Noch keine abgeschlossene Empfehlung",
-    );
-    expect(trustSentence({ promises: 0, hits: 0 })).toContain(
-      "Noch keine abgeschlossene Empfehlung",
-    );
-    expect(trustSentence({ promises: 3, hits: 2 })).toContain("67 % davon");
   });
 
   it("nennt bei einer Ablehnung den Grund der Tabelle (nicht nur „keine“)", () => {

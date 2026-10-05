@@ -44,7 +44,6 @@ const FILES = [
   "components/HeatmapGrid.tsx",
   "components/InstallHint.tsx",
   "install.ts",
-  "components/LabCharts.tsx",
   "components/LineChart.tsx",
   "components/LoadError.tsx",
   "components/PrecisionSlider.tsx",
@@ -70,6 +69,7 @@ const FILES = [
   "views/System.tsx",
   "views/Settings.tsx",
   "views/Glossary.tsx",
+  "views/SystemRohdaten.tsx",
   // GUI-TEXT-BEFUND T1: Auch die Stellen, die außerhalb der Views Texte
   // setzen, gehören in die Prüfung — Kopfzeile, Navigation, der Aktions-Kanal
   // der Root und der Service Worker waren bis 0.41.1 ungeprüft.
@@ -80,11 +80,6 @@ const FILES = [
   "components/NoticesView.tsx",
   "service-worker.ts",
   "state/overview.tsx",
-  "views/labor/Ueberblick.tsx",
-  "views/labor/Modell.tsx",
-  "views/labor/Guete.tsx",
-  "views/labor/Daten.tsx",
-  "views/labor/components.tsx",
 ];
 
 /**
@@ -97,6 +92,7 @@ const FILES = [
 const TECH_TEXT_ALLOWED = new Set([
   "system.ts",
   "views/System.tsx",
+  "views/SystemRohdaten.tsx",
   "components/ApiExplorer.tsx",
 ]);
 

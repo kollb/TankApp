@@ -29,6 +29,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { ApiExplorer } from "../components/ApiExplorer";
+import { SystemRohdaten } from "./SystemRohdaten";
 import { JobCard } from "../components/JobCard";
 import { FreshnessLine } from "../components/FreshnessLine";
 import { Level1Sheet } from "../components/Level1Sheet";
@@ -1148,6 +1149,10 @@ export function SystemView(props: SystemViewProps) {
               Im Browser gespeichert (IndexedDB, „tankapp.outbox.v1“); quittierte Einträge bleiben in der Historie nachweisbar. Der Nachreich-Takt läuft im 30-Sekunden-Takt mit — auch wenn das NAS in der Zwischenzeit neu gestartet hat.
             </p>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <SystemRohdaten />
         </div>
 
         <div className="mt-6">
