@@ -29,20 +29,21 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Erst Stationen einrichten, dann der Atlas" }),
   ).toBeVisible();
-  // „Labor“ (der ehemalige Werkstatt-Tab) ist die getrennte Welt für die
-  // Mathematik: eine Seite, fünf Aufklapp-Abschnitte. Ohne Statistik-Lauf
-  // bleibt sie ehrlich bei „kein Statistik-Lauf“ und nennt den Grund.
+  // „Labor“ (der ehemalige Werkstatt-Tab) beantwortet seit Batch 2 drei
+  // Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet
+  // die App? Ohne abgerechnete Empfehlung nennt Block 1 ehrlich den
+  // Lernstand, statt einen Prozentwert zu erfinden.
   // B4: mobil ein Tipper tiefer (Studio-Blatt) — `clickArea` in beiden
   // Rastern.
   await clickArea(page, "Labor");
   await expect(
-    page.getByRole("heading", { name: "Verstehen, warum die App das sagt" }),
+    page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Was sagt die App eigentlich vorher?" }),
+    page.getByRole("heading", { name: "Kann ich vertrauen?", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Kalibrierung steht aus", { exact: false }).first(),
+    page.getByText("die ersten Empfehlungen sind Lern-Fälle", { exact: false }).first(),
   ).toBeVisible();
   await clickArea(page, "System");
   await expect(
@@ -242,7 +243,7 @@ const AREA_URLS: Array<{ url: string; heading: string }> = [
   { url: "/?tab=stationen", heading: "Erst Stationen einrichten, dann der Atlas" },
   { url: "/?tab=woche", heading: "Woche" },
   { url: "/?tab=ich", heading: "Ich" },
-  { url: "/?tab=labor", heading: "Verstehen, warum die App das sagt" },
+  { url: "/?tab=labor", heading: "Stimmt das?" },
   { url: "/?tab=system", heading: "Einmal einrichten. Weiterlaufen lassen." },
   { url: "/?tab=glossar", heading: "Glossar" },
 ];
@@ -258,21 +259,17 @@ for (const area of AREA_URLS) {
   });
 }
 
-test("U4: Labor-Link mit Abschnitt öffnet den Abschnitt", async ({ page }) => {
+test("U4: Labor-Link mit Abschnitt öffnet den Block", async ({ page }) => {
   await page.goto("/?tab=labor&section=sicherheit");
   await expect(
-    page.getByRole("heading", {
-      name: "Verstehen, warum die App das sagt",
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
-  // Der Abschnitt ist aufgeklappt — ohne `section` wäre er zugefallen.
+  // Der Abschnitt ist sichtbar — ohne `section` gäbe es denselben Block,
+  // aber ohne Sprung. Der Beweis-Block trägt die Zählung.
+  await expect(page.locator("#labor-sicherheit")).toBeVisible();
   await expect(
-    page
-      .getByRole("button", { name: /ziemlich sicher/ })
-      .filter({ hasText: "Was heißt" })
-      .first(),
-  ).toHaveAttribute("aria-expanded", "true");
+    page.getByRole("heading", { name: "Kann ich vertrauen?", exact: true }),
+  ).toBeVisible();
 });
 
 test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({

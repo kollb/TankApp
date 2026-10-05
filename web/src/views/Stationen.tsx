@@ -3,7 +3,7 @@
 // Feste Reihenfolge, nie anders:
 //   ① Suche + Filter (⌘K springt hierher)
 //   ② Karte mit €-Pins (Server-Netto, Urteil-Farben)
-//   ③ Liste (Sortierung Netto-€ | Preis | Entfernung; Referenz markiert)
+//   ③ Liste (fest nach Preis sortiert; Netto-€ als Zusatz, Referenz markiert)
 //   ④ Station-Detail (Preis, Verlauf 7 Tage, Tagesrhythmus, Einordnung)
 //   ⑤ Vergleich (A gegen B) — eigener Modus, kein Rechnen im Kopf
 //   — darunter die Frische-Fußzeile (fester Platz, jede Ansicht)
@@ -65,12 +65,12 @@ import {
   type DecideResult,
   type Point,
   type ResourceState,
+  type Selection,
   type Station,
   type Stations,
 } from "../data";
 import {
   atlasEur,
-  ATLAS_SORTS,
   DEFAULT_ATLAS_SORT,
   atlasMatchesFilter,
   atlasRows,
@@ -127,6 +127,11 @@ export interface StationenViewProps {
   onDeepen?: (section: LabSectionId) => void;
   /** ⌘K-Signal aus der Dashboard-Root: > 0 = Fokus in die Suche. */
   searchFocusSignal: number;
+  /**
+   * Selektions-Antwort (`/api/v1/selection`) — der δ̂-Beweis wohnt seit
+   * Batch 2 hier, nicht mehr im Labor (§"Ein Ort je Sache").
+   */
+  selectionRes?: ResourceState<Selection | null> | null;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
 }
@@ -153,6 +158,7 @@ export function StationenView(props: StationenViewProps) {
     onTimeValue,
     online,
     pinNote,
+    selectionRes,
     pinnedIds,
     price,
     pricesAt,
@@ -177,7 +183,10 @@ export function StationenView(props: StationenViewProps) {
   // aktuellem Preis für den gewählten Kraftstoff — „—“-Zeilen bleiben
   // andernfalls sichtbar und sortieren nach hinten.
   const [openOnly, setOpenOnly] = useState(false);
-  const [sort, setSort] = useState<AtlasSort>(DEFAULT_ATLAS_SORT);
+  // Batch 2 (§6): **eine** Sortierung — Preis, günstigste zuerst. Netto-€
+  // und Entfernung stehen als Zusätze in der Zeile, sie ordnen die Liste
+  // nicht mehr um.
+  const sort: AtlasSort = DEFAULT_ATLAS_SORT;
   // Vergleichs-Modus: B-Station (A = die gewählte Station).
   // A gegen B: "" heißt „Vorauswahl Top 1 gegen Top 2 der Sortierung“.
   const [compareA, setCompareA] = useState<string>("");
@@ -193,6 +202,17 @@ export function StationenView(props: StationenViewProps) {
   }, [searchFocusSignal]);
 
   const decide = decideRes.data ?? null;
+  // δ̂ der gewählten Station: über Wochen gemittelt, gegen den Stadt-Median
+  // derselben Stunde. Ohne Messung steht der ehrliche Grund da, keine Zahl.
+  const selectedDelta = (selectionRes?.data?.stations ?? []).find(
+    (row) => row.station_id === selectedId,
+  );
+  const deltaLine =
+    selectedDelta?.delta_ct != null
+      ? `Preis-Abstand zum Stadt-Median: ${centPerLiter(selectedDelta.delta_ct)}` +
+        (selectedDelta.significant === false ? " — statistisch noch nicht gesichert." : " — über Wochen gemessen.")
+      : "Preis-Abstand zum Stadt-Median: noch zu wenig Messung für eine Aussage.";
+
   const problemCode =
     decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
 
@@ -472,22 +492,6 @@ export function StationenView(props: StationenViewProps) {
                   {freshCount} mit frischem Preis
                 </span>
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold">
-                {ATLAS_SORTS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setSort(option.value)}
-                    aria-pressed={sort === option.value}
-                    className={`rounded-md px-2.5 py-1 transition-colors ${
-                      sort === option.value
-                        ? "bg-slate-800 text-emerald-300"
-                        : "text-slate-500 hover:text-slate-200"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
             </div>
             {pinNote && (
               <p
@@ -741,6 +745,7 @@ export function StationenView(props: StationenViewProps) {
                     {contextLines.map((line) => (
                       <li key={line}>{line}</li>
                     ))}
+                    <li>{deltaLine}</li>
                   </ul>
                 </div>
               </div>
@@ -888,7 +893,6 @@ export function StationenView(props: StationenViewProps) {
                       >
                         <p className="text-xs uppercase tracking-wider text-slate-500">
                           {label}
-                          {row.isReference ? " · Referenz" : ""}
                         </p>
                         {/* Der Name bricht um, statt zu kürzen: In A/B ist
                             er die Frage („welche zwei vergleiche ich?“), und

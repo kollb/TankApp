@@ -229,17 +229,16 @@ const AREAS = [
   { id: "stationen", label: "Stationen" },
   { id: "woche", label: "Woche" },
   { id: "ich", label: "Ich", heading: "Ich" },
-  { id: "labor", label: "Labor", heading: "Verstehen, warum die App das sagt" },
+  { id: "labor", label: "Labor", heading: "Stimmt das?" },
   { id: "system", label: "System", heading: "Einmal einrichten. Weiterlaufen lassen." },
 ] as const;
 
 const ICH_TABS = ["Fahrzeug", "Belege", "Bilanz", "Einstellungen"];
 const LAB_SECTIONS = [
-  "prognose",
   "sicherheit",
+  "prognose",
   "stationen",
   "lernen",
-  "spielplatz",
   "glossar",
 ];
 
@@ -581,7 +580,7 @@ test.describe("Mobil: kein Querlauf", () => {
     }
   });
 
-  test("Labor: alle sechs Abschnitte tragen ohne Querlauf", async ({ page }) => {
+  test("Labor: alle Abschnitte tragen ohne Querlauf", async ({ page }) => {
     for (const section of LAB_SECTIONS) {
       await page.goto(`/?tab=labor&section=${section}`);
       await settled(page);
@@ -590,7 +589,9 @@ test.describe("Mobil: kein Querlauf", () => {
   });
 
   test("Labor: lange Bezeichner umbrechen in der Parameterkarte", async ({ page }) => {
-    await page.goto("/?tab=labor&subtab=modell");
+    // `section=stationen` öffnet „Details für Neugierige“ — dort stehen die
+    // acht Bausteine, darunter die Regime-Karte.
+    await page.goto("/?tab=labor&section=stationen");
     await settled(page);
     const sentence = page
       .locator("#karte-8-regime")
@@ -646,11 +647,14 @@ test.describe("Mobil: kein Querlauf", () => {
     const list = [...seen].sort();
     console.log("[mobil] scrollbare Kästen:", JSON.stringify(list, null, 1));
 
-    // Erlaubt ist nur die Heatmap-Matrix (Wochentage × 24 Stunden — eine
-    // Matrix lässt sich nicht stapeln; sie trägt ihren Hinweis im Text).
-    // Alles andere wäre ein Querlauf: Kopfzeilen-Steuerung, Belegliste,
-    // Zwilling-Tabelle und JSON-/Log-Blöcke sind umgebaut bzw. umbrechend.
-    const allowed = [/TagMedian|Heatmap|heatmap/];
+    // Erlaubt sind nur zwei benannte Ausnahmen: die Heatmap-Matrix
+    // (Wochentage × 24 Stunden — eine Matrix lässt sich nicht stapeln) und
+    // die drei Roh-Tabellen der Betreiber-Sicht in „System“ (sechs Spalten
+    // aus Werten; sie scrollen bewusst, statt Zellen zu quetschen, und
+    // tragen ihre Herkunft im Text). Alles andere wäre ein Querlauf:
+    // Kopfzeilen-Steuerung, Belegliste und JSON-/Log-Blöcke sind umgebaut
+    // bzw. umbrechend.
+    const allowed = [/TagMedian|Heatmap|heatmap|raw-table-scroll/];
     const unexpected = list.filter(
       (entry) => !allowed.some((pattern) => pattern.test(entry)),
     );

@@ -6,16 +6,9 @@
 // wenn keine Daten da sind — kein Satz darf eine Zahl erfinden.
 
 import { describe, expect, it } from "vitest";
-import {
-  calibChartAlt,
-  deltaBarsAlt,
-  histogramAlt,
-  lineChartAlt,
-  seriesTrend,
-} from "./chartAlt";
-import { centPerLiter, euroPerLiter } from "./data";
+import { lineChartAlt, seriesTrend } from "./chartAlt";
+import { euroPerLiter } from "./data";
 
-const ct = (v: number) => centPerLiter(v);
 const eurL = (v: number) => euroPerLiter(v);
 
 describe("seriesTrend", () => {
@@ -123,100 +116,6 @@ describe("lineChartAlt", () => {
     expect(lineChartAlt({ series: [] })).toBe("Liniendiagramm ohne Werte.");
     expect(lineChartAlt({ series: [{ name: "Leer", pts: [] }] })).toBe(
       "Liniendiagramm ohne Werte.",
-    );
-  });
-});
-
-describe("histogramAlt", () => {
-  it("nennt Umfang, Spanne und Mitte", () => {
-    const text = histogramAlt({
-      values: [1, 2, 3, 4, 100],
-      fmt: ct,
-    });
-    expect(text).toContain("über 5 Werte");
-    expect(text).toContain("von 1,0 ct/L bis 100,0 ct/L");
-    expect(text).toContain("Mitte 3,0 ct/L");
-  });
-
-  it("nennt gesetzte Schwellen mit ihrem Wert", () => {
-    const text = histogramAlt({
-      values: [1, 2, 3],
-      fmt: ct,
-      thresholds: [{ label: "ε", x: 1.5 }],
-    });
-    expect(text).toContain("Schwellen: ε bei 1,5 ct/L");
-  });
-
-  it("erfindet ohne Werte keine Verteilung", () => {
-    expect(histogramAlt({ values: [] })).toBe("Histogramm ohne Werte.");
-  });
-});
-
-describe("deltaBarsAlt", () => {
-  it("zählt beide Seiten und nennt die Ausreißer mit Namen", () => {
-    const text = deltaBarsAlt({
-      values: [-2.4, -0.3, 1.8],
-      labels: ["Nord", "Mitte", "Ost"],
-      fmt: ct,
-    });
-    expect(text).toContain("3 Balken, 2 unter null, 1 über null");
-    expect(text).toContain("nach unten Nord mit -2,4 ct/L");
-    expect(text).toContain("nach oben Ost mit 1,8 ct/L");
-  });
-
-  it("zählt die blassen Balken statt sich auf die Farbe zu verlassen", () => {
-    const text = deltaBarsAlt({
-      values: [-1, 2],
-      labels: ["A", "B"],
-      fmt: ct,
-      muted: [true, false],
-    });
-    expect(text).toContain("1 davon statistisch nicht signifikant");
-  });
-
-  it("kommt ohne Namen aus", () => {
-    const text = deltaBarsAlt({ values: [-1, 2], fmt: ct });
-    expect(text).toContain("nach unten -1,0 ct/L");
-  });
-
-  it("erfindet ohne Balken nichts", () => {
-    expect(deltaBarsAlt({ values: [] })).toBe("Balkendiagramm ohne Werte.");
-  });
-});
-
-describe("calibChartAlt", () => {
-  it("nennt die Richtung der Abweichung von der Diagonalen", () => {
-    const over = calibChartAlt({
-      points: [
-        { p: 0.6, hit: 0.7, n: 40 },
-        { p: 0.8, hit: 0.9, n: 20 },
-      ],
-    });
-    expect(over).toContain("über der Diagonalen (zu vorsichtig versprochen)");
-    expect(over).toContain("2 Punkte über 60 Fälle");
-
-    const under = calibChartAlt({
-      points: [{ p: 0.8, hit: 0.5, n: 10 }],
-    });
-    expect(under).toContain("unter der Diagonalen (zu viel versprochen)");
-  });
-
-  it("nennt eine treffende Kalibrierung als solche", () => {
-    const text = calibChartAlt({ points: [{ p: 0.6, hit: 0.6, n: 30 }] });
-    expect(text).toContain("im Mittel auf der Diagonalen");
-  });
-
-  it("weist die Live-Punkte getrennt aus", () => {
-    const text = calibChartAlt({
-      points: [{ p: 0.6, hit: 0.6, n: 30 }],
-      livePoints: [{ p: 0.7, hit: 0.7, n: 5 }],
-    });
-    expect(text).toContain("1 aus echten Live-Empfehlungen");
-  });
-
-  it("erfindet ohne Punkte keine Güte", () => {
-    expect(calibChartAlt({ points: [] })).toBe(
-      "Kalibrierungsdiagramm ohne Punkte.",
     );
   });
 });

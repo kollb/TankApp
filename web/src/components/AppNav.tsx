@@ -77,7 +77,7 @@ export const STUDIO_NAV_ITEMS: NavItem[] = [
     id: "labor",
     label: "Labor",
     icon: FlaskConical,
-    note: "Verstehen, warum die App das sagt",
+    note: "Vertrauen, Prognose, Rechenweg",
   },
   {
     id: "ich",

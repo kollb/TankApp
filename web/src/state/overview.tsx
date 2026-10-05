@@ -100,12 +100,12 @@ import {
 import { forecastStamp, type NowTarget } from "../now";
 import { promptFillPrice } from "../fills";
 import { buildStripCells } from "../strip";
-import { type LabSectionId, type LabSubTabId, labSubTabForSection, labSubTabFromUrlId } from "../lab";
+import { type LabSectionId } from "../lab";
 import {
   tabFromUrlId,
   tabToUrlId,
   sectionFromUrlId,
-  subtabFromUrlId,
+  sectionFromLegacySubTab,
   queryWithTab,
   type TabId,
 } from "../routing";
@@ -154,29 +154,22 @@ function useOverviewState() {
   // Herkunft braucht es seit U5 nicht mehr — Ebene 1 öffnet ein Sheet am
   // Ort, und der Rückweg ist das Browser-Zurück (U4-Routing).
   const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(() =>
-    share.tab === "labor" ? sectionFromUrlId(share.section) : null,
+    share.tab === "labor"
+      ? (sectionFromUrlId(share.section) ??
+        sectionFromLegacySubTab(new URLSearchParams(window.location.search).get("subtab")))
+      : null,
   );
-  // B5: Sub-Tab des Labors — aus URL oder aus Abschnitt abgeleitet
-  const [laborSubTab, setLaborSubTab] = useState<LabSubTabId>(() => {
-    if (share.tab !== "labor") return "ueberblick";
-    const fromSub = labSubTabFromUrlId((share as any).subtab ?? null);
-    if (fromSub) return fromSub;
-    const fromSec = sectionFromUrlId(share.section);
-    return labSubTabForSection(fromSec);
-  });
   // U4 + B5: Bereich wechseln heißt auch URL wechseln — pushState, damit der
   // Browser-Zurück-Knopf die Ansichten in umgekehrter Reihenfolge abfährt.
   // Die übrige Query (Stadt, Kraftstoff, Station …) bleibt erhalten.
   const gotoTab = (
     next: TabId,
     section: LabSectionId | null = laborFocus,
-    subtab: LabSubTabId | null = laborSubTab,
   ) => {
     setTab(next);
-    if (next === "labor" && subtab) setLaborSubTab(subtab);
     if (next === "labor" && section) setLaborFocus(section);
     try {
-      const query = queryWithTab(window.location.search, next, section, subtab);
+      const query = queryWithTab(window.location.search, next, section);
       const current = window.location.search.replace(/^\?/, "");
       if (query !== current) {
         window.history.pushState(
@@ -430,16 +423,11 @@ function useOverviewState() {
       const next = tabFromUrlId(params.get("tab"));
       setTab(next);
       setLaborFocus(
-        next === "labor" ? sectionFromUrlId(params.get("section")) : null,
+        next === "labor"
+          ? (sectionFromUrlId(params.get("section")) ??
+            sectionFromLegacySubTab(params.get("subtab")))
+          : null,
       );
-      if (next === "labor") {
-        const sub = subtabFromUrlId(params.get("subtab"));
-        if (sub) setLaborSubTab(sub);
-        else {
-          const sec = sectionFromUrlId(params.get("section"));
-          if (sec) setLaborSubTab(labSubTabForSection(sec));
-        }
-      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -816,10 +804,7 @@ function useOverviewState() {
       tab: tabToUrlId(tab),
       section: tab === "labor" ? laborFocus : null,
     } as any);
-    // B5: subtab separat anhängen, da shareQuery es noch nicht kennt (backward compat)
-    const params = new URLSearchParams(query);
-    if (tab === "labor" && laborSubTab) params.set("subtab", laborSubTab);
-    const finalQuery = params.toString();
+    const finalQuery = query;
     const url = `${window.location.origin}${window.location.pathname}${finalQuery ? `?${finalQuery}` : ""}`;
     try {
       window.history.replaceState(null, "", url);
@@ -1192,11 +1177,9 @@ function useOverviewState() {
   // Erklär-Treppe Ebene 1 → 2 (§7) + B5 punktgenau: Ebene 2 (Beweis) öffnet den Abschnitt
   // im Labor im richtigen Sub-Tab — der Sprung ist ausdrücklich (das Sheet der Ebene 1 steht am
   // Wirkungsort, U5), und der Rückweg ist das Browser-Zurück (U4).
-  const openLabor = (section: LabSectionId, subtab?: LabSubTabId | null) => {
-    const resolvedSub = subtab ?? labSubTabForSection(section);
+  const openLabor = (section: LabSectionId) => {
     setLaborFocus(section);
-    setLaborSubTab(resolvedSub);
-    gotoTab("labor", section, resolvedSub);
+    gotoTab("labor", section);
   };
   const liveAdvice = statsSummaryRes.data?.live_advice ?? null;
   const gateStatus =
@@ -1419,8 +1402,6 @@ function useOverviewState() {
     gotoTab,
     laborFocus,
     setLaborFocus,
-    laborSubTab,
-    setLaborSubTab,
     openLabor,
     handleNowNavigate,
     ichSection,

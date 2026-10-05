@@ -146,6 +146,7 @@ function DashboardShell() {
     handleRenameProfile,
     handleDeleteProfile,
     decideRes,
+    selection,
     statsSummaryRes,
     fillsSummary,
     series7d,
@@ -458,6 +459,7 @@ function DashboardShell() {
             togglePin={togglePin}
             pinNote={pinNote}
             decideRes={decideRes}
+            selectionRes={selection}
             stripCells={stripCells}
             series7d={series7d}
             seriesSpan={stationsSpanHours}

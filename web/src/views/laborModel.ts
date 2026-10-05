@@ -4,13 +4,14 @@
 // Kalibrierung aus und reichte ~20 fertige Werte als Props herein. Seit U8
 // besitzt die Labor-View ihr Modell: Sie holt den Rohstoff aus dem
 // OverviewContext (stats/summary, forecast, series) und rechnet hier.
-// ε-Handlungsschwelle und Tagesindex bleiben Ansichtszustand der Labor-View.
+//
+// Batch 2 (0.74.0) hat das Labor auf drei Blöcke verdichtet: Übrig bleibt,
+// was die Kurve in Block 2 und die Fachwerte in Block 3 tragen. Die alten
+// Werkstatt-Reihen (ε-Scan, Kalibrierungspunkte, Tageszeilen, Form-Modell)
+// sind mit ihren Ansichten entfallen — sie hatten keinen Leser mehr.
 import { useMemo } from "react";
-import { rowOutcome, scoreRows, segments, type StatsSummary } from "../data";
+import { scoreRows, segments, type StatsSummary } from "../data";
 import type { OverviewState } from "../state/overview";
-
-/** O18: Prüf-Schwellen des ε-Scans — dieselbe Regel, andere Vorsicht. */
-export const EPS_GRID = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
 
 export function useLaborModel(
   ov: Pick<
@@ -21,10 +22,8 @@ export function useLaborModel(
     | "horizon"
     | "liters"
     | "selected"
-    | "spanHours"
   >,
   eps: number,
-  labDayIdx: number,
 ) {
   const f = ov.forecast.data;
   const horizonDays = ov.horizon;
@@ -38,10 +37,6 @@ export function useLaborModel(
 
   const observations = segments(ov.history.data?.points || []);
 
-  const thinSupportPoints = forecastPoints.filter(
-    (p) => p.supported === true && (p.support_days ?? Infinity) <= 7,
-  );
-
   const modelPoints = forecastPoints.map((p) => ({
     x: Date.parse(p.timestamp),
     y: p.q50,
@@ -49,29 +44,12 @@ export function useLaborModel(
   const modelSeries = modelPoints.length
     ? [
         {
-          name: "Modell-Median (q50)",
+          name: "Erwarteter Preis",
           color: "#38bdf8",
           pts: modelPoints.filter(
             (p): p is { x: number; y: number } =>
               p.y !== null && Number.isFinite(p.y),
           ),
-        },
-      ]
-    : [];
-  const fanBand95 = forecastPoints.length
-    ? [
-        {
-          name: "95-%-Band (q025–q975)",
-          color: "rgba(56, 189, 248, 0.12)",
-          pts: forecastPoints
-            .filter((p) => p.q025 !== null && p.q975 !== null)
-            .map((p) => ({
-              x: Date.parse(p.timestamp),
-              yLow: p.q025!,
-              yHigh: p.q975!,
-              thin: p.supported === true && (p.support_days ?? Infinity) <= 7,
-              supportDays: p.support_days,
-            })),
         },
       ]
     : [];
@@ -113,11 +91,11 @@ export function useLaborModel(
       ]
     : [];
 
-  // --- B4 Workshop Dynamic Calculations ---
+  // --- Backtest-Anker: die eine Zahl, die den Rechenweg belegt ---
   const labData: StatsSummary["backtest"] | undefined =
     ov.statsSummaryRes.data?.backtest;
   // Schicht-A-Anker aus dem Backtest-Report (TANKAPP_DECISION_HOUR, Default
-  // 12) — alle Werkstatt-Texte folgen dem echten Wert, nie einem Hardcode.
+  // 12) — die Texte folgen dem echten Wert, nie einem Hardcode.
   const anchorHour = labData?.decisionHour ?? 12;
   const anchorLabel = `${String(anchorHour).padStart(2, "0")}:00`;
   const labScores = useMemo(() => {
@@ -135,8 +113,6 @@ export function useLaborModel(
       regretEur = 0,
       n = 0,
       sPos = 0,
-      pSum = 0,
-      nP = 0,
       waitN = 0,
       waitHits = 0,
       nowN = 0,
@@ -152,14 +128,6 @@ export function useLaborModel(
       waitHits += (sc.hit_wait ?? 0) * sc.n_wait;
       nowN += sc.n_now;
       nowHits += (sc.hit_now ?? 0) * sc.n_now;
-      // p_avg ist null, wenn die Station kein gemessenes P kennt (A8) —
-      // solche Zeilen tragen nichts zur Cohort-Mitte bei, auch nicht als
-      // Nenner: Vorher teilte die Summe durch **alle** Tage und senkte den
-      // Mittelwert um den Anteil der Zeilen ohne P.
-      if (sc.p_avg != null) {
-        pSum += sc.p_avg * sc.n;
-        nP += sc.n;
-      }
     }
     return {
       smart,
@@ -167,94 +135,15 @@ export function useLaborModel(
       best: bestVal,
       regretEur: n ? regretEur / n : 0,
       n,
-      /**
-       * Drei Maßzahlen, drei Nenner (R3, 23.09.2026) — sie stehen in der
-       * Güte nebeneinander und müssen deshalb unterscheidbar sein:
-       * `hitFreq` zählt Tage mit realisiertem Vorteil (Markt-Basisrate,
-       * unabhängig von der Entscheidung), `hitRate` zählt richtige
-       * Entscheidungen der Regel, `potShare` wiegt dieselbe Regel in Euro
-       * gegen das perfekte Timing. Server-Gleichlauf (A8): ohne Tage `null`,
-       * nicht 0.
-       */
+      /** Tage mit realisiertem Vorteil — Markt-Basisrate, unabhängig von der Entscheidung. */
       hitFreq: n ? sPos / n : null,
+      /** Richtige Entscheidungen der Regel. */
       hitRate: n ? (waitHits + nowHits) / n : null,
       waitN,
       nowN,
-      pAvg: nP ? pSum / nP : null,
       potShare: bestVal > 0 ? smart / bestVal : n ? 0 : null,
     };
   }, [labScores]);
-
-  // O18: Der ε-Scan war dauerhaft leer, weil der Server kein `scan`-Feld
-  // publiziert (`app/stats_summary.py`: „kein P-/Form-Modell in der Engine“).
-  // Die Werkstatt braucht dafür aber keine neue Datenquelle — es ist eine
-  // Nachrechnung auf denselben Backtest-Zeilen, die sie ohnehin lädt, mit
-  // derselben `scoreRows`-Formel wie der Server (O21-Paritäts-Fixture).
-  const epsScan = useMemo(() => {
-    const rows = labData?.evalRows
-      ? Object.values(labData.evalRows).flat()
-      : [];
-    if (!rows.length) return null;
-    return EPS_GRID.map((threshold) => {
-      const sc = scoreRows(rows, threshold, ov.liters, "");
-      return {
-        eps: threshold,
-        smartEur: sc.sum_smart_eur,
-        commitEur: sc.sum_commit_eur,
-        waits: sc.n_wait,
-        n: sc.n,
-      };
-    });
-  }, [labData, ov.liters]);
-
-  const calibPoints = labData?.calibration || [];
-  const liveReliability = ov.statsSummaryRes.data?.live_advice?.reliability || [];
-  const livePointsForChart = liveReliability
-    .filter((b) => b.empirical_hit_rate !== null && b.count > 0)
-    .map((b) => ({
-      p: b.mean_p,
-      hit: b.empirical_hit_rate!,
-      n: b.count,
-    }));
-
-  const calibErr = useMemo(() => {
-    if (!calibPoints.length) return NaN;
-    return (
-      calibPoints.reduce((a, c) => a + Math.abs(c.hit - c.p), 0) /
-      calibPoints.length
-    );
-  }, [calibPoints]);
-
-  const labStationId =
-    ov.selected?.station_id || labData?.stations[0]?.id || "";
-  const labRows = labData?.evalRows[labStationId] || [];
-  const labModel = labData?.models[labStationId];
-  const activeLabDayRow =
-    labRows[Math.min(Math.max(labDayIdx, 0), Math.max(0, labRows.length - 1))];
-  const activeLabOutcome = activeLabDayRow
-    ? rowOutcome(activeLabDayRow, eps, ov.liters)
-    : null;
-
-  const labDayClass = activeLabDayRow?.cls ?? 0;
-  // O18: Ohne publiziertes Form-Modell (`labData.models` ist leer, die Engine
-  // liefert keines) standen hier **erfundene** Platzhalter: μ = 1,5 ct und
-  // „billigste Stunde meist 19:00“. Beides sah aus wie ein Messwert. Jetzt
-  // null — die Ansicht sagt den Dauerzustand, statt zu rechnen.
-  const labSaves = labModel
-    ? labDayClass === 0
-      ? labModel.savesWk
-      : labModel.savesWe
-    : [];
-  const labPredHour = labModel
-    ? labDayClass === 0
-      ? labModel.predWk
-      : labModel.predWe
-    : null;
-  const labMu = labModel
-    ? labDayClass === 0
-      ? labModel.muWk
-      : labModel.muWe
-    : null;
 
   return {
     f,
@@ -263,25 +152,11 @@ export function useLaborModel(
     observations,
     modelSeries,
     fanBand80,
-    fanBand95,
-    forecastMarks,
     forecastWindow,
-    thinSupportPoints,
+    forecastMarks,
     labData,
-    epsScan,
     anchorHour,
     anchorLabel,
     labTotals,
-    calibPoints,
-    calibErr,
-    livePointsForChart,
-    labRows,
-    labModel,
-    activeLabDayRow,
-    activeLabOutcome,
-    labDayClass,
-    labSaves,
-    labPredHour,
-    labMu,
   };
 }

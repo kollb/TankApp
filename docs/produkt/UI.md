@@ -1,7 +1,7 @@
 # Oberfläche und Interaktion
 
-> Stand: 04.10.2026 · App-Version 0.73.0
-> Beschreibt die implementierte Navigation einschließlich Labor-Unterbereichen.
+> Stand: 05.10.2026 · App-Version 0.74.0
+> Beschreibt die implementierte Navigation einschließlich der drei Labor-Blöcke.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
@@ -19,7 +19,7 @@
 - [Tank-Guide: eine Frage, eine Antwort](#tank-guide-eine-frage-eine-antwort)
 - [Jetzt: eine Antwort, ein Tipp in die Tiefe](#jetzt-eine-antwort-ein-tipp-in-die-tiefe)
 - [Woche: Bestenliste statt Raster](#woche-bestenliste-statt-raster)
-- [Labor-Unterbereiche](#labor-unterbereiche)
+- [Labor: drei Fragen](#labor-drei-fragen)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
 - [Urteilstöne und Elevation](#urteilstöne-und-elevation)
 - [Zustände und Datenwahrheit](#zustände-und-datenwahrheit)
@@ -71,9 +71,9 @@ die nur über einen alten Haupttab erreichbar waren.
 | Jetzt | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung | Keine drei Fakten, kein 19-Zellen-Raster, keine Was-wäre-wenn-Annahmen, keine zweite Stationsliste |
 | Woche | Bestenliste: höchstens drei Fenster, sortiert nach Ersparnis | Kein 7-Tage-Raster, keine Sterne, keine Prozentwerte, keine Wochenlinie, keine zweite Liste; die Unsicherheit steht als **ein** Satz unter der Liste (`Ab Tag 5 wird die Prognose unsicher.`) |
 | Stationen | Polling-Set, Karte, Vergleich und Stationsdetails | Tagesverlauf im Detail statt unbeschrifteter Mini-Linie in jeder Zeile |
-| Labor | Modell, Güte, Kalibrierung, Heatmaps und Begründungen | Markt-Labor und Live-Advice nicht mit persönlicher Bilanz vermengen |
+| Labor | Drei Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet die App? | Beweise statt Sammelakte; Rohdaten und CSV gehören dem Betreiber in „System“ |
 | Ich | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)**, Belege und Bilanz | Ein Intent ist kein Beleg |
-| System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox und Export | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
+| System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox, **Rohdaten, CSV-Exporte und API-Explorer** | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
 Seit 0.73.0 gilt für beide Bereiche derselbe Auftrag: **eine Frage, eine
@@ -155,18 +155,13 @@ zu. Rot trägt in dieser App aber schon eine sicherheitsrelevante Aussage:
 umgewidmet — „Besser warten“ bleibt blau. Die Reihenfolge des Entwurfs ist
 übernommen, nicht seine Farbe gegen eine bestehende Warnung.
 
-### Labor: die freiwilligen Blöcke
+### Labor: das Angebot bleibt freiwillig
 
 Das Labor ist ein Angebot, kein Pfad zur Empfehlung — der Guide funktioniert
-ohne jede Zahl von dort. Neben Fan-Chart, Vertrauens-Konto und Tagebuch
-stehen vier Blöcke (`web/src/views/labor/BetaBlocks.tsx`):
-
-| Block | Frage | Datenpfad |
-|---|---|---|
-| Was den Preis gerade bewegt | Warum ist es gerade teuer oder günstig? | Tagesspielraum (Tagesstreifen) und Stationsspanne — Balken **nur** mit Messwert, sonst sichtbar ohne Balken |
-| Wie oft lag die Empfehlung richtig? | Kann ich der App trauen? | Advice-Ledger: ein Punkt je abgerechnete Empfehlung; ohne Zählung der Lernstand |
-| Persönliches Tankprofil | Was bringt es **mir**? | Tankmenge × Wartebereitschaft gegen die echten Fenster des Tages; lokale Vorschau, das Profil bleibt in „Ich“ |
-| Experimente | Was gibt es Neues? | Lokale Schalter, offline deaktiviert mit dem Grund „Braucht eine Verbindung“ |
+ohne jede Zahl von dort. Die früheren Beta-Blöcke (Einflüsse, Treffsicherheit,
+Tankprofil-Rechner, Experimente) sind entfallen: Die Einflüsse ersetzt der eine
+Satz in Block 2, die Treffsicherheit ist Block 1, die Tankprofil-Frage beantwortet
+eine Zeile in „Ich“ → Fahrzeug, und Experimente hatten keinen Nutzerpfad (§7).
 
 ## Jetzt: eine Antwort, ein Tipp in die Tiefe
 
@@ -215,28 +210,31 @@ Eintrags; weiter voraus gibt es keine Messwerte, und geschätzt wird nichts.
 Der Tankstand wird hier nur **angezeigt** (`Tank: 62 %` · „Ändern“).
 Gepflegt wird er an genau einem Ort: „Ich“ → Fahrzeug (§6).
 
-## Labor-Unterbereiche
+## Labor: drei Fragen
 
-Das Labor ist im Checkout bereits in vier Sub-Tabs aufgeteilt:
+Das Labor hat seit 0.74.0 **drei Blöcke, sonst nichts** (`views/Labor.tsx`,
+Vokabular in `lab.ts`). Die Fragen stehen genau einmal in `LAB_BLOCKS`:
 
-| Sub-Tab | Inhalt |
-|---|---|
-| Überblick | Geführter Fan-Chart, Vertrauens-Konto, Tagebuch **und die vier freiwilligen Blöcke** (Einflüsse, Treffsicherheit, Tankprofil, Experimente) |
-| Modell & Parameter | Acht Karten: Struktur, AR(2), Bootstrap, 12-Uhr-Projektion, Ensemble, Selektion, Schwellen, Regime |
-| Güte & Kalibrierung | Rolling-PICP, Reliability, Brier, Backtest und Heatmaps |
-| Daten & Rohdaten | Reichweite, Roh-Tabellen, CSV-Export, API-Explorer und Winter-Hinweis |
+| Block | Frage | Inhalt |
+|---|---|---|
+| 1 · `#labor-sicherheit` | Kann ich vertrauen? | **Ein** Satz als Zählung („An 26 von 30 Tagen lag die Empfehlung richtig.“), kein Prozent; darunter das filterbare Prognose-Tagebuch (Alle/Richtig/Daneben/Unentschieden/Nicht bewertbar) |
+| 2 · `#labor-prognose` | Wie gut ist die Prognose? | **Eine** Kurve (erwartet vs. echt, Blickweite 24 h/3 Tage/7 Tage) und **ein** Satz: „Im Schnitt 1,8 ct/L daneben.“ |
+| 3 · `#labor-rechenweg` | Wie rechnet die App? | Drei Schritte in Alltagssprache (Tagesmuster der Stadt, aktuelle Lage, 12-Uhr-Regel); darunter „Details für Neugierige“ mit acht Bausteinen, Fachwerten und der Heatmap als einziger Grafik |
 
-`?tab=labor&subtab=ueberblick|modell|guete|daten` adressiert die Unterbereiche.
-Historische Abschnittssprünge werden über `LAB_SECTION_TO_SUBTAB` zugeordnet.
-Die Einzelansichten liegen unter `web/src/views/labor/`; Karte 7 zeigt ein
-Beta(5,5)-Intervall der Trefferquote. Karte 8 beschreibt auch geplante
-Regime-Bausteine und ist deshalb **kein Beleg**, dass Normalisierung, Deckel
-oder Projektionsausnahme in der Engine implementiert sind.
+Gestrichen und nicht wiederkehrend (§7): Sub-Tabs, Spielplatz-Regler,
+Experimente, Tankprofil-Rechner, Einflüsse-Balken, Güte-Panel (PICP, Brier,
+CUSUM, zwei MASE-Werte), eingebettetes Glossar, Heatmap-Schalter und der
+Rohdatenraum. Rohdaten, die vier CSV-Exporte und der API-Explorer stehen als
+Betreiber-Sicht in „System“ (Abschnitt „Datenreichweite & Herkunft“ und
+`#rohdaten-section`); das Labor verweist nur dorthin.
 
-Lange Modellbezeichner in Kette, Titel und Erklärung der Parameterkarten
-brechen innerhalb ihrer verfügbaren Breite um. Dafür wird Text weder gekürzt
-noch zusätzlich abgeschnitten. Der geometrische Browsertest prüft dies bei
-320 und 390 px auch mit einem absichtlich überlangen Bezeichner.
+Adressen: `?tab=labor&section=sicherheit|prognose|stationen|lernen|glossar`
+springt auf den zugehörigen Block; die alten Sub-Tab-Links
+(`?subtab=ueberblick|modell|guete|daten`) übersetzt `sectionFromLegacySubTab`.
+Lange Modellbezeichner in Kette, Titel und Erklärung der acht Bausteine brechen
+innerhalb ihrer verfügbaren Breite um — Text wird dabei nicht gekürzt. Der
+geometrische Browsertest prüft dies bei 390 px mit einem absichtlich
+überlangen Bezeichner.
 
 ## Antwort, Begründung und Beweis
 
@@ -353,9 +351,10 @@ Oberfläche gegen echte Serverantworten. Beides ist erforderlich. Zusätzlich
 bleiben Microcopy-Ratchet, mobile Layout-Prüfungen und die
 [Qualitätsbudgets](../entwicklung/QUALITAET.md) maßgeblich.
 
-Für das Labor bleiben alle sechs historischen Abschnittssprünge sowie der
-Umbruch langer Bezeichner in den Parameterkarten Teil der Demo-Browser-Suite.
-Eine bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
+Für das Labor bleiben alle historischen Abschnittssprünge (über
+`sectionFromLegacySubTab` auf die drei Blöcke abgebildet) sowie der Umbruch
+langer Bezeichner in den acht Bausteinen Teil der Demo-Browser-Suite. Eine
+bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
 
 Seit 0.73.0 gehören zur Abnahme von „Jetzt“ und „Woche“:
 
