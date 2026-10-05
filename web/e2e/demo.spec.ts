@@ -200,13 +200,12 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
   // antwortet der Server korrekt mit 200 — deshalb bis zu fünf Versuche, aber
   // die Zusage „304“ muss fallen. (Fünf statt drei: Auf langsamen Läufern
   // dauert ein Versuch länger, die Trefferfläche der Fenstergrenze wächst.)
+  // Unter 1280 px liegt Aktualisieren im kompakten Profil-und-Aktionen-Blatt.
+  if ((page.viewportSize()?.width ?? 1440) < 1280) {
+    await page.getByRole("button", { name: "Fahrzeug-Profil und Aktionen" }).click();
+  }
   const button = page.getByRole("button", { name: "Daten aktualisieren" });
-  // Ein Layout ohne diesen Knopf (z. B. sehr schmale Ansicht) prüft die
-  // Revalidierung in `tests/test_e2e_demo.py` statt hier.
-  test.skip(
-    !(await button.isVisible().catch(() => false)),
-    "Aktualisieren-Knopf in diesem Layout nicht sichtbar",
-  );
+  await expect(button).toBeVisible();
   let revalidated = false;
   let carriedEtag = false;
   for (let attempt = 0; attempt < 5 && !revalidated; attempt += 1) {
