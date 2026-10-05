@@ -224,7 +224,7 @@ export function SystemRohdaten() {
                 compact
               />
             ) : rawTable.length ? (
-              <div className="mt-2 overflow-auto">
+              <div className="raw-table-scroll mt-2 overflow-auto">
                 <table className="w-full text-xs">
                   <thead className="text-slate-500">
                     <tr>
@@ -257,7 +257,7 @@ export function SystemRohdaten() {
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Selektion — Roh (δ̂ je Station)</p>
             {selectionRes?.data?.stations?.length ? (
-              <div className="mt-2 overflow-auto">
+              <div className="raw-table-scroll mt-2 overflow-auto">
                 <table className="w-full text-xs">
                   <thead className="text-slate-500">
                     <tr>
@@ -299,7 +299,7 @@ export function SystemRohdaten() {
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs font-semibold text-slate-200">Forecast-Punkte — Roh</p>
             {forecastPoints.length ? (
-              <div className="mt-2 overflow-auto">
+              <div className="raw-table-scroll mt-2 overflow-auto">
                 <table className="w-full text-xs">
                   <thead className="text-slate-500">
                     <tr>

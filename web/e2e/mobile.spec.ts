@@ -647,11 +647,14 @@ test.describe("Mobil: kein Querlauf", () => {
     const list = [...seen].sort();
     console.log("[mobil] scrollbare Kästen:", JSON.stringify(list, null, 1));
 
-    // Erlaubt ist nur die Heatmap-Matrix (Wochentage × 24 Stunden — eine
-    // Matrix lässt sich nicht stapeln; sie trägt ihren Hinweis im Text).
-    // Alles andere wäre ein Querlauf: Kopfzeilen-Steuerung, Belegliste,
-    // Zwilling-Tabelle und JSON-/Log-Blöcke sind umgebaut bzw. umbrechend.
-    const allowed = [/TagMedian|Heatmap|heatmap/];
+    // Erlaubt sind nur zwei benannte Ausnahmen: die Heatmap-Matrix
+    // (Wochentage × 24 Stunden — eine Matrix lässt sich nicht stapeln) und
+    // die drei Roh-Tabellen der Betreiber-Sicht in „System“ (sechs Spalten
+    // aus Werten; sie scrollen bewusst, statt Zellen zu quetschen, und
+    // tragen ihre Herkunft im Text). Alles andere wäre ein Querlauf:
+    // Kopfzeilen-Steuerung, Belegliste und JSON-/Log-Blöcke sind umgebaut
+    // bzw. umbrechend.
+    const allowed = [/TagMedian|Heatmap|heatmap|raw-table-scroll/];
     const unexpected = list.filter(
       (entry) => !allowed.some((pattern) => pattern.test(entry)),
     );
