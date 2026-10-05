@@ -4,7 +4,7 @@ TankApp beantwortet mit echten Tankstellenpreisen drei Fragen: **Jetzt oder
 warten? Hier oder woanders? Heute oder später?** Preisbeobachtung,
 Modellprognose und persönliche Tankbilanz bleiben dabei getrennt.
 
-> Stand: 24.09.2026 · App-Version **0.70.0**
+> Stand: 05.10.2026 · App-Version **0.75.0**
 > [Dokumentation](docs/README.md) · [Offene Aufgaben](docs/planung/TODO.md) ·
 > [Release-Historie](docs/releases/CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md)
 

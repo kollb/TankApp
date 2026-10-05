@@ -195,6 +195,14 @@ Die GUI hat sechs Bereiche (GUI-Neuentwurf, Phase 3 seit 0.36.0): **Jetzt**,
 Nebeneinander; „Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur
 noch in Archiv-Dokumenten.
 
+Seit 0.75.0 bleibt die Kopfzeile unter 1280 px eine kompakte Zeile mit Marke,
+Stadt/Kraftstoff und einem vorhandenen Alarmstatus. Ort und Kraftstoff lassen
+sich direkt ändern. Profilwechsel, Profilverwaltung, Teilen und Aktualisieren
+liegen im Blatt „Profil und Aktionen“ hinter dem Profil-Knopf. Ab 1280 px sind
+diese Steuerungen wieder direkt in der Kopfzeile sichtbar. Bei 320 px bleiben
+Stadt und Kraftstoff im geprüften Raster vollständig lesbar. Update- und
+Installationshinweise bleiben im normalen Seitenfluss.
+
 - **Jetzt:** Antwort aus `/api/v1/decide` — **eine** Frage, **eine** Antwort
   (seit 0.73.0): Chip, Überschrift, eine Zahl in Euro (`spart ca. 1,60 €`) und
   genau eine Handlung („Route“), dazu der Frische-Chip im Kopf und die
@@ -257,9 +265,10 @@ noch in Archiv-Dokumenten.
   Empfehlungen, Brier …“ (A7) und **CSV-Export der eigenen Tankbelege** (A6).
   Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine
   Demo-Preise.
-- **Über allen Bereichen:** Alarm-Punkt im Header (rot/gelb/grün) aus `alarms[]` in
-  `/api/v1/health` (B4) und App-Version + Commit-Hash im Footer (B9) — was die
-  Punkte bedeuten: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+- **Über allen Bereichen:** Alarmstatus im kompakten Header (unter 1280 px)
+  bzw. als direkte Alarm-Pille auf breiten Displays; er kommt aus `alarms[]` in
+  `/api/v1/health` (B4). App-Version + Commit-Hash stehen im Footer (B9) — was
+  der Alarmstatus bedeutet: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
 
 Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte Preise. Unter System müssen Lesezugang und nach erstem Abruf Archiv-/Job-Stände passen. Laufender Container allein bestätigt das nicht. NAS-Auszeiten und Pi-Puffergrenze stehen bei Rollen oben.
 

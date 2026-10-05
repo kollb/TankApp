@@ -1,9 +1,10 @@
 # Architecture Decision Records
 
-> Stand: 20.09.2026 · App-Version 0.59.1
+> Stand: 05.10.2026 · App-Version 0.75.0
 
-Die ADRs extrahieren bestehende Entscheidungen aus Konzept, Arbeitsliste und
-Projektstand. Sie führen keine neuen Produktentscheidungen ein.
+Die ADRs halten Entscheidungen aus Konzept, Arbeitsliste und Projektstand fest.
+Sie führen keine Entscheidungen ohne Freigabe ein; genehmigte Ergänzungen
+werden am betroffenen ADR datiert.
 
 | ADR | Thema | Status |
 |---|---|---|
