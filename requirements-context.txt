@@ -1,0 +1,8 @@
+# Semantische Kontextdatenbank (context.py / buildDB.py / test.py)
+# Alles lokal, keine Modell-Downloads zur Laufzeit — die Embeddings werden
+# aus dem eigenen Korpus gelernt (TF-IDF + SVD, scikit-learn).
+numpy>=1.26,<3
+scikit-learn>=1.4
+nltk>=3.8
+pdfplumber>=0.11
+python-docx>=1.1

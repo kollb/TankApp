@@ -82,3 +82,7 @@ netrc
 # React-Leseausgabe: vor dem RP2-Deployment lokal bauen
 /rp2/dist/
 .venv-demo/
+
+# Semantische Kontextdatenbank — generierte Vektoren, Chunks und Embedding-Modell
+context_db/
+.venv-context/
