@@ -1,2 +1,2 @@
 -r ../engine/requirements.txt
-tzdata>=2026.4
+tzdata>=2026.5
