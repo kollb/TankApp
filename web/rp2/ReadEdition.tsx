@@ -67,7 +67,7 @@ export function ReadEdition() {
   });
   const [city, setCity] = useState(() => saved("city", ""));
   const [liters, setLiters] = useState(() => String(saved("liters", 40)));
-  const [tab, setTab] = useState("Jetzt");
+  const [tab, setTab] = useState("Übersicht");
   const [health, setHealth] = useState<Health | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
   const [forecasts, setForecasts] = useState<Forecast[]>([]);
@@ -291,7 +291,7 @@ export function ReadEdition() {
         </p>
       )}
       <nav aria-label="Lesemodus" className="mb-4 flex gap-2">
-        {["Jetzt", "Stationen", "Mehr"].map((t) => (
+        {["Übersicht", "Stationen", "Mehr"].map((t) => (
           <button
             key={t}
             className={button}
@@ -302,7 +302,7 @@ export function ReadEdition() {
           </button>
         ))}
       </nav>
-      {tab === "Jetzt" && (
+      {tab === "Übersicht" && (
         <>
           <section className={`${card} shadow-lg`} aria-busy={pending}>
             <h1 id="answer-title" className="text-2xl font-black">

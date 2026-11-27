@@ -10,6 +10,7 @@ Grundlage).
 
 import json
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 
@@ -162,10 +163,12 @@ def test_query_honoriert_stationsfilter_des_flux_texts(tmp_path):
     query = demo_data.make_query(built["observations"], built["prices"])
     uid = demo_data.STATIONS[0][0]
 
+    stop = built["origin"]
+    start = stop - timedelta(hours=24)
     flux_text = (
         'from(bucket: "tankapp")\n'
-        '  |> range(start: time(v: "2026-09-14T10:00:00+00:00"), '
-        'stop: time(v: "2026-09-15T10:00:00+00:00"))\n'
+        f'  |> range(start: time(v: "{start.isoformat()}"), '
+        f'stop: time(v: "{stop.isoformat()}"))\n'
         '  |> filter(fn: (r) => r._measurement == "prices")\n'
         "  |> filter(fn: (r) => contains(value: r.city, set: ["
         f'"{demo_data.CITY}"]))\n'

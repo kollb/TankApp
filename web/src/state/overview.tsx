@@ -100,6 +100,7 @@ import {
 import { forecastStamp, type NowTarget } from "../now";
 import { promptFillPrice } from "../fills";
 import { buildStripCells } from "../strip";
+import { referenceStation } from "../stations";
 import { type LabSectionId } from "../lab";
 import {
   tabFromUrlId,
@@ -182,9 +183,9 @@ function useOverviewState() {
       /* History darf scheitern (Sandbox) — die Ansicht wechselt trotzdem. */
     }
   };
-  // Einstieg in „Ich“, wenn ein anderer Bereich dort hinverweist (z. B.
-  // „Beleg manuell buchen“ im Due-Prompt → Belege). Sonst „Fahrzeug“.
-  const [ichSection, setIchSection] = useState<
+  // Unterseite für externe Einstiege (z. B. Belegbuchung aus Stationen);
+  // ohne Einstieg landet „Einstellungen“ bei „Fahrzeug“.
+  const [settingsSection, setSettingsSection] = useState<
     "vehicle" | "fills" | "balance" | "settings"
   >("vehicle");
   const [assumptions, setAssumptions] = useState<AssumptionsState>({
@@ -720,6 +721,11 @@ function useOverviewState() {
   const online = !prices.error && !!data && !data.connection_error && !isStaleFuel;
   const elapsed = Math.max(0, now - prices.receivedAt) / 60000;
   const price = (row: Station) => currentPrice(row, online, elapsed);
+  // Die Atlas-Referenz ist ein einziger Vertrag mit dem Server: selected →
+  // gepinnt → nächste Station, jeweils nur mit frischem Preis. Dieselbe ID
+  // wird im Stations-Overview an /decide übergeben; sonstige Bereiche behalten
+  // ihren eigenen Vergleichsanker.
+  const atlasReference = referenceStation(stations, price, selectedId, pinnedIds);
   const fresh = isStaleFuel
     ? []
     : stations
@@ -777,7 +783,7 @@ function useOverviewState() {
       ? (worstPrice - bestPrice) * liters
       : null;
   // GUI-Neuentwurf: frische Set-Preise (für die Einordnung nach dem Buchen
-  // und für „Ich → Belege“) + gewählte Stations zuerst in der Beleg-Auswahl
+  // und für „Einstellungen → Belege“) + gewählte Stations zuerst in der Beleg-Auswahl
   // (gepinnte Stationen rücken nach vorn — dieselbe Reihenfolge wie Karte).
   const freshPrices = fresh.map((row) => price(row)!).filter(
     (value) => value !== null,
@@ -837,6 +843,7 @@ function useOverviewState() {
 
   // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
   // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
+  const decisionStation = tab === "stations" ? atlasReference?.station ?? null : selected;
   const identity = selected
     ? new URLSearchParams({
         city: activeCity,
@@ -847,7 +854,7 @@ function useOverviewState() {
 
   // --- B4 Resources ---
   // H1/B6: alle What-if-Parameter an den Server — Strecke und Verdict kommen ausschließlich vom Server.
-  // B7: „Jetzt“ und „Woche“ kommen als EINE Anfrage aus /api/v1/overview
+  // B7: „Übersicht“ und „Stationen“ kommen als EINE Anfrage aus /api/v1/overview
   // (decide + Wallet + Summary + Due-Episoden + Tageskurve) statt sechs
   // Parallel-Polls, die auf der NAS an File-Locks hängen und einen Refresh
   // auf 5–10 s blähen, während die Ansicht tot wirkt.
@@ -866,11 +873,11 @@ function useOverviewState() {
     ? `&latest_by=${encodeURIComponent(assumptions.latestBy)}`
     : "";
   const decideQuery = activeCity
-    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${effLiters}&value_of_time=${effTimeValue}${latestByQuery}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${selected ? `&station_id=${encodeURIComponent(selected.station_id)}` : ""}${tankQuery}`
+    ? `city=${encodeURIComponent(activeCity)}&fuel=${fuel}&liters=${effLiters}&value_of_time=${effTimeValue}${latestByQuery}&consumption=${consumption}&speed_kmh=${speed}&mode=${detourMode}${decisionStation ? `&station_id=${encodeURIComponent(decisionStation.station_id)}` : ""}${tankQuery}`
     : null;
   // „Jetzt“, „Stationen“ und „Woche“ teilen denselben Overview-Poll
   // (decide + Tageskurve + Wallet) — eine Antwort, drei Ansichten.
-  const overviewTab = tab === "jetzt" || tab === "stations" || tab === "week";
+  const overviewTab = tab === "jetzt" || tab === "stations";
   const overview = useResource<Overview>(
     overviewTab && decideQuery ? `/api/v1/overview?${decideQuery}` : null,
     30000,
@@ -903,9 +910,9 @@ function useOverviewState() {
 
   const statsSummaryPoll = useResource<StatsSummary>(
     // Die Güte-Kacheln im System-Tab, das Labor und die Schwellen-Tabelle
-    // in „Ich → Einstellungen“ lesen dieselbe Antwort — in
-    // „Jetzt“/„Woche“ steckt sie im Overview-Payload.
-    tab === "labor" || tab === "system" || tab === "ich"
+    // in „Einstellungen → App“ lesen dieselbe Antwort — in
+    // „Übersicht“/„Stationen“ steckt sie im Overview-Payload.
+    tab === "labor" || tab === "system" || tab === "settings"
       ? `/api/v1/stats/summary?fuel=${fuel}${activeCity ? `&city=${encodeURIComponent(activeCity)}` : ""}`
       : null,
     60000,
@@ -949,18 +956,18 @@ function useOverviewState() {
   // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
   //
   // Der Verlauf kommt normalerweise als Teil des Overview-Polls. Der läuft
-  // aber nur für Jetzt/Stationen/Woche: Ein kalter Aufruf von `/?tab=ich`
-  // (geteilter Link, PWA-Start, mobile.spec) hatte deshalb **nie** einen
+  // aber nur für Übersicht/Stationen: Ein kalter Aufruf von `/?tab=einstellungen`
+  // (früher `?tab=ich`, geteilter Link, PWA-Start, mobile.spec) hatte deshalb **nie** einen
   // Beleg im Speicher und zeigte „Noch keine Belege“, obwohl der Ledger
-  // gefüllt war. Auf „Ich“ holt die Liste sich ihren Stand jetzt selbst —
+  // gefüllt war. Unter „Einstellungen“ holt die Liste sich ihren Stand jetzt selbst —
   // dieselbe Route `GET /api/v1/fills`, dieselbe Form (B7-Muster).
   const walletFills = useResource<Fills>(
-    tab === "ich" ? "/api/v1/fills" : null,
+    tab === "settings" ? "/api/v1/fills" : null,
     120000,
     refresh,
   );
   const fillsRes =
-    tab === "ich"
+    tab === "settings"
       ? walletFills
       : overviewTab
         ? overviewPart<Fills>(overview.data?.fills)
@@ -1021,10 +1028,10 @@ function useOverviewState() {
     refresh,
   );
   // A4: Monats-/Jahresbilanz — die Summen-Kacheln stehen im Alltag, die
-  // volle Monats-/Jahres-Sicht in „Ich → Bilanz“. Seit Phase 3 liest nur
-  // noch „Ich“ diese Antwort; die alte Werkstatt-Kachel ist entfallen.
+  // volle Monats-/Jahres-Sicht in „Einstellungen → Bilanz“. Seit Phase 3 lesen nur
+  // noch „Einstellungen“ diese Antwort; die alte Werkstatt-Kachel ist entfallen.
   const fillsSummary = useResource<FillsSummary>(
-    tab === "ich" ? "/api/v1/fills/summary" : null,
+    tab === "settings" ? "/api/v1/fills/summary" : null,
     120000,
     refresh,
   );
@@ -1163,15 +1170,19 @@ function useOverviewState() {
   // Die Frische der Prognose kommt aus der Engine-Publikation bzw. dem
   // Fit-Zeitpunkt — nicht aus der Berechnungszeit dieser Antwort (`now.ts`).
   const nowForecastAt = forecastStamp(decideRes.data);
-  // GUI-Neuentwurf: die Ziele des Neuentwurfs sind echte Bereiche —
-  // „Jetzt“, „Stationen“, „Woche“ (inkl. Tankstand), „Ich“, „Labor“ und
-  // „System“. „werkstatt“ bleibt als Alt-Ziel erhalten und landet im Labor.
-  const handleNowNavigate = (target: NowTarget | "jetzt" | "werkstatt") => {
-    if (target === "jetzt") gotoTab("jetzt");
+  // Bereichsziele bleiben als Kompatibilität an einem Ort: Woche landet in
+  // der Übersicht, Fahrzeug/Beleg in der passenden Unterseite von Einstellungen.
+  // „werkstatt“ bleibt als altes Ziel erhalten und landet im Labor.
+  const handleNowNavigate = (target: NowTarget) => {
+    if (target === "overview") gotoTab("jetzt");
     else if (target === "stations") gotoTab("stations");
-    else if (target === "week" || target === "tank") gotoTab("week");
-    else if (target === "ich") gotoTab("ich");
-    else if (target === "werkstatt") gotoTab("labor");
+    else if (target === "vehicle") {
+      setSettingsSection("vehicle");
+      gotoTab("settings");
+    } else if (target === "fills") {
+      setSettingsSection("fills");
+      gotoTab("settings");
+    } else if (target === "labor") gotoTab("labor");
     else gotoTab("system");
   };
   // Erklär-Treppe Ebene 1 → 2 (§7) + B5 punktgenau: Ebene 2 (Beweis) öffnet den Abschnitt
@@ -1215,7 +1226,7 @@ function useOverviewState() {
     dueEpisode?.last_snapshot?.station_id || selected?.station_id || null;
   const dueFillPrice = promptFillPrice(dueFillStationId, stations, price);
 
-  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Ich → Belege“
+  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Einstellungen → Belege“
   // (quickDraft), dieselben Grenzen wie der Server (app/feedback.py).
 
   // B4: Alarme aus /health für den roten/grünen Punkt im Header.
@@ -1244,8 +1255,8 @@ function useOverviewState() {
     if (livePrice === null || !fillStationId) {
       if (fillStationId) setQuickStationId(fillStationId);
       setQuickPriceStr("");
-      setIchSection("fills");
-      gotoTab("ich");
+      setSettingsSection("fills");
+      gotoTab("settings");
       feedback("warn", NO_LIVE_PRICE_LINE, 6000);
       return;
     }
@@ -1404,8 +1415,8 @@ function useOverviewState() {
     setLaborFocus,
     openLabor,
     handleNowNavigate,
-    ichSection,
-    setIchSection,
+    settingsSection,
+    setSettingsSection,
     searchFocusSignal,
     // Share
     shareNote,

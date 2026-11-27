@@ -1,20 +1,18 @@
 import { test, expect, type Page } from "@playwright/test";
 import { clickArea } from "./nav";
 
-// GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“. Die alten Tabs
-// „Alltag“ und „Einstellungen“ sind ersetzt — Stationen, Woche und Ich
-// führen die jeweiligen Bereiche weiter. Seit B4 (Befund UX/Mathe
-// 19.09.2026) liegen die Studio-Bereiche (Labor, Ich, System, Glossar)
-// mobil hinter dem „Mehr“-Blatt — `clickArea` führt in beiden Rastern
-// zum Bereich.
+// Alltagsnavigation: Übersicht und Stationen sind die Haupteinstiege;
+// Einstellungen, Labor, System und Glossar liegen im Studio. Alte Woche- und
+// Ich-Links bleiben als Weiterleitungen erhalten. Mobil liegt das Studio im
+// „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
 
 test("honest setup state and all views", async ({ page }) => {
-  // Auf einem frischen Server ohne Polling-Set zeigt der Einstieg „Jetzt“ den
+  // Auf einem frischen Server ohne Polling-Set zeigt die „Übersicht“ den
   // grauen S0-Zustand: Grund plus nächster Schritt — kein erfundener Preis,
   // keine leere Fläche.
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Jetzt", exact: true }),
+    page.getByRole("heading", { name: "Übersicht", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Einrichten in drei Schritten" }),
@@ -22,8 +20,8 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Einrichtung starten" }),
   ).toBeVisible();
-  // „Stationen“ (der ehemalige Alltag) zeigt auf dem frischen Server die
-  // ehrliche Set-Karte — kein roter Fehler, obwohl /decide ohne Set einen
+  // „Stationen“ zeigt auf dem frischen Server die ehrliche Set-Karte —
+  // kein roter Fehler, obwohl /decide ohne Set einen
   // error_code zurückliefert (Konsequenz fehlender Daten, kein Defekt).
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(
@@ -129,8 +127,8 @@ test("city/fuel changes never mix prices, closures never win", async ({
   await expect(gRow).toBeVisible();
   await expect(page.getByText("F-Station", { exact: true })).toHaveCount(0);
   // C4 (weitergezogen): Die Tankmenge ist ein Default — der Eingabeort ist
-  // jetzt „Ich → Fahrzeug“; die App rechnet haushaltsweit damit weiter.
-  await clickArea(page, "Ich");
+  // jetzt „Einstellungen → Fahrzeug“; die App rechnet haushaltsweit damit weiter.
+  await clickArea(page, "Einstellungen");
   await page.locator("#liters").fill("55");
   await expect(page.locator("#liters")).toHaveAttribute(
     "aria-valuetext",
@@ -143,8 +141,8 @@ test("city/fuel changes never mix prices, closures never win", async ({
   await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
   await expect(page.getByText("1,689", { exact: false })).toHaveCount(0);
   await page.reload();
-  // Nach dem Reload startet die App wieder in „Jetzt“ — für die Stationen-
-  // Namen erneut dorthin wechseln.
+  // Nach dem Reload startet die App wieder in „Übersicht“ — für die
+  // Stationsnamen erneut dorthin wechseln.
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
   await expect(page.getByLabel("Stadt", { exact: true })).toHaveValue(
@@ -156,18 +154,40 @@ test("city/fuel changes never mix prices, closures never win", async ({
   ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
   // Die Tankmenge übersteht den Reload (geräte-lokal gespeichert).
-  await clickArea(page, "Ich");
+  await clickArea(page, "Einstellungen");
   await expect(page.locator("#liters")).toHaveValue("55");
 });
 
-test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
+test("Einstellungen: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   page,
 }) => {
-  // Phase 2: „Einstellungen verschwindet als Tab“ (UI-NEUENTWURF §4.2) —
-  // die Fahrzeug-Felder wohnen unter „Ich → Fahrzeug“, Kontext, Schwellen,
-  // Darstellung und Daten unter „Ich → Einstellungen“.
+  // Fahrzeug, App-Kontext, Entscheidungsschwellen und Darstellung wohnen
+  // gemeinsam im Bereich „Einstellungen“. Die Serverinstanz absichtlich ohne
+  // Polling-Set bekommt eine isolierte Summary-Response für die Schwellen.
+  await page.route("**/api/v1/stats/summary?*", async (route) => {
+    await route.fulfill({
+      json: {
+        generated_at: new Date().toISOString(),
+        fuel: "e10",
+        city: "Frankfurt",
+        thresholds: {
+          wait_eur_high: 2,
+          wait_p_high: 0.5,
+          wait_eur_mid: 1,
+          wait_p_mid: 0.4,
+          elsewhere_net_eur: 1.5,
+          elsewhere_p: 0.5,
+          elsewhere_borderline_eur: 0.5,
+          now_eur: 1,
+          now_p: 0.5,
+        },
+        threshold_tuning: null,
+        error_code: null,
+      },
+    });
+  });
   await page.goto("/");
-  await clickArea(page, "Ich");
+  await clickArea(page, "Einstellungen");
   // Unterseiten-Segment-Steuerung: ARIA-Tabs (kein Button-Rollenspiel).
   await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
 
@@ -182,7 +202,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   await expect(page.locator("#tankCapacity")).toBeVisible();
 
   await page
-    .getByRole("tab", { name: "Einstellungen", exact: true })
+    .getByRole("tab", { name: "App", exact: true })
     .click();
   // Kontext: Stadt und Kraftstoff am Wirkungsort.
   await expect(page.locator("#settings-city")).toBeVisible();
@@ -202,7 +222,7 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
     table.locator("tr", { hasText: "Warten (blau)" }).first(),
   ).toContainText("2,00 €");
   await expect(
-    table.locator("tr", { hasText: "wenn P(Warten) unter" }),
+    table.locator("tr", { hasText: "Mindest-Trefferquote" }).first(),
   ).toContainText("50 %");
   // Read-only: kein einziges Eingabefeld in der Schwellen-Tabelle.
   await expect(table.locator("input")).toHaveCount(0);
@@ -217,12 +237,11 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  // Zurück auf den Default (hell), damit andere Tests nicht
-  // von dieser Ansicht abhängen. Nach dem Reload startet die App in
-  // „Jetzt“ — der Theme-Knopf liegt unter „Ich → Einstellungen“.
-  await clickArea(page, "Ich");
+  // Zurück auf den Default (hell), damit andere Tests nicht von dieser
+  // Ansicht abhängen. Nach dem Reload startet die App in „Übersicht“.
+  await clickArea(page, "Einstellungen");
   await page
-    .getByRole("tab", { name: "Einstellungen", exact: true })
+    .getByRole("tab", { name: "App", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Hell (Standard)", exact: true })
@@ -234,15 +253,16 @@ test("Ich: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
 // GUI-UX-BEFUND U4: Jede Ansicht ist eine URL.
 //
 // Vorher kannte die Adresse keinen Bereich: Lesezeichen landeten immer auf
-// „Jetzt“, der Browser-Zurück-Knopf vergaß die Tabs, und der Teilen-Knopf
+// „Übersicht“, der Browser-Zurück-Knopf vergaß die Tabs, und der Teilen-Knopf
 // teilte Filter statt Antwort. Jetzt reist der Bereich als `?tab=…` mit —
 // ein Test pro Bereich: Link öffnen → richtiger Bereich.
 // ---------------------------------------------------------------------------
 const AREA_URLS: Array<{ url: string; heading: string }> = [
-  { url: "/", heading: "Jetzt" },
+  { url: "/", heading: "Übersicht" },
   { url: "/?tab=stationen", heading: "Erst Stationen einrichten, dann der Atlas" },
-  { url: "/?tab=woche", heading: "Woche" },
-  { url: "/?tab=ich", heading: "Ich" },
+  { url: "/?tab=woche", heading: "Übersicht" },
+  { url: "/?tab=ich", heading: "Einstellungen" },
+  { url: "/?tab=einstellungen", heading: "Einstellungen" },
   { url: "/?tab=labor", heading: "Stimmt das?" },
   { url: "/?tab=system", heading: "Einmal einrichten. Weiterlaufen lassen." },
   { url: "/?tab=glossar", heading: "Glossar" },
@@ -277,7 +297,7 @@ test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Jetzt", exact: true }),
+    page.getByRole("heading", { name: "Übersicht", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(
@@ -288,7 +308,7 @@ test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
   ).toBeVisible();
   await page.goBack();
   await expect(
-    page.getByRole("heading", { name: "Jetzt", exact: true }),
+    page.getByRole("heading", { name: "Übersicht", exact: true }),
   ).toBeVisible();
 });
 
@@ -296,9 +316,9 @@ test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", 
   page,
 }) => {
   // Befund aus der Mobil-Messung (mobile.spec): Der Verlauf kam als Teil der
-  // Overview-Antwort, die nur für Jetzt/Stationen/Woche geholt wird. Ein
-  // kalter Aufruf von „Ich“ zeigte deshalb „Noch keine Belege“, selbst wenn
-  // der Ledger gefüllt war — der geteilte Link (UI-NEUENTWURF §13) führte auf
+  // Overview-Antwort, die nur für Übersicht/Stationen bereitgestellt wird.
+  // Der Legacy-Link `?tab=ich` zeigte deshalb „Noch keine Belege“, selbst wenn
+  // der Ledger gefüllt war — der geteilte Link führte auf
   // eine leere Liste. Der Verlauf holt seinen Stand jetzt selbst über
   // `GET /api/v1/fills`; die Attrappe hält genau diese Route fest.
   await page.route("**/api/v1/fills", async (route) => {

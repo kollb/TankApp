@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// GUI-Neuentwurf (Phase 1+2): Der Einstieg ist „Jetzt“ — der komplette
-// Entscheidungs-Fluss „decide → intent → fill → due“ lebt dort.
+// Alltagsnavigation: Die Übersicht zeigt den Entscheidungsfluss —
+// „decide → intent → fill → due“ bleibt als API-/Ledger-Vertrag erhalten.
 
 // D2: Entscheidungs-Fluss „decide → intent → fill → due“ mit Mocks.
 // Schützt die V3-Fixes: Erfolgsmeldung nur bei Erfolg, Due-Prompt nach
@@ -24,7 +24,7 @@ function stationRow() {
   };
 }
 
-// B7: „Jetzt“ und „Woche“ holen decide + fills + stats/summary + due-Episoden
+// B7: Übersicht und Stationen holen decide + fills + stats/summary + due-Episoden
 // + Tageskurve als EINE Anfrage aus /api/v1/overview — die Tests mocken
 // deshalb zusätzlich den Overview-Payload, zusammengesetzt aus denselben
 // Fixtures, die auch die (weiterhin gemockten) Einzelpfade bedienen.
@@ -189,9 +189,9 @@ test("Jetzt: eine Antwort, eine Handlung — kein Intent-Kanal mehr", async ({
 // mit Klartext.
 //
 // Der Weg dorthin war bis 0.72.2 der Fällig-Prompt („Ja, wie empfohlen“).
-// Er ist ersatzlos gestrichen; Belege entstehen in „Ich → Belege → Tanken
-// erfassen“. Die Outbox-Zusage (B10) bleibt und wird hier am neuen Ort
-// geprüft.
+// Er ist ersatzlos gestrichen; Belege entstehen in „Einstellungen → Belege →
+// Tanken erfassen“. Die Legacy-URL `?tab=ich` führt dorthin. Die Outbox-Zusage
+// (B10) bleibt und wird hier am neuen Ort geprüft.
 async function openReceiptForm(page: Page) {
   await page.goto("/?tab=ich");
   await page.getByRole("tab", { name: "Belege", exact: true }).click();

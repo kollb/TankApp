@@ -28,6 +28,7 @@ function radarInfo(
     distMode: station.dist_mode ?? null,
     mapsUrl: station.maps_url ?? null,
     price: station.price ?? station.last_price ?? null,
+    priceFresh: null,
     ...extra,
   };
 }
@@ -89,6 +90,13 @@ const mockStations: Station[] = [
   },
 ];
 
+const mockPrimaryStation: DecideResult["primary"]["station"] = {
+  id: "s1",
+  name: "Aral Weseler Str.",
+  price_now: 1.729,
+  maps_url: "https://maps.google.com/?q=51.95,7.62",
+};
+
 const mockAlternatives: DecideResult["alternatives_nearby"] = [
   {
     station_id: "s2",
@@ -104,6 +112,8 @@ const mockAlternatives: DecideResult["alternatives_nearby"] = [
     verdict: "worth",
     p_lohnt: 0.82,
     maps_url: "https://maps.google.com/?q=51.97,7.61",
+    price_fresh: true,
+    ref_price_fresh: true,
   },
 ];
 
@@ -115,6 +125,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
       />,
     );
 
@@ -130,6 +141,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
       />,
     );
 
@@ -162,6 +174,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
       />,
     );
 
@@ -180,6 +193,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
         anchor={{ lat: 50.11, lon: 8.68 }}
       />,
     );
@@ -254,6 +268,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
         anchor={{ lat: 51.96, lon: 7.62 }}
       />,
     );
@@ -268,6 +283,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
       />,
     );
     expect(withoutAnchor).toContain(
@@ -308,6 +324,7 @@ describe("StationMap (C3 Karten-/Umgebungsansicht)", () => {
         selectedId="s1"
         setSelectedId={() => {}}
         alternatives={mockAlternatives}
+        primaryStation={mockPrimaryStation}
       />,
     );
 

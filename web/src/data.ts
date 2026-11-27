@@ -831,6 +831,10 @@ export type DecideResult = {
     verdict: "worth" | "borderline" | "not_worth";
     p_lohnt?: number | null;
     maps_url?: string | null;
+    /** Candidate freshness (false may still carry its flagged last_price). */
+    price_fresh?: boolean;
+    /** Freshness of the reference price used for this comparison. */
+    ref_price_fresh?: boolean;
   }>;
   thresholds?: {
     active: Record<string, number>;
@@ -2482,17 +2486,20 @@ export function heatmapPath(input: {
 export const SHARE_TABS = [
   "jetzt",
   "stationen",
-  "woche",
-  "ich",
+  "einstellungen",
   "labor",
   "system",
   "glossar",
 ] as const;
 export type ShareTab = (typeof SHARE_TABS)[number];
 
-/** Ausgemusterte Bereichsnamen landen bei ihrem Nachfolger. */
+/** Ausgemusterte Bereichsnamen landen auf ihrer aktuellen Zielseite. */
 const LEGACY_TABS: Record<string, ShareTab> = {
   alltag: "jetzt",
+  woche: "jetzt",
+  week: "jetzt",
+  ich: "einstellungen",
+  settings: "einstellungen",
   werkstatt: "labor",
   statistik: "labor",
 };
@@ -2505,7 +2512,7 @@ export type ShareConfig = {
   liters?: number;
   heatmapWeeks?: HeatmapWeeks;
   heatmapBasis?: HeatmapBasis;
-  /** U4: der Bereich als Teil der URL (`?tab=woche`). */
+  /** U4: der kanonische Bereichsname als Teil der URL (`?tab=einstellungen`). */
   tab?: ShareTab;
   /** U4: Labor-Abschnitt als Anker der geteilten Antwort (`?section=…`). */
   section?: string;
@@ -3308,7 +3315,7 @@ export function euro(value: number | null | undefined, decimals = 2) {
 /**
  * „E10“ · „E5“ · „Diesel“ — die eine Schreibweise des Kraftstoffs.
  *
- * Der Kopf von „Jetzt“ und „Woche“ nennt Stadt und Kraftstoff in einer Zeile;
+ * Der Kopf von Übersicht und Stationen nennt Stadt und Kraftstoff in einer Zeile;
  * damit dort nicht an zweiter Stelle eine andere Schreibweise entsteht, kommt
  * das Label aus einem Formatter (wie Einheiten und Zeiten, §3 MICROCOPY).
  */

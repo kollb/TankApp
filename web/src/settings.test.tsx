@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
-// C4 (weitergezogen, Phase 2): „Einstellungen verschwindet als eigener Tab“
-// (UI-NEUENTWURF §4.2) — die Fahrzeug-Felder wohnen in „Ich → Fahrzeug“
-// (VehiclePanel), Kontext/Schwellen/Darstellung/Daten in „Ich →
-// Einstellungen“ (SettingsPanel).
+// C4 (weitergezogen): Fahrzeug-Felder wohnen in „Einstellungen → Fahrzeug“
+// (VehiclePanel), Kontext/Schwellen/Darstellung/Daten in „Einstellungen → App“
+// (SettingsPanel).
 //
 // Die Schwellen-Tabelle zeigt ausschließlich Server-Werte: die Tests
 // prüfen, dass alle neun Schwellen der Engine (app/thresholds.py
@@ -195,7 +194,7 @@ function settingsProps(
   };
 }
 
-describe("Ich → Fahrzeug (VehiclePanel)", () => {
+describe("Einstellungen → Fahrzeug (VehiclePanel)", () => {
   it("bietet Tankmenge, Verbrauch, Tankgröße, Zeitwert, Tempo, Fahrtcharakter", () => {
     const html = renderToStaticMarkup(<VehiclePanel {...vehicleProps()} />);
     // Eingabeorte mit den Ids, die der alte Einstellungen-Tab hatte.
@@ -291,7 +290,7 @@ describe("Ich → Fahrzeug (VehiclePanel)", () => {
   });
 });
 
-describe("Ich → Einstellungen (SettingsPanel)", () => {
+describe("Einstellungen → App (SettingsPanel)", () => {
   it("bietet Stadt und Kraftstoff (Kontext — gilt für alle Ansichten)", () => {
     const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />);
     expect(html).toContain('id="settings-city"');

@@ -1,4 +1,4 @@
-// Jetzt — die Antwort auf eine Frage (docs/produkt/UI.md, Bereiche;
+// Übersicht — die Antwort auf eine Frage (docs/produkt/UI.md, Bereiche;
 // docs/planung/UX-NEUENTWURF.md §3).
 //
 // Frage: „Soll ich jetzt tanken — und wenn ja, wo?“
@@ -14,7 +14,7 @@
 // Feedback-Intents, nächste Schritte, drei Fakten-Karten mit Tankstands-
 // Schnellauswahl, das 19-Zellen-Raster „Heute im Blick“, der Benefit-Block,
 // der Sicherheits-Balken und die Frische-Fußzeile. Der Tankstand wird an
-// genau einem Ort gepflegt („Ich“ → Fahrzeug), hier steht er nur im
+// genau einem Ort gepflegt („Einstellungen“ → Fahrzeug), hier steht er nur im
 // „Warum?“ -Blatt, wenn er die Entscheidung trägt.
 
 import { useEffect, useState } from "react";
@@ -212,7 +212,7 @@ export function JetztView(props: JetztViewProps) {
           id="jetzt-title"
           className="text-2xl font-bold tracking-tight text-slate-100"
         >
-          Jetzt
+          Übersicht
         </h1>
         <p className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           {activeCity ? <span>{activeCity}</span> : null}

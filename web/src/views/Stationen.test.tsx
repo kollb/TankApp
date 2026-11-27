@@ -198,6 +198,92 @@ describe("Stationen: Aufbau", () => {
     expect(html).toContain("Station b als Referenz und Detail wählen");
     expect(html).toContain("Referenz");
   });
+
+  it("zeigt Server-Netto nur mit passendem frischem Anker und markiert stale Alternativen", () => {
+    const reference = station("ref", { price: 1.749, dist_km: 1 });
+    const alternative = station("alt", {
+      price: null,
+      last_price: 1.689,
+      fresh: false,
+      age_minutes: 45,
+      observed_at: minutesAgo(45),
+      dist_km: 2,
+    });
+    const base = decide();
+    const result = decide({
+      primary: {
+        ...base.primary,
+        station: {
+          id: "ref",
+          name: reference.name,
+          price_now: reference.price,
+          maps_url: null,
+        },
+      },
+      alternatives_nearby: [
+        {
+          station_id: "alt",
+          name: alternative.name,
+          brand: alternative.brand,
+          price: 1.689,
+          delta_ct: 6,
+          detour_km: 0.5,
+          net_eur: 2.3,
+          worth_it: true,
+          verdict: "worth",
+          price_fresh: false,
+          ref_price_fresh: true,
+        },
+      ],
+    });
+    const rows = [reference, alternative];
+    const html = render({
+      stations: rows,
+      data: stationsPayload(rows),
+      selectedId: "ref",
+      decideRes: { ...baseProps.decideRes, data: result },
+    });
+    expect(html).toContain("Serverpreis nicht frisch");
+    expect(html).toContain("−2,30 € netto");
+
+    const unconfirmed = decide({
+      primary: {
+        ...base.primary,
+        station: {
+          id: "ref",
+          name: reference.name,
+          price_now: reference.price,
+          maps_url: null,
+        },
+      },
+      alternatives_nearby: [
+        {
+          station_id: "alt",
+          name: alternative.name,
+          brand: alternative.brand,
+          price: 1.689,
+          delta_ct: 6,
+          detour_km: 0.5,
+          net_eur: 2.3,
+          worth_it: true,
+          verdict: "worth",
+          price_fresh: true,
+          ref_price_fresh: false,
+        },
+      ],
+    });
+    const priceOnly = render({
+      stations: [reference, station("alt", { price: 1.689, last_price: 1.689 })],
+      data: stationsPayload([
+        reference,
+        station("alt", { price: 1.689, last_price: 1.689 }),
+      ]),
+      selectedId: "ref",
+      decideRes: { ...baseProps.decideRes, data: unconfirmed },
+    });
+    expect(priceOnly).not.toContain("Quelle: die Umweg-Rechnung des Servers");
+    expect(priceOnly).toContain("ohne Umweg");
+  });
 });
 
 describe("Stationen: Zustände", () => {

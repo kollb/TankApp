@@ -237,10 +237,10 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
 //
 // Der Ein-Tipp-Beleg des Fällig-Prompts („Ja, wie empfohlen“) ist mit 0.73.0
 // ersatzlos gestrichen (Entscheidung 04.10.2026). Die Zusage bleibt, nur ihr
-// Ort wechselt: Bestätigt wird dort, wo Belege gepflegt werden — „Ich →
-// Belege → Tanken erfassen“. Geprüft wird am echten Demo-Server, dass der
-// eingetragene Preis unverändert im Beleg landet (`price_source:
-// „manuell“`) und keine Prognose ihn ersetzt.
+// Ort wechselt: Bestätigt wird dort, wo Belege gepflegt werden — in
+// „Einstellungen → Belege → Tanken erfassen“. Der Legacy-Link `?tab=ich`
+// führt dorthin. Geprüft wird am echten Demo-Server, dass der eingetragene
+// Preis unverändert im Beleg landet (`price_source: „manuell“`).
 test("O17: der Beleg trägt den eingetragenen Preis, nie die Prognose", async ({
   page,
 }) => {

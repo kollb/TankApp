@@ -1,5 +1,4 @@
-// Ich — Fahrzeug, Belege, Bilanz, Einstellungen (docs/produkt/UI.md
-// §5.4, Phase 2).
+// Einstellungen — Fahrzeug, Belege, Bilanz und App-Kontext (docs/produkt/UI.md).
 //
 // Vier Unterseiten, Segment-Steuerung oben, kein eigenes Menü. Die View
 // rendert, sie entscheidet nichts (D1): die Bilanz-Zahlen kommen vom
@@ -47,14 +46,14 @@ import {
   type VehiclePanelProps,
 } from "./Settings";
 
-/** Ich → Unterseiten (Segment-Steuerung, §5.4). */
+/** Unterseiten der Einstellungen. */
 export type IchSection = "vehicle" | "fills" | "balance" | "settings";
 
 export const ICH_SECTIONS: Array<{ id: IchSection; label: string }> = [
   { id: "vehicle", label: "Fahrzeug" },
   { id: "fills", label: "Belege" },
   { id: "balance", label: "Bilanz" },
-  { id: "settings", label: "Einstellungen" },
+  { id: "settings", label: "App" },
 ];
 
 /**
@@ -115,8 +114,7 @@ export interface IchViewProps {
   // Bilanz
   fillsSummary: ResourceState<FillsSummary>;
   onRetry: () => void;
-  /** Einstieg, wenn „Ich“ von außen geöffnet wird (z. B. „Beleg manuell
-      buchen“ im Due-Prompt auf „Jetzt“). */
+  /** Unterseite für externe Einstiege (z. B. Belegbuchung aus Stationen). */
   initialSection?: IchSection;
   /** Nur für Tests; sonst Date.now(). */
   now?: number;
@@ -128,18 +126,18 @@ export function IchView(props: IchViewProps) {
   );
 
   return (
-    <section aria-labelledby="ich-title">
-      <h1 id="ich-title" className="text-2xl font-bold tracking-tight text-slate-100">
-        Ich
+    <section aria-labelledby="settings-title">
+      <h1 id="settings-title" className="text-2xl font-bold tracking-tight text-slate-100">
+        Einstellungen
       </h1>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
-        Was ist meins, was habe ich verfahren — und wie verhalte ich mich.
+        Fahrzeug, Belege, Bilanz und App-Kontext an einem Ort.
       </p>
 
-      {/* Segment-Steuerung (§5.4: oben, kein eigenes Menü) */}
+      {/* Segment-Steuerung: Bereiche bleiben innerhalb der Einstellungen. */}
       <div
         role="tablist"
-        aria-label="Ich — Unterseiten"
+        aria-label="Einstellungen — Bereiche"
         className="mt-4 flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1"
       >
         {ICH_SECTIONS.map((item) => (
@@ -174,16 +172,16 @@ function VehiclePanelSection({ vehicle, settings }: IchViewProps) {
     <div>
       <VehiclePanel {...vehicle} />
       <p className="mt-3 text-xs leading-relaxed text-slate-500">
-        Was es bringt, rechnet „Jetzt“ in Euro — mit dieser Menge: mehr Liter,
-        mehr Betrag. Kraftstoff und Stadt liegen unter „Einstellungen“ — sie
-        gelten für alle Ansichten, nicht nur für das Fahrzeug.
+        Was es bringt, rechnet die Übersicht in Euro — mit dieser Menge: mehr Liter,
+        mehr Betrag. Kraftstoff und Stadt liegen unter „App“ — sie gelten
+        für alle Ansichten, nicht nur für das Fahrzeug.
         {settings.version ? ` · TankApp ${settings.version}` : ""}
       </p>
     </div>
   );
 }
 
-/** Ich → Belege: Schnellerfassung oben, Verlauf mit Storno darunter. */
+/** Belege: Schnellerfassung oben, Verlauf mit Storno darunter. */
 function FillsSection(props: IchViewProps) {
   const {
     actionFeedback,
@@ -562,7 +560,7 @@ function FillsSection(props: IchViewProps) {
   );
 }
 
-/** Ich → Bilanz: Monat/Jahr, zwei ehrliche Maßstäbe, Verlauf. */
+/** Bilanz: Monat/Jahr, zwei ehrliche Maßstäbe, Verlauf. */
 function BalanceSection(props: IchViewProps) {
   const { fillsSummary, onRetry } = props;
   const [period, setPeriod] = useState<"month" | "year">("month");

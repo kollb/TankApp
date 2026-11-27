@@ -112,6 +112,7 @@ interface StationMapInfo {
   distMode: string | null;
   mapsUrl: string | null;
   price: number | null;
+  priceFresh: boolean | null;
 }
 
 function formatNetBadge(info: StationMapInfo): string {
@@ -123,7 +124,8 @@ function formatNetBadge(info: StationMapInfo): string {
   if (info.isCurrentSelected) return "Referenz";
   if (info.netEur === null) return "-- €";
   const sign = info.netEur >= 0 ? "+" : "−";
-  return `${sign}${euro(Math.abs(info.netEur))} €`;
+  const freshness = info.priceFresh === false ? " · alt" : "";
+  return `${sign}${euro(Math.abs(info.netEur))} €${freshness}`;
 }
 
 /**
@@ -227,7 +229,14 @@ export function StationMap({
   // Map station details with server Netto-€
   const stationInfos: StationMapInfo[] = validStations.map((station) => {
     const isCurrentSelected = station.station_id === selectedId;
-    const alt = alternatives.find((a) => a.station_id === station.station_id);
+    const confirmedReference = primaryStation?.id === selectedId;
+    const alt = confirmedReference
+      ? alternatives.find(
+          (a) =>
+            a.station_id === station.station_id &&
+            a.ref_price_fresh === true,
+        )
+      : undefined;
 
     let netEur: number | null = null;
     let verdict: StationMapInfo["verdict"] = "none";
@@ -271,6 +280,7 @@ export function StationMap({
       distMode,
       mapsUrl: alt?.maps_url || station.maps_url,
       price,
+      priceFresh: typeof alt?.price_fresh === "boolean" ? alt.price_fresh : null,
     };
   });
 
@@ -458,6 +468,7 @@ export function StationMap({
     mapMode,
     validStations.length,
     selectedId,
+    primaryStation?.id,
     validAnchor?.lat,
     validAnchor?.lon,
     JSON.stringify(alternatives),
@@ -662,6 +673,9 @@ export function StationMap({
                     ? `${euro(activeInfo.price, 3)} €/L`
                     : "Keine Preismeldung"}
                 </span>
+                {activeInfo.priceFresh === false && (
+                  <span className="text-amber-300"> · Preis nicht frisch</span>
+                )}
                 {activeInfo.detourKm !== null && (
                   <span>
                     {" · "}

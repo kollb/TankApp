@@ -349,13 +349,16 @@ def inject_data_sources(
 
     orig_archive = history_mod.prepare_archive
     orig_export = export_influx.export_prices
+    orig_wait = export_influx.wait_until_ready
     history_mod.prepare_archive = _archive
     export_influx.export_prices = _export
+    export_influx.wait_until_ready = lambda *_args, **_kwargs: None
     try:
         yield
     finally:
         history_mod.prepare_archive = orig_archive
         export_influx.export_prices = orig_export
+        export_influx.wait_until_ready = orig_wait
 
 
 def legacy_mixed_verdict(store: dict[str, Any]) -> dict[str, Any]:

@@ -1135,7 +1135,11 @@ def _alternatives(
         if best is None or net_eur > best["net_eur"]:
             best = entry
     alternatives.sort(key=lambda a: a["net_eur"], reverse=True)
-    return alternatives[:3], best
+    # `primary.station.id` is the shared reference contract: these are the
+    # five best alternatives *in addition to* that station. Keep the existing
+    # candidate eligibility (fresh `price` or a flagged `last_price` fallback)
+    # so stale observations remain inspectable without gaining freshness.
+    return alternatives[:5], best
 
 
 # §0.4 verbietet vor der Kalibrierung nicht nur die Empfehlung, sondern auch

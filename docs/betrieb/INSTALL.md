@@ -1,6 +1,6 @@
 # TankApp einrichten — vom Polling zur GUI
 
-**Das ist der einzige Installationseinstieg.** Stand: 15.09.2026 · App-Version 0.38.0.  
+**Das ist der einzige Installationseinstieg.** Stand: 27.11.2026 · App-Version 0.76.0.
 Andere Dokumente sind Nachschlagewerke, keine nacheinander auszuführenden Checklisten:
 Wiederkehrender Betrieb (systemd, Backup, Alarme, Fehlersuche) steht in
 [BETRIEB.md](BETRIEB.md), Endpunkte in [API.md](../referenz/API.md).  
@@ -189,86 +189,38 @@ Archiv und Polling sind dieselben Tankerkönig-Marktdaten über zwei Bezugswege.
 
 ## Was du in der GUI siehst
 
-Die GUI hat sechs Bereiche (GUI-Neuentwurf, Phase 3 seit 0.36.0): **Jetzt**,
-**Stationen**, **Woche**, **Ich**, **Labor**, **System**. Die früheren Tabs
-**Alltag**, **Werkstatt** und **Einstellungen** sind ersetzt — kein
-Nebeneinander; „Statistik“ ist der alte Name des Werkstatt-Tabs und steht nur
-noch in Archiv-Dokumenten.
+Seit 0.76.0 ist die Navigation **Übersicht · Stationen · Mehr**. Im Studio-
+Bereich hinter „Mehr“ liegen Labor, System, Einstellungen und Glossar; auf dem
+Desktop stehen sie direkt in der Seitenleiste. Alte `?tab=woche`-/`?tab=week`-
+Links führen zur Übersicht, `?tab=ich` zu Einstellungen.
 
-Seit 0.75.0 bleibt die Kopfzeile unter 1280 px eine kompakte Zeile mit Marke,
-Stadt/Kraftstoff und einem vorhandenen Alarmstatus. Ort und Kraftstoff lassen
-sich direkt ändern. Profilwechsel, Profilverwaltung, Teilen und Aktualisieren
-liegen im Blatt „Profil und Aktionen“ hinter dem Profil-Knopf. Ab 1280 px sind
-diese Steuerungen wieder direkt in der Kopfzeile sichtbar. Bei 320 px bleiben
-Stadt und Kraftstoff im geprüften Raster vollständig lesbar. Update- und
-Installationshinweise bleiben im normalen Seitenfluss.
+Die Kopfzeile bleibt seit 0.75.0 unter 1280 px kompakt: Marke, Stadt/Kraftstoff
+und Alarmstatus bleiben sichtbar; Profilwechsel, Teilen und seltene Aktionen
+liegen im Blatt „Profil und Aktionen“. Ab 1280 px sind die Steuerungen wieder
+direkt sichtbar. Update- und Installationshinweise bleiben im Seitenfluss.
 
-- **Jetzt:** Antwort aus `/api/v1/decide` — **eine** Frage, **eine** Antwort
-  (seit 0.73.0): Chip, Überschrift, eine Zahl in Euro (`spart ca. 1,60 €`) und
-  genau eine Handlung („Route“), dazu der Frische-Chip im Kopf und die
-  Tageszeile (Mini-Kurve + Tief, ein Tipp auf den Tagesverlauf). Die Was-wäre-
-  wenn-Annahmen, die drei Fakten, „Heute im Blick“ und die „Nächsten Schritte“
-  sind entfallen; was die Antwort trägt, steht im „Warum?“ -Blatt (höchstens
-  fünf Zeilen). Ohne Modell (S0/S1/Stufe C) steht die graue Preisvergleich-
-  Karte mit der günstigsten offenen Meldung (`Günstigste gerade: …`). Ebene 1
-  ist der Knopf „Warum?“ (Sheet); von dort führt der Weg in den passenden
-  Labor-Abschnitt. Stadt, Kraftstoff und Tankmenge merkt sich der Browser, den
-  Tankstand seit 0.73.0 nur in „Ich“ → Fahrzeug.
-  Aus dem alten Alltag: Umweg-Vergleich mit Button „Server prüfen“ (B3.12),
-  Tankbelege-Verlauf mit „Stornieren“-Knopf (A3) und Dezimaleingabe mit Komma
-  (E2); der Beleg-Dialog prüft Liter und Preis gegen dieselben Grenzen wie der
-  Server (5–100 L, 0,40–5,00 €/L) und bucht erst nach gewählter Station
-  (E3/E4). Keine Tankbuchung ohne Station, keine als netto ausgegebene
-  Umweg-Ersparnis.
-- **Stationen:** Preis-Atlas — Karte mit Netto-€-Pins (die Referenzstation ist
-  beschriftet, Zuhause trägt das Haus-Symbol), Liste **fest nach Preis
-  sortiert** (Netto-€ und Entfernung stehen als Zusatz in der Zeile), Verlauf
-  der gewählten Station (24 h/3 Tage/7 Tage mit Achsen) und „A gegen B“ mit
-  der Vorauswahl Top 1 gegen Top 2. Der δ̂-Beweis wohnt hier: die Einordnung
-  der gewählten Station nennt den **Preis-Abstand zum Stadt-Median** samt
-  Signifikanz-Hinweis oder ehrlich den fehlenden Messstand.
-- **Woche:** Bestenliste aus `windows_week` (seit 0.73.0): höchstens drei
-  Einträge, sortiert nach Ersparnis — je Tag und Uhrzeit, erwarteter Preis,
-  Ersparnis in Euro und die Sicherheit als **ein** Wort (keine Sterne, keine
-  Prozentwerte). Darunter ein Satz zur Prognosebreite:
-  `Ab Tag 5 wird die Prognose unsicher.` Das 7-Tage-Raster, die Detailkarte,
-  die zweite Fensterliste und die Wochenlinie sind entfallen. Der Tankstand
-  wird hier nur angezeigt (`Tank: …` + „Ändern“), gepflegt wird er in
-  „Ich“ → Fahrzeug.
-- **Ich:** Fahrzeug (alle Defaults an einer Stelle: Stadt, Kraftstoff,
-  Tankmenge, Verbrauch, Zeitwert manuell/auto, Tempo, Fahrtcharakter,
-  Tankgröße, **Tankstand — seit 0.73.0 der einzige Ort der Pflege**,
-  Profile), Belege (Verlauf mit Storno und Schnellerfassung),
-  Bilanz (Monats-/Jahresbilanz, A4) und Einstellungen am Wirkungsort — dazu
-  die aktiven Entscheidungsschwellen read-only und die Dark/Light-Umschaltung
-  (0.24.0, C4).
-- **Labor:** seit 0.74.0 (Batch 2) **drei Blöcke, sonst nichts** —
-  1) „Kann ich vertrauen?“: ein Satz als Zählung („An 26 von 30 Tagen lag die
-  Empfehlung richtig.“, kein Prozent) plus das filterbare Prognose-Tagebuch,
-  das jede Empfehlung nach Fensterende gegen die echten Preise zeigt;
-  2) „Wie gut ist die Prognose?“: eine Kurve (erwartet vs. echt, Blickweite
-  24 h/3 Tage/7 Tage) und ein Satz mit dem mittleren Fehler in ct/L;
-  3) „Wie rechnet die App?“: drei Schritte in Alltagssprache (Tagesmuster der
-  Stadt, aktuelle Lage, 12-Uhr-Regel). Darunter „Details für Neugierige“ mit
-  den acht Modell-Bausteinen, den Fachwerten (u. a. Backtest-Tage, MASE 24 h,
-  PICP 95, Anteil richtiger Regeln) und der Heatmap als einziger Grafik.
-  Gestrichen: Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
-  Einflüsse-Balken, Güte-Panel und das eingebettete Glossar (nur noch
-  verlinkt). Fachwörter stehen deutsch im Text, das Fachwort im Tooltip (F2).
-- **System:** Konfiguration, Archiv-Lücken, Job-Ergebnisse und letzte
-  Veröffentlichung, Pi/tmpfs-Livestatus (B3.11), Webhook-Datenstand und
-  Trigger-Statistik (Issue 50). Seit 0.74.0 zusätzlich die **Betreiber-Sicht
-  auf die Rohdaten**: Datenreichweite & Herkunft, drei Roh-Tabellen (letzte
-  Preise, Stations-Auswahl, Prognose-Quantile), die vier CSV-Exporte und der
-  API-Explorer — unverändert aus dem aufgelösten Labor-Datenbereich. Neu (0.10.0): geführte
-  **Einrichtungs-Checkliste** (C1), **M7-Fortschritts-Kachel** „n/100
-  Empfehlungen, Brier …“ (A7) und **CSV-Export der eigenen Tankbelege** (A6).
-  Fehlende Zugangsdaten ergeben einen ehrlichen Einrichtungszustand, keine
-  Demo-Preise.
-- **Über allen Bereichen:** Alarmstatus im kompakten Header (unter 1280 px)
-  bzw. als direkte Alarm-Pille auf breiten Displays; er kommt aus `alarms[]` in
-  `/api/v1/health` (B4). App-Version + Commit-Hash stehen im Footer (B9) — was
-  der Alarmstatus bedeutet: [BETRIEB.md](BETRIEB.md#system-alarme-lesen).
+- **Übersicht:** eine Frage, eine Antwort aus `/api/v1/overview` (mit
+  `/decide`), eine Zahl und eine Handlung; die Tageskurve liegt einen Tipp
+  entfernt. `windows_week` bleibt im API-Vertrag, ist aber keine eigene
+  sichtbare Woche-Seite mehr.
+- **Stationen:** Preis-Atlas mit Karte, Liste, Verlauf und A-gegen-B. Die
+  Referenz ist die ausgewählte frische Station, sonst die erste angeheftete
+  frische Station, sonst die nächste frische Station. Ihre ID geht als
+  `station_id` an den Overview-Aufruf. Server-Netto erscheint nur, wenn
+  `primary.station.id` mit dieser Referenz übereinstimmt und
+  `ref_price_fresh` wahr ist; andernfalls bleibt es beim Preisvergleich ohne
+  Umweg. Eine Alternative mit `price_fresh: false` ist sichtbar als
+  „Serverpreis nicht frisch“ markiert. `/decide` liefert höchstens fünf
+  Alternativen zusätzlich zur Referenz.
+- **Einstellungen:** Fahrzeug, Profile, Tankstand, Belege, Bilanz und
+  App-Kontext. Der Tankstand wird nur unter „Fahrzeug“ gepflegt.
+- **Labor:** drei Blöcke — Vertrauen, Prognosegüte und Rechenweg. Rohdaten,
+  CSV und API-Explorer liegen für den Betreiber in „System“.
+- **System:** Konfiguration, Jobs, Datenherkunft, Collector und Alarme.
+  Modell-Refresh und Hintergrund-Prewarm prüfen zuerst InfluxDB `/health`
+  ohne Token und warten höchstens 30 Sekunden; wird InfluxDB nicht bereit,
+  bleibt der Server erreichbar und der Modelllauf bricht mit Readiness-Fehler
+  ab.
 
 Einmalige Echt-Daten-Abnahme: Nach Start im Alltag beide Städte und gewünschten Kraftstoff prüfen: plausible Stationen, aktuelle Zeitstempel, echte Preise. Unter System müssen Lesezugang und nach erstem Abruf Archiv-/Job-Stände passen. Laufender Container allein bestätigt das nicht. NAS-Auszeiten und Pi-Puffergrenze stehen bei Rollen oben.
 

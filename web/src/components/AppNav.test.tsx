@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
-// B4 (Befund UX/Mathe 19.09.2026, §1.3): Die Hauptnavigation ist 3+1 —
-// drei Kernfragen (Jetzt, Woche, Stationen) plus ein Studio-Eingang
-// (Labor, Ich, System, Glossar). Mobil ist das Studio hinter dem
+// Navigation: Übersicht und Stationen plus ein Studio-Eingang
+// (Labor, System, Einstellungen, Glossar). Mobil ist das Studio hinter dem
 // „Mehr“-Blatt, desktop steht es direkt in der Seitenleiste.
 //
 // Was diese Tests halten (Ratchet):
-//   * genau die drei Kernfragen in der Hauptliste, in Konzepts-Reihenfolge;
+//   * genau die zwei Alltagsbereiche in der Hauptliste;
 //   * die Studio-Bereiche existieren weiter — sie sind versunken, nicht
 //     gelöscht (keine Feature-Verluste);
 //   * das mobile Blatt ist dialogartig (role="dialog", aria-haspopup/
@@ -24,21 +23,20 @@ import {
   STUDIO_NAV_ITEMS,
 } from "./AppNav";
 
-describe("B4: Navigation 3+1", () => {
-  it("hat genau drei Kernfragen in Konzepts-Reihenfolge — kein Glossar mehr als Haupttab", () => {
+describe("Navigation: Übersicht + Stationen, Studio dahinter", () => {
+  it("hat genau die zwei Alltagsbereiche — kein Studio-Eintrag in der Hauptliste", () => {
     expect(MAIN_NAV_ITEMS.map((item) => item.id)).toEqual([
       "jetzt",
-      "week",
       "stations",
     ]);
     expect(MAIN_NAV_ITEMS.some((item) => item.label === "Glossar")).toBe(false);
   });
 
-  it("das Studio trägt alle vier Bereiche — ein Eingang, keine Löcher", () => {
+  it("das Studio trägt Labor, System, Einstellungen und Glossar", () => {
     expect(STUDIO_NAV_ITEMS.map((item) => item.id)).toEqual([
       "labor",
-      "ich",
       "system",
+      "settings",
       "glossary",
     ]);
     // Jedes Studio-Element benennt, was dort wartet (Wireframe §1.4.4).
@@ -47,29 +45,29 @@ describe("B4: Navigation 3+1", () => {
     }
   });
 
-  it("zusammen ist die komplette alte Navigation da — nichts wurde gelöscht", () => {
+  it("zusammen bilden die Einträge die komplette aktuelle Navigation", () => {
     const all = [...MAIN_NAV_ITEMS, ...STUDIO_NAV_ITEMS].map((item) => item.id);
     expect(all).toEqual([
       "jetzt",
-      "week",
       "stations",
       "labor",
-      "ich",
       "system",
+      "settings",
       "glossary",
     ]);
     expect(isStudioTab("labor")).toBe(true);
-    expect(isStudioTab("week")).toBe(false);
+    expect(isStudioTab("settings")).toBe(true);
+    expect(isStudioTab("stations")).toBe(false);
   });
 
-  it("MobileNav: drei Kernfragen plus „Mehr“ — 44-px-Ziele, aktiver Stand", () => {
-    const html = renderToStaticMarkup(<MobileNav tab="week" onSelect={() => {}} />);
+  it("MobileNav: zwei Kernbereiche plus „Mehr“ — 44-px-Ziele, aktiver Stand", () => {
+    const html = renderToStaticMarkup(<MobileNav tab="jetzt" onSelect={() => {}} />);
     for (const item of MAIN_NAV_ITEMS) {
       expect(html, `Hauptbereich „${item.label}“ fehlt`).toContain(item.label);
     }
     expect(html).toContain(">Mehr</span>");
     expect(html).toContain("min-h-11");
-    // Aktiv ist genau die Woche — „Mehr“ trägt kein aria-current.
+    // Aktiv ist genau die Übersicht — „Mehr“ trägt kein aria-current.
     expect(html.match(/aria-current="page"/g)?.length ?? 0).toBe(1);
     expect(html).toContain('aria-label="Bereiche"');
     // Das Blatt ist zu: keine Studio-Zeile im Dokument.
@@ -94,12 +92,12 @@ describe("B4: Navigation 3+1", () => {
     expect(html).toContain("bottom-0");
     expect(html).toContain("z-50");
     expect(html).toContain("lg:hidden");
-    // Vier Zellen — das 6er-Raster von U3 ist weg.
-    expect(html).toContain("grid-cols-4");
-    expect(html).not.toContain("grid-cols-6");
+    // Drei Zellen: Übersicht, Stationen, Mehr.
+    expect(html).toContain("grid-cols-3");
+    expect(html).not.toContain("grid-cols-4");
   });
 
-  it("die Seitenleiste zeigt drei Kernfragen plus Studio-Gruppe", () => {
+  it("die Seitenleiste zeigt beide Alltagsbereiche plus Studio-Gruppe", () => {
     const html = renderToStaticMarkup(<SideNav tab="jetzt" onSelect={() => {}} />);
     for (const item of MAIN_NAV_ITEMS) {
       expect(html, `Hauptbereich „${item.label}“ fehlt`).toContain(item.label);

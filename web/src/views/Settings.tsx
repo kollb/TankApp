@@ -1,11 +1,6 @@
-// C4 (weitergezogen, Phase 2): „Einstellungen verschwindet als eigener Tab“
-// (UI-NEUENTWURF §4.2) — Einstellungen wohnen dort, wo sie wirken.
-//
-// Diese Datei liefert die zwei Panels, die der Bereich „Ich“ zusammensetzt:
-//   * `VehiclePanel`   → Ich → Fahrzeug (Profil-Felder: Tank, Verbrauch,
-//                        Zeitwert, Tempo, Fahrtcharakter)
-//   * `SettingsPanel`  → Ich → Einstellungen (Kontext, Schwellen
-//                        read-only, Darstellung, Daten, Über)
+// Einstellungen — Fahrzeug, Belege, Bilanz und App-Kontext (UI.md).
+// `VehiclePanel` liefert die Unterseite „Fahrzeug“; `SettingsPanel` die
+// Unterseite „App“ mit Kontext, read-only Schwellen, Darstellung und Daten.
 //
 // Die Entscheidungsschwellen bleiben read-only aus /api/v1/stats/summary —
 // die Engine rechnet, die GUI zeigt und ändert nichts. Der Zustand bleibt
@@ -62,7 +57,7 @@ export interface VehiclePanelProps {
   setTankCapacity: (v: number) => void;
   /**
    * Tankstand (A2) — der **eine** Ort der Pflege (UX-NEUENTWURF §6).
-   * „Jetzt“ und „Woche“ zeigen ihn nur an; hier wird er gesetzt.
+   * Die Übersicht zeigt ihn nur an; hier wird er gesetzt.
    */
   tankPercent: number | null;
   setTankPercent: (v: number | null) => void;
@@ -101,7 +96,7 @@ function timeValueShort(
     : `Auto (${deTrimmed(autoZ.z)} €/h · ${autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"})`;
 }
 
-/** Ich → Fahrzeug: was ist meins — und auf welchen Geräten gilt es. */
+/** Einstellungen → Fahrzeug: was ist meins — und auf welchen Geräten gilt es. */
 export function VehiclePanel(props: VehiclePanelProps) {
   const {
     activeProfileId,
@@ -455,7 +450,7 @@ export interface SettingsPanelProps {
 }
 
 /**
- * Ich → Einstellungen: Darstellung, Verhalten, Daten & Privatsphäre, Über.
+ * Einstellungen → App: Darstellung, Verhalten, Daten & Privatsphäre, Über.
  * Die Fahrzeug-Felder wohnen unter „Fahrzeug“ (am Wirkungsort), die
  * Schwellen bleiben read-only — sie legt die Engine fest.
  */

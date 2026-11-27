@@ -46,6 +46,8 @@ function serverAlt(overrides: Partial<ServerAlt>): ServerAlt {
     worth_it: true,
     verdict: "worth",
     p_lohnt: 0.8,
+    price_fresh: true,
+    ref_price_fresh: true,
     ...overrides,
   };
 }
@@ -102,6 +104,7 @@ function rows(
     liters: 40,
     selectedId: "",
     pinnedIds: [],
+    serverReferenceId: "b",
     serverAlts: [],
     worthThreshold: null,
     borderlineThreshold: null,
@@ -170,6 +173,41 @@ describe("atlasRows", () => {
     expect(
       withA.find((row) => row.station.station_id === "a")!.netEur,
     ).toBeNull();
+  });
+
+  it("verwirft Server-Netto, wenn die UI-Referenz nicht der Server-Anker ist", () => {
+    const serverAlts = [serverAlt({ station_id: "a" })];
+    const rs = rows({
+      serverAlts,
+      selectedId: "b",
+      serverReferenceId: "a",
+    });
+    const a = rs.find((row) => row.station.station_id === "a")!;
+    // Die Alternative beschreibt a relativ zu a, nicht zum sichtbaren B.
+    expect(a.isReference).toBe(false);
+    expect(a.netEur).toBeNull();
+    expect(a.detourKm).toBeNull();
+  });
+
+  it("verwirft Server-Netto, wenn der Server seinen Referenzpreis als nicht frisch markiert", () => {
+    const rs = rows({
+      serverAlts: [serverAlt({ station_id: "a", ref_price_fresh: false })],
+      selectedId: "b",
+    });
+    const a = rs.find((row) => row.station.station_id === "a")!;
+    expect(a.netEur).toBeNull();
+    expect(a.serverPriceFresh).toBeNull();
+    expect(a.fillEur).toBeCloseTo((1.759 - 1.689) * 40, 6);
+  });
+
+  it("behält eine veraltete Alternative kenntlich, wenn die Referenz frisch ist", () => {
+    const rs = rows({
+      serverAlts: [serverAlt({ station_id: "a", price_fresh: false })],
+      selectedId: "b",
+    });
+    const a = rs.find((row) => row.station.station_id === "a")!;
+    expect(a.netEur).toBe(2.3);
+    expect(a.serverPriceFresh).toBe(false);
   });
 
   it("verwendet die Schwellen für das Urteil, wenn der Server sie liefert", () => {
@@ -385,7 +423,7 @@ describe("stationContextLines", () => {
 
 describe("compareStationsPair", () => {
   it("ohne Server-Route bleibt der Vergleich Preis gegen Preis", () => {
-    const result = compareStationsPair(A, B, 1.759, 1.689, 40, null);
+    const result = compareStationsPair(A, B, 1.759, 1.689, 40, null, null);
     expect(result.deltaCt).toBeCloseTo(-7, 6);
     expect(result.fillDeltaEur).toBeCloseTo(-2.8, 6);
     expect(result.netEur).toBeNull();
@@ -395,14 +433,37 @@ describe("compareStationsPair", () => {
 
   it("mit Server-Route steht das Netto-Urteil", () => {
     const alt = serverAlt({ station_id: "b", name: "B-Station", price: 1.689 });
-    const result = compareStationsPair(A, B, 1.759, 1.689, 40, alt);
+    const result = compareStationsPair(A, B, 1.759, 1.689, 40, alt, "a");
     expect(result.netEur).toBe(2.3);
+    expect(result.serverPriceFresh).toBe(true);
     expect(result.sentence).toContain("2,30 € netto pro Beleg");
     expect(result.sentence).toContain("Der Umweg rechnet sich.");
   });
 
+  it("Server-Netto nur mit frischem Referenzpreis, sonst bleibt der Preisvergleich", () => {
+    const alt = serverAlt({
+      station_id: "b",
+      name: "B-Station",
+      price_fresh: false,
+      ref_price_fresh: false,
+    });
+    const result = compareStationsPair(A, B, 1.759, 1.689, 40, alt, "a");
+    expect(result.netEur).toBeNull();
+    expect(result.serverPriceFresh).toBeNull();
+    expect(result.fillDeltaEur).toBeCloseTo(-2.8, 6);
+    expect(result.sentence).toContain("7,0 ct/L günstiger");
+  });
+
+  it("Server-Netto nur mit demselben A-Anker wie die sichtbare Referenz", () => {
+    const alt = serverAlt({ station_id: "b", name: "B-Station", price: 1.689 });
+    const result = compareStationsPair(A, B, 1.759, 1.689, 40, alt, "c");
+    expect(result.netEur).toBeNull();
+    expect(result.detourKm).toBeNull();
+    expect(result.sentence).toContain("ohne Umweg — zu diesem Paar liegt keine Route vor");
+  });
+
   it("fehlender Preis verhindert den Vergleich — ehrlich, nicht mit 0", () => {
-    const result = compareStationsPair(A, C, 1.759, null, 40, null);
+    const result = compareStationsPair(A, C, 1.759, null, 40, null, null);
     expect(result.deltaCt).toBeNull();
     // T4: Der Satz nennt die Seite, die wirklich leer ist — nicht „beide“.
     expect(result.sentence).toContain(`${C.name} hat keinen frischen Preis`);
@@ -410,14 +471,14 @@ describe("compareStationsPair", () => {
   });
 
   it("fehlen beide Preise, sagt der Satz das auch (T4)", () => {
-    const result = compareStationsPair(A, C, null, null, 40, null);
+    const result = compareStationsPair(A, C, null, null, 40, null, null);
     expect(result.sentence).toContain(
       "Noch kein frischer Preis auf beiden Seiten",
     );
   });
 
   it("aufeinanderliegende Preise sind Gleichauf", () => {
-    const result = compareStationsPair(A, B, 1.7, 1.7, 40, null);
+    const result = compareStationsPair(A, B, 1.7, 1.7, 40, null, null);
     expect(result.sentence).toContain("Gleichauf");
   });
 });

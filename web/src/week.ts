@@ -1,16 +1,5 @@
-// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche;
-// docs/planung/UX-NEUENTWURF.md §4).
-//
-// Frage: „Wann in den nächsten Tagen soll ich tanken?“ — Antwort: eine
-// Bestenliste mit höchstens drei Einträgen, sortiert nach Ersparnis.
-// Kein 7-Tage-Raster, keine Wochenlinie, keine zweite Liste: Der Server
-// liefert maximal drei Fenster, vier Darstellungen dafür waren drei zu viel.
-//
-// Reine Logik, ohne DOM (D1): Tage, Ersparnis, Sicherheit als ein Wort und
-// der Tank-Abgleich kommen hierher und sind hier getestet.
-// Horizonte-Honesty: Die App zeigt die ganze Woche, verspricht aber nur, was
-// die Engine liefert — ab Tag 5 steht der eine Satz „Ab Tag 5 wird die
-// Prognose unsicher.“
+// Legacy-Funktionen für `windows_week`: Die aktuelle GUI hat keinen eigenen
+// Woche-Tab; die Logik bleibt für API-Kompatibilität und Regressionstests.
 
 import {
   centPerLiter,
@@ -173,7 +162,7 @@ export function weekRanking(input: {
 
 /**
  * Der Tank als **Anzeige** (UX-NEUENTWURF §4/§6): gepflegt wird der Stand an
- * genau einem Ort („Ich“ → Fahrzeug); hier steht nur, was er bedeutet.
+ * genau einem Ort („Einstellungen“ → Fahrzeug); hier steht nur, was er bedeutet.
  * „Reicht bis Do“ wäre eine Behauptung ohne Routen-Daten — deshalb nennt die
  * Zeile die Reichweite, nicht ein Datum.
  */

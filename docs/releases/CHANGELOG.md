@@ -4,6 +4,36 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.76.0] – 2026-11-27
+
+**Frischer Preis-Atlas, aufgeräumte Navigation und InfluxDB-Readiness**
+
+- **`/decide`: bis zu fünf Alternativen.** Das Limit zählt fünf zusätzliche
+  Stationen neben der Bezugsstation; die bestehende Kandidatenregel
+  (aktueller Preis, sonst markierter letzter Preis) und Sortierung nach
+  `net_eur` bleiben erhalten. Jede Alternative trägt `price_fresh`, der
+  verwendete Anker `ref_price_fresh`.
+- **Atlas-Netto ist an den sichtbaren Anker gebunden.** Die Referenzfolge ist
+  ausgewählt → erste angeheftete → nächste Station, jeweils mit frischem
+  Preis. Die Referenz-ID geht als `station_id` in den Stations-Overview.
+  Karte, Liste und A-gegen-B zeigen Server-Netto nur, wenn `primary.station.id`
+  dazu passt und `ref_price_fresh` wahr ist; sonst bleibt es beim
+  Preisvergleich ohne Umweg. Veraltete Alternativpreise sind sichtbar als
+  „Serverpreis nicht frisch“ markiert.
+- **Navigation 2+1.** Übersicht und Stationen sind die Alltagsbereiche;
+  Labor, System, Einstellungen und Glossar liegen hinter „Mehr“ (mobil) bzw.
+  in der Studio-Gruppe (Desktop). Alte `?tab=woche`-/`?tab=week`-Links führen
+  zur Übersicht, `?tab=ich` zu Einstellungen. `windows_week` bleibt für
+  kompatible API-Clients erhalten, ist aber keine sichtbare Woche-Seite.
+- **InfluxDB-Readiness vor frühen Reads.** Modell-Refresh und Netzwerk-Prewarm
+  prüfen `/health` ohne Token und warten höchstens 30 Sekunden, bevor sie
+  Preise lesen. Der HTTP-Server startet unabhängig weiter; ein erfolgreicher
+  Health-Check ersetzt nicht die anschließende Bucket-/Token-Leseprüfung.
+- **Verträge und Regressionen.** Die API-Referenz dokumentiert
+  `station_id`, das Fünfer-Limit und beide Frischefelder. Unit- und
+  Browser-Tests sichern Referenzbindung, Frischeanzeige, Legacy-Routen,
+  Prewarm-Reihenfolge und begrenzte Health-Retries.
+
 ## [0.75.0] – 2026-10-05
 
 **UX-Neuentwurf, Batch 3 — kompakte mobile Kopfzeile (C13)**
@@ -336,7 +366,7 @@ rechnet unverändert.
   („0 von 1 Fenstern genutzt (4 Empfehlungen)“). `windowsBalance()` liefert
   je Zähler eine eigene Zeile und einen Beziehungssatz; die Güte rendert
   drei Aufzählungspunkte statt einer Mischzahl. Muster in
-  [MICROCOPY §4c](../produkt/MICROCOPY.md#4c-bereich-labor-feste-muster).
+  [MICROCOPY §4d](../produkt/MICROCOPY.md#4d-bereich-labor-feste-muster).
 - **Zwei MASE, zwei Namen (R3 §4.4):** `MASE_1step` (Eine-Schritt-
   Validierung des Fits, trägt die Ensemble-Gewichte) und `MASE_24h`
   (Roll-Backtest auf das 24-h-Fenster, trägt die Güte-Aussage) heißen jetzt
@@ -2338,7 +2368,7 @@ mehr lesbar — ohne Fehler, ohne Alarm (O22).**
   `GET /api/v1/stats/summary`, `personalization.measured_fills`/`default_fills`
   in `/api/v1/decide` — und die GUI hängt den Satz an:
   `3 Belege ohne Zeitstempel zählen als 12 Uhr.`
-  ([MICROCOPY §4b](../produkt/MICROCOPY.md#4b-bereich-jetzt-feste-muster)).
+  ([MICROCOPY §4b](../produkt/MICROCOPY.md#4b-bereich-übersicht-feste-muster)).
 - **Snapshots nennen keine erfundene Emit-Uhrzeit mehr (O1):** Fehlt
   `clock_hour` im Snapshot, ist der Emit-Zeitpunkt die Quelle; der
   Stunden-Fallback von `classify_compliance` bekommt den Minutenanteil

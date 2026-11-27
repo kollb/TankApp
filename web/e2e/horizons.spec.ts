@@ -6,8 +6,8 @@ import { clickArea } from "./nav";
 // Blickweiten-Umschalter; der Zeitraum der echten Preise wohnt im
 // Verlauf der Ansicht „Stationen“. Alle API-Antworten sind
 // isolierte Request-Fixtures; in App oder InfluxDB wird nichts geschrieben.
-// Seit B4 (Befund UX/Mathe 19.09.2026) liegen Labor/Ich mobil hinter dem
-// „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
+// Seit B4 (Befund UX/Mathe 19.09.2026) liegen Studio-Bereiche mobil hinter
+// dem „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
 
 function stationsFixture(fuel: string) {
   return {
@@ -288,7 +288,7 @@ test("Zeitwert-Automatik zeigt Stoßzeit oder Nebenzeit", async ({ page }) => {
   });
   await bRow.click();
   await expect(bRow).toHaveAttribute("aria-pressed", "true");
-  await clickArea(page, "Ich");
+  await clickArea(page, "Einstellungen");
   await expect(page.locator("#timeValue")).toBeVisible();
   await page.locator("#timeValue").fill("0");
   // 0.55.0: Bei 0 ist die Automatik aktiv — der Hinweis sagt das im Präsens.

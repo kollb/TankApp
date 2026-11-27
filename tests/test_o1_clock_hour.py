@@ -311,8 +311,10 @@ def test_migration_is_idempotent_and_keeps_everything_else():
 
 
 def test_migrated_store_is_written_once_and_serves_the_histogram(
-    settings_with_station,
+    settings_with_station, monkeypatch
 ):
+    # Diese Prüfung gilt der Schema-Migration, nicht der 90-Tage-Retention.
+    monkeypatch.setattr("app.feedback.FEEDBACK_RETENTION_DAYS", 10_000)
     path = settings_with_station.runtime / "feedback" / "store.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(legacy_store()), encoding="utf-8")

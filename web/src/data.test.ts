@@ -986,7 +986,10 @@ describe("Share-URL (A6)", () => {
 
   // GUI-UX-BEFUND U4: Jede Ansicht ist eine URL.
   it("liest den Bereich aus der Query und mappt Alt-Namen nach", () => {
-    expect(readShareParams("?tab=woche").tab).toBe("woche");
+    expect(readShareParams("?tab=woche").tab).toBe("jetzt");
+    expect(readShareParams("?tab=ich").tab).toBe("einstellungen");
+    expect(readShareParams("?tab=settings").tab).toBe("einstellungen");
+    expect(readShareParams("?tab=einstellungen").tab).toBe("einstellungen");
     expect(readShareParams("?tab=labor&section=sicherheit").section).toBe(
       "sicherheit",
     );
@@ -1008,10 +1011,10 @@ describe("Share-URL (A6)", () => {
         liters: 40,
         heatmapWeeks: 6,
         heatmapBasis: "hour",
-        tab: "woche",
+        tab: "einstellungen",
         section: null,
       }),
-    ).toBe("fuel=e10&tab=woche");
+    ).toBe("fuel=e10&tab=einstellungen");
     expect(
       shareQuery({
         city: "",

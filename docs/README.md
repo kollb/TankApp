@@ -1,6 +1,6 @@
 # Dokumentation
 
-> Stand: 23.09.2026 · Repository-Version **0.69.0**
+> Stand: 27.11.2026 · App-Version **0.76.0**
 > Dieser Index ist kein pauschaler Prüfvermerk für alle verlinkten Dokumente.
 > Technische Einzelreferenzen behalten ihren jeweiligen Prüfstand.
 
@@ -56,7 +56,7 @@
 | [Projektstand](planung/LUECKEN.md) | Implementiert, unbewiesen oder bewusst begrenzt |
 | [TODO](planung/TODO.md) | Offene Aufgaben mit Abhängigkeiten und Abnahmekriterien |
 | [Regime-Plan](planung/REGIME.md) | Geplante Regime-Behandlung, Messstand und offene Rechtsfragen |
-| [UX-Neuentwurf](planung/UX-NEUENTWURF.md) | Entwurf: Jetzt, Woche und Labor radikal vereinfachen |
+| [UX-Neuentwurf](planung/UX-NEUENTWURF.md) | Historischer Entwurf und Abnahme der Batches 1–3; aktueller Aufbau in UI.md |
 
 Empfohlene Lesereihenfolge: Installation → Betrieb; für Entwicklung zusätzlich
 Konzept → Architektur → passende Referenz → Projektstand → TODO.

@@ -31,11 +31,12 @@ import socket
 import ssl
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -66,6 +67,8 @@ MAX_ENV_BYTES = 64 * 1024
 PRICE_COLUMNS = ("_time", "city", "station", "status")
 PROBE_COLUMNS = ("_time",)
 MAX_PROBE_ROWS = 4096
+DEFAULT_READY_TIMEOUT_S = 30.0
+DEFAULT_READY_INTERVAL_S = 1.0
 
 
 class ExportError(ValueError):
@@ -646,6 +649,56 @@ def check_health(cfg: InfluxConfig) -> None:
         ) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise network_error(exc, "Health-Endpunkt", phase, status) from None
+
+
+def wait_until_ready(
+    cfg: InfluxConfig,
+    *,
+    timeout: float = DEFAULT_READY_TIMEOUT_S,
+    interval: float = DEFAULT_READY_INTERVAL_S,
+) -> None:
+    """Wait a bounded time for InfluxDB's unauthenticated health endpoint.
+
+    The health probe deliberately sends no token. Each request timeout is
+    limited to the remaining wait budget (rounded up to the next second), so
+    a slow/unreachable NAS cannot turn this into an unbounded startup wait.
+    """
+    cfg.validate()
+    try:
+        timeout_s = float(timeout)
+        interval_s = float(interval)
+    except (TypeError, ValueError):
+        raise ExportError(
+            "Readiness-Timeout und Poll-Abstand müssen Zahlen sein."
+        ) from None
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ExportError("Readiness-Timeout muss größer als 0 Sekunden sein.")
+    if not math.isfinite(interval_s) or interval_s <= 0:
+        raise ExportError("Readiness-Poll-Abstand muss größer als 0 Sekunden sein.")
+
+    deadline = time.monotonic() + timeout_s
+    last_error = "Health-Endpunkt wurde nicht geprüft."
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        # urllib needs a positive socket timeout. Rounding up can overshoot
+        # the wall-clock budget by less than one second on the final probe.
+        request_timeout = max(1, min(cfg.timeout, math.ceil(remaining)))
+        try:
+            check_health(replace(cfg, timeout=request_timeout))
+        except ExportError as exc:
+            last_error = str(exc)
+        else:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(interval_s, remaining))
+
+    raise ExportError(
+        f"InfluxDB nach {timeout_s:g} s nicht bereit. Letzter Health-Fehler: {last_error}"
+    )
 
 
 def check_connection(cfg: InfluxConfig) -> None:
