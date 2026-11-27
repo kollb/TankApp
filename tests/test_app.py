@@ -678,6 +678,33 @@ def test_stations_influx_failure_keeps_known_rows(app_settings):
     assert data["stations"][0]["last_price"] == 1.729  # bekannter Preis bleibt
 
 
+def test_prewarm_waits_for_influx_health_before_reads(app_settings, monkeypatch):
+    order = []
+    done = threading.Event()
+
+    def ready(_cfg, *, timeout):
+        order.append(("ready", timeout))
+
+    live = LiveData(app_settings, clock=lambda: NOW)
+
+    def load(fuel, _metas):
+        order.append(("load", fuel))
+        if len(order) == 4:
+            done.set()
+
+    monkeypatch.setattr("app.data.influx.wait_until_ready", ready)
+    monkeypatch.setattr(live, "_load", load)
+    live.prewarm()
+
+    assert done.wait(5)
+    assert order[0] == ("ready", 30)
+    assert {fuel for kind, fuel in order[1:] if kind == "load"} == {
+        "e10",
+        "e5",
+        "diesel",
+    }
+
+
 def test_prewarm_warms_all_fuels(app_settings):
     calls = []
 

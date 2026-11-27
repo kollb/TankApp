@@ -1,7 +1,11 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 22.09.2026 · App-Version 0.68.0 — alles, was nach der Ersteinrichtung
+> Stand: 27.11.2026 · App-Version 0.76.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
+> Neu seit 0.76.0: Modell-Refresh und Netzwerk-Prewarm warten vor dem ersten
+> Preis-Read bis zu 30 Sekunden auf InfluxDB `/health` (ohne Token); die
+> HTTP-App startet unabhängig davon sofort. Details stehen unter
+> [Modell-Lauf beobachten](#modell-lauf-beobachten).
 > Neu seit 0.67.0 (A21-B4): Der Modelljob veröffentlicht DST-sichere UTC-
 > Blockstarts und ein platzsparendes `suffix_minima`-Artefakt für den ersten
 > 24-/168-h-Block. Bei der Betriebsprüfung müssen `draw_scope` und ein
@@ -427,6 +431,14 @@ erfundene Werte.
 
 „Läuft …“ ohne Fortschritt ist die häufigste Frage beim ersten Modell-Lauf.
 Vier Stellen, an denen derselbe Fortschritt steht (B5/B6):
+
+Vor dem Modell-Refresh wartet der Worker seit 0.76.0 bis zu 30 Sekunden auf
+`GET /health` der InfluxDB, ohne Auth-Token. Ein erfolgreicher Health-Check
+bestätigt nur die Dienstbereitschaft, nicht Bucket-/Token-Leserechte; diese
+werden beim anschließenden Export geprüft. Der Netzwerk-Prewarm der laufenden
+App folgt derselben begrenzten Readiness-Prüfung im Hintergrund und blockiert
+keine HTTP-Antwort. Nach Ablauf des Zeitfensters schlägt der Modelljob mit
+Readiness-Fehler fehl; es gibt keinen unbeschränkten Retry im Worker.
 
 1. **GUI → System-Tab**: Job-Karte zeigt Phase (`InfluxDB-Export`,
    `Archiv aufbereiten`, `Modelle fitten + Backtest`, `Selektion (δ̂)`,

@@ -76,10 +76,10 @@ test("Pi-Tab bleibt beim Vertrag; Rückwechsel erhält Kraftstoff, Ort und Einga
   expect((await response.json()).f1.recommendation).toBe("no_advice");
   await page.locator("#nas-pill").click();
   // Der Beleg „wir sind wieder in der Vollversion“ ist die
-  // Bereichs-Überschrift — `#jetzt-headline` gibt es nur, wenn eine Antwort
+  // Bereichs-Überschrift „Übersicht“ — `#jetzt-headline` gibt es nur, wenn eine Antwort
   // steht; der Rückwechsel kann noch im Laden sein (Stand 0.73.0).
   await expect(
-    page.getByRole("heading", { name: "Jetzt", exact: true }),
+    page.getByRole("heading", { name: "Übersicht", exact: true }),
   ).toBeVisible();
   await expect(page.locator("#answer-title")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("tankapp.liters")!))).toBe(95);
@@ -99,7 +99,7 @@ test("NAS-Tab überlebt Ausfall mit Beleg-Outbox und ungesendetem Entwurf", asyn
   await page.goto(pi);
   await expect(page.locator("#jetzt-headline")).toBeVisible();
   const timeOrigin = await page.evaluate(() => performance.timeOrigin);
-  await clickArea(page, "Ich");
+  await clickArea(page, "Einstellungen");
   await page.getByRole("tab", { name: "Belege", exact: true }).click();
   const form = page.getByRole("region", { name: "Tanken erfassen" });
   await link("offline");
@@ -138,8 +138,17 @@ test("React-Leseausgabe lädt lokale Assets, bleibt lesend und zeigt echte Puffe
   await link("offline");
   await page.goto(pi + "/?fallback=1");
   await expect(page.getByText("Lesemodus · RP2", { exact: true })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Lesemodus" });
+  await expect(navigation.getByRole("button")).toHaveText([
+    "Übersicht",
+    "Stationen",
+    "Mehr",
+  ]);
+  await expect(
+    navigation.getByRole("button", { name: "Übersicht", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   expect(await page.locator('script[type="module"]').getAttribute("src")).toMatch(/^\/pi-assets\//);
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
+  await navigation.getByRole("button", { name: "Stationen", exact: true }).click();
   await expect(page.getByText(/Stationen · gemeldete Preise/)).toBeVisible();
   // The list is fed by the real Pi handler, not a client-side fixture.
   const rows = page.locator("li button");

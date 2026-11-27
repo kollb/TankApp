@@ -164,8 +164,10 @@ def test_fresh_store_carries_schema_version(settings_with_station):
     assert raw["fills"][0]["id"] == fill["id"]
 
 
-def test_old_0_10_store_is_migrated_and_survives(settings_with_station):
+def test_old_0_10_store_is_migrated_and_survives(settings_with_station, monkeypatch):
     """Der DoD-Fall: alter 0.10-Store → neuer Code, ohne Datenverlust."""
+    # Schema-Migration prüfen, nicht nebenbei die 90-Tage-Retention abnehmen.
+    monkeypatch.setattr("app.feedback.FEEDBACK_RETENTION_DAYS", 10_000)
     settings = settings_with_station
     path = settings.runtime / "feedback" / "store.json"
     path.parent.mkdir(parents=True, exist_ok=True)

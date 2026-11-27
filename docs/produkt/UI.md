@@ -1,7 +1,7 @@
 # Oberfläche und Interaktion
 
-> Stand: 05.10.2026 · App-Version 0.75.0
-> Beschreibt die implementierte Navigation einschließlich der drei Labor-Blöcke und der kompakten Kopfzeile.
+> Stand: 27.11.2026 · App-Version 0.76.0
+> Beschreibt die implementierte Navigation, die Atlas-Referenz und die drei Labor-Blöcke.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
@@ -13,6 +13,8 @@
 > Frage, eine Antwort ([Release 0.73.0](../releases/CHANGELOG.md#0730--2026-10-04)).
 > Neu in 0.75.0: kompakte Kopfzeile unter 1280 px — Profil und seltene
 > Aktionen liegen in einem zugänglichen Blatt ([Release 0.75.0](../releases/CHANGELOG.md#0750--2026-10-05)).
+> Neu in 0.76.0: Übersicht + Stationen als Alltagsnavigation, Atlas-Referenz
+> nur mit frischem Preis und bis zu fünf Server-Alternativen ([Release 0.76.0](../releases/CHANGELOG.md#0760--2026-11-27)).
 
 ## Inhaltsverzeichnis
 
@@ -20,8 +22,9 @@
   - [Kompakte Kopfzeile](#kompakte-kopfzeile)
 - [Bereiche](#bereiche)
 - [Tank-Guide: eine Frage, eine Antwort](#tank-guide-eine-frage-eine-antwort)
-- [Jetzt: eine Antwort, ein Tipp in die Tiefe](#jetzt-eine-antwort-ein-tipp-in-die-tiefe)
-- [Woche: Bestenliste statt Raster](#woche-bestenliste-statt-raster)
+- [Übersicht: eine Antwort, ein Tipp in die Tiefe](#übersicht-eine-antwort-ein-tipp-in-die-tiefe)
+- [Wochenblick: kein eigener Bereich](#wochenblick-kein-eigener-bereich)
+- [Stationen: Atlas-Referenz und Server-Netto](#stationen-atlas-referenz-und-server-netto)
 - [Labor: drei Fragen](#labor-drei-fragen)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
 - [Urteilstöne und Elevation](#urteilstöne-und-elevation)
@@ -41,31 +44,31 @@ zeigt die Karte auch ohne neue Serverantwort die neutrale Tatsachenvariante
 
 Die RP2-Leseausgabe (`web/rp2`) teilt Theme, Formatter und Sheet mit der
 Vollversion, bleibt aber ausdrücklich beim lesenden `pi-v1`-Vertrag.
-Navigation: Jetzt · Stationen · Mehr. Python bleibt Server und Notausgabe,
+Navigation: Übersicht · Stationen · Mehr. Python bleibt Server und Notausgabe,
 wenn kein React-Build installiert ist; [Deployment](../betrieb/RP2.md#template-updates).
 
-Die Alltagsnavigation folgt **3+1**:
+Seit 0.76.0 ist die Alltagsnavigation **2+1**:
 
 ```text
-Jetzt
-Woche
+Übersicht
 Stationen
 Mehr / Studio
 ├── Labor
-├── Ich
 ├── System
+├── Einstellungen
 └── Glossar
 ```
 
 Mobil öffnet „Mehr“ ein nicht-modales Auswahlblatt; Escape schließt es und der
 Fokus springt beim Öffnen auf die aktive Zeile. Der aktive Studio-Bereich ist
-am Mehr-Eintrag markiert. Auf dem Desktop stehen diese Einträge in einer
+am Mehr-Eintrag markiert. Auf dem Desktop stehen dieselben Einträge in einer
 Studio-Gruppe der Seitenleiste.
 
-Bestehende URLs bleiben erreichbar: `?tab=labor`, `?tab=ich`, `?tab=system`,
-`?tab=glossar` und zugehörige `?section=…`-Sprünge. Alarm-Pille und
-Update-Banner bleiben global. Die Navigation darf keine Inhalte verstecken,
-die nur über einen alten Haupttab erreichbar waren.
+Die kanonischen URLs sind `?tab=stationen`, `?tab=einstellungen`,
+`?tab=labor`, `?tab=system` und `?tab=glossar`; Labor-Abschnitte bleiben über
+`?section=…` direkt erreichbar. Alte Links `?tab=woche`/`?tab=week` führen zur
+Übersicht, `?tab=ich` zur Einstellungen-Seite. Alarm-Pille und Update-Banner
+bleiben global.
 
 ### Kompakte Kopfzeile
 
@@ -90,23 +93,22 @@ steht im ersten Viewport und Hinweise bleiben sichtbar.
 
 | Bereich | Verantwortung | Abgrenzung |
 |---|---|---|
-| Jetzt | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung | Keine drei Fakten, kein 19-Zellen-Raster, keine Was-wäre-wenn-Annahmen, keine zweite Stationsliste |
-| Woche | Bestenliste: höchstens drei Fenster, sortiert nach Ersparnis | Kein 7-Tage-Raster, keine Sterne, keine Prozentwerte, keine Wochenlinie, keine zweite Liste; die Unsicherheit steht als **ein** Satz unter der Liste (`Ab Tag 5 wird die Prognose unsicher.`) |
-| Stationen | Polling-Set, Karte, Vergleich und Stationsdetails | Tagesverlauf im Detail statt unbeschrifteter Mini-Linie in jeder Zeile |
+| Übersicht | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung und der heutige Verlauf | Keine drei Fakten, keine separate Woche-Ansicht, kein Was-wäre-wenn-Formular und keine zweite Stationsliste |
+| Stationen | Karte, Liste, frische Referenz, Preisvergleich und A-gegen-B | Server-Netto nur bei passender Referenz-ID und bestätigtem frischem Referenzpreis; sonst reiner Preisvergleich |
+| Einstellungen | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)**, Belege, Bilanz und App-Kontext | Bestätigungs-Intent ist kein Beleg |
 | Labor | Drei Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet die App? | Beweise statt Sammelakte; Rohdaten und CSV gehören dem Betreiber in „System“ |
-| Ich | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)**, Belege und Bilanz | Ein Intent ist kein Beleg |
 | System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox, **Rohdaten, CSV-Exporte und API-Explorer** | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
-Seit 0.73.0 gilt für beide Bereiche derselbe Auftrag: **eine Frage, eine
-Antwort — der Rest ein Tipp entfernt.** „Jetzt“ zeigt die Antwortkarte und
-eine Tageszeile (Mini-Kurve + Tief); „Woche“ zeigt die Bestenliste mit
-höchstens drei Einträgen. Alles Statistische bleibt erreichbar, aber es
-steht nicht mehr auf dem Antwortschirm.
+Die Übersicht hält den Auftrag **eine Frage, eine Antwort — der Rest ein Tipp
+entfernt**: Antwortkarte plus Tageszeile (Mini-Kurve + Tief). Der eigene
+Wochen-Bereich ist entfallen; alte Woche-Links landen hier. Der Stationen-Atlas
+wählt seine Referenz aus frischen Preisen und zeigt Server-Netto nur, wenn
+Server und UI dieselbe frische Referenz bestätigen.
 
 ## Tank-Guide: eine Frage, eine Antwort
 
-Der Bereich „Jetzt“ beantwortet genau eine Frage: **Soll ich jetzt tanken?**
+Die Übersicht beantwortet genau eine Frage: **Soll ich jetzt tanken?**
 Die Antwortkarte (`web/src/now.ts`) trägt genau das, was die Frage braucht —
 Chip, Überschrift, **eine** Zahl in Euro, eine Nebenzeile und **eine**
 Handlung („Route“, daneben „Warum?“). Alles Statistische ordnet sich unter
@@ -183,9 +185,9 @@ Das Labor ist ein Angebot, kein Pfad zur Empfehlung — der Guide funktioniert
 ohne jede Zahl von dort. Die früheren Beta-Blöcke (Einflüsse, Treffsicherheit,
 Tankprofil-Rechner, Experimente) sind entfallen: Die Einflüsse ersetzt der eine
 Satz in Block 2, die Treffsicherheit ist Block 1, die Tankprofil-Frage beantwortet
-eine Zeile in „Ich“ → Fahrzeug, und Experimente hatten keinen Nutzerpfad (§7).
+eine Zeile in „Einstellungen“ → Fahrzeug, und Experimente hatten keinen Nutzerpfad (§7).
 
-## Jetzt: eine Antwort, ein Tipp in die Tiefe
+## Übersicht: eine Antwort, ein Tipp in die Tiefe
 
 Der Aufbau ist fest (Befund UX/Mathe 2026-09-19, Neuentwurf §3):
 
@@ -200,8 +202,8 @@ Was 0.73.0 gestrichen hat und **nicht** zurückkehrt (§7):
 
 | Entfällt | Warum | Wohin stattdessen |
 |---|---|---|
-| Was-wäre-wenn-Annahmen (Tankmenge, Zeitwert, Spätestens) | die App rechnet mit der Menge, die der Server nutzt (`used_liters`) | „Ich“ → Fahrzeug |
-| Feedback-Intents („Ich warte“), Fällig-Prompt | eine Bestätigung ist kein Beleg; Belege werden gepflegt, nicht bestätigt (Entscheidung 04.10.2026) | „Ich“ → Belege |
+| Was-wäre-wenn-Annahmen (Tankmenge, Zeitwert, Spätestens) | die App rechnet mit der Menge, die der Server nutzt (`used_liters`) | „Einstellungen“ → Fahrzeug |
+| Feedback-Intents („Ich warte“), Fällig-Prompt | eine Bestätigung ist kein Beleg; Belege werden gepflegt, nicht bestätigt (Entscheidung 04.10.2026) | „Einstellungen“ → Belege |
 | „Nächste Schritte“, drei Fakten, Benefit-Block | die Antwort steht oben; darunter stand dreimal dieselbe Zahl | „Warum?“ (≤ 5 Zeilen), Labor |
 | „Heute im Blick“ mit 19 Zellen und Stundenbalken | die Entscheidung braucht kein Raster | Tageszeile, ein Tipp entfernt |
 | Konfidenz-Balken, Prozentwerte | eine Prozentzahl ist keine Handlung | Sicherheit als **ein Wort** (`ziemlich sicher` · `eher sicher` · `unsicher` · `noch nicht messbar`) |
@@ -210,27 +212,35 @@ Was 0.73.0 gestrichen hat und **nicht** zurückkehrt (§7):
 Der Serververtrag bleibt unberührt: Intents, Fenster, p-Felder und
 `regime_notice` werden weiter geliefert — die GUI zeigt weniger davon.
 
-## Woche: Bestenliste statt Raster
+## Wochenblick: kein eigener Bereich
 
-„Woche“ beantwortet: **Wann in den nächsten Tagen soll ich tanken?**
-Statt sieben Tageskarten, einer Detailkarte, einer zweiten Liste und einer
-Wochenlinie (deren Balken „höher = günstiger“ gegen jede Lesegewohnheit
-lief) steht eine Bestenliste mit **höchstens drei** Einträgen, sortiert
-nach Ersparnis. Jeder Eintrag trägt:
+Seit 0.76.0 gibt es keinen eigenen Woche-Tab und keine separate Wochen-
+Bestenliste in der Oberfläche. Die Entscheidungs-API behält `windows_week`
+für kompatible Clients und Datenverträge; die App zeigt die Antwort im
+Alltagsbereich „Übersicht“. Alte `?tab=woche`- und `?tab=week`-Links landen
+auf dieser Übersicht, nicht auf einer leeren Seite.
 
-1. Tag und Zeit (`Morgen` · `19–21 Uhr`),
-2. erwarteten Preis (`1,709 €/L`),
-3. Ersparnis (`spart ca. 1,60 €`) — oder keine Zahl, wenn ein
-   Preisniveau-Termin dazwischen liegt,
-4. Sicherheit als ein Wort.
+Der Tankstand wird in der Übersicht nicht gepflegt. Die einzige Pflege-Stelle
+ist „Einstellungen“ → „Fahrzeug“.
 
-Unter der Liste steht **ein** Satz zur Prognosebreite:
-`Ab Tag 5 wird die Prognose unsicher.` Leere Tage bleiben leer — die App
-erfindet kein Fenster. Der Tagesverlauf ist das Detail des heutigen
-Eintrags; weiter voraus gibt es keine Messwerte, und geschätzt wird nichts.
+## Stationen: Atlas-Referenz und Server-Netto
 
-Der Tankstand wird hier nur **angezeigt** (`Tank: 62 %` · „Ändern“).
-Gepflegt wird er an genau einem Ort: „Ich“ → Fahrzeug (§6).
+Der Atlas verwendet genau eine Bezugsstation und zeigt sie sichtbar als
+„Referenz“:
+
+1. ausgewählte Station, sofern sie einen frischen Preis hat;
+2. sonst die erste angeheftete Station mit frischem Preis;
+3. sonst die nächste Station mit frischem Preis (Entfernung zum Zuhause-Anker).
+
+Die gewählte ID geht im Stations-Tab als `station_id` an `/api/v1/overview`
+(und damit an `/decide`). `primary.station.id` muss mit der lokalen
+Referenz-ID übereinstimmen. Server-Netto, Umweg und Urteil erscheinen nur,
+wenn zusätzlich `ref_price_fresh === true` vorliegt. Andernfalls zeigt die
+Liste nur den Preisunterschied × Tankmenge („ohne Umweg“); Karte und A-gegen-B
+bleiben ebenfalls beim Preisvergleich. Eine Alternative mit `last_price`
+bleibt zulässig, trägt aber `price_fresh: false` und wird im Atlas als
+„Serverpreis nicht frisch“ markiert. Die Serverantwort enthält höchstens fünf
+Alternativen zusätzlich zur Referenz, absteigend nach `net_eur`.
 
 ## Labor: drei Fragen
 
@@ -290,7 +300,7 @@ Empfehlung) ist ein regulärer Produktzustand — bewusst ohne Elevation.
 
 Die Antwort-Karte ist die **einzige Karte der Seite mit Elevation**
 (Glow nach Urteilston: `glow-emerald` / `glow-blue` / `glow-rose`);
-Tageszeile und Blätter bleiben flach (Tonal). Der Blick auf „Jetzt“
+Tageszeile und Blätter bleiben flach (Tonal). Der Blick auf die Übersicht
 erreicht die Antwort deshalb ohne Suchen.
 
 Seit 0.73.0 trägt die Antwortkarte **fünf** Ausgänge — mehr gibt es nicht,
@@ -378,7 +388,7 @@ Für das Labor bleiben alle historischen Abschnittssprünge (über
 langer Bezeichner in den acht Bausteinen Teil der Demo-Browser-Suite. Eine
 bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
 
-Seit 0.73.0 gehören zur Abnahme von „Jetzt“ und „Woche“:
+Die **historische** Abnahme von „Jetzt“ und „Woche“ seit 0.73.0 bleibt als Regression der ausgelagerten Komponenten dokumentiert; die aktuelle Navigation wird separat geprüft:
 
 - **Sichtprüfung bei 390 px und auf dem Desktop:** die Antwort ist ohne
   Scrollen sichtbar, die Details liegen einen Tipp entfernt (§9).
@@ -386,7 +396,7 @@ Seit 0.73.0 gehören zur Abnahme von „Jetzt“ und „Woche“:
   im ersten Viewport, die Tageszeile ist zu, das „Warum?“ -Blatt trägt
   höchstens fünf Zeilen, der Fokus liegt beim Öffnen im Dialog.
 - **Streichlisten in den Unit-Tests** (`views/Jetzt.test.tsx`,
-  `views/Woche.test.tsx`): keiner der gestrichenen Bausteine kehrt zurück.
+  `views/Woche.test.tsx`): die in der Legacy-Komponente gestrichenen Bausteine kehren nicht zurück.
 - **Microcopy-Ratchet** (`web/src/microcopy.test.ts`): genau fünf
   Antwort-Chips, Frische aus einem Baustein, keine abgelaufene
   Urteils-Headline.

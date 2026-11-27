@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 05.10.2026 · App-Version 0.75.0
+> Stand: 27.11.2026 · App-Version 0.76.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -17,13 +17,13 @@
 | Bereich | Aktueller Stand | Maßgebliche Beschreibung |
 |---|---|---|
 | Datenerhebung | Mehrstadt-Collector, RAM-Ring, Heartbeat, Upload mit Ack und Wiederholung | [Architektur](../architektur/ARCHITEKTUR.md) |
-| NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup | [Betrieb](../betrieb/BETRIEB.md) |
-| Oberfläche | Jetzt/Woche/Stationen plus Mehr; Labor/Ich/System/Glossar in der Studio-Gruppe. **Seit 0.73.0 (Batch 1):** „Jetzt“ antwortet (fünf Ausgänge, eine Zahl, eine Handlung), „Woche“ zeigt eine Bestenliste (≤ 3 Einträge). **Seit 0.74.0 (Batch 2):** das Labor beantwortet drei Fragen mit einem Satz als Zählung, einer Kurve und drei Rechenschritten; Stationen und Ich sind verdichtet; Rohdaten, CSV und API-Explorer wohnen in „System“. **Seit 0.75.0 (Batch 3/C13):** Kopfzeile unter 1280 px in einer Zeile; bei 320 × 720 sind Stadt-/Kraftstoff-Chip und Antwort-Überschrift im ersten Viewport nicht abgeschnitten, Profil und Aktionen liegen in einem Blatt | [UI](../produkt/UI.md) |
+| NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup; `/health`-Readiness vor Modell-Refresh und Hintergrund-Prewarm mit maximal 30 s Wartezeit | [Betrieb](../betrieb/BETRIEB.md) |
+| Oberfläche | Seit 0.76.0: Übersicht + Stationen als Alltagsnavigation, dahinter Labor/System/Einstellungen/Glossar; alte Woche- und Ich-Links werden weitergeleitet. Die Übersicht beantwortet eine Frage; der Atlas nutzt ausgewählte → angeheftete → nächste frische Referenz. Server-Netto erfordert dieselbe Referenz-ID und `ref_price_fresh=true`; veraltete Alternativpreise sind markiert. Historische Umsetzung der drei UX-Batches (0.73–0.75) und mobile Kopfzeile siehe Release-Historie | [UI](../produkt/UI.md) |
 | Labor | Drei Blöcke (§5): Vertrauens-Satz + filterbares Tagebuch · eine Kurve + mittlerer Fehler · drei Rechenschritte; acht Bausteine, Fachwerte und Heatmap hinter „Details für Neugierige“; Layout-Regressionsschutz für lange Bezeichner bei 390 px | [UI](../produkt/UI.md#labor-drei-fragen) |
 | Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
-| Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt „Jetzt“, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
-| Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik | [API](../referenz/API.md) |
+| Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt die Übersicht, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
+| Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik; `/decide` liefert maximal fünf Alternativen plus `price_fresh`/`ref_price_fresh` | [API](../referenz/API.md) |
 | Mengen-/Nutzenvertrag | Physische freie Menge, explizites What-if, benanntes Medianpotenzial, ausführbare Strategie und Oracle-Untergrenze getrennt; historische Belege bleiben unverändert | [API](../referenz/API.md) |
 | Persönliche Daten | Folgen, Intents, Belege, Storno, CSV-Export, Profile und Offline-Queue | [API](../referenz/API.md) |
 | RP2 | React-Leseausgabe mit lokalem Build, Python-Notausgabe ohne Bundle; Readiness-geprüfter NAS-Proxy, versionierte Tab-Verträge; Pi nur Preisvergleich, keine Aktionen | [RP2](../betrieb/RP2.md) |
@@ -157,7 +157,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Preis-Ticker | Kein zusätzlicher Kursalarm; vorhandene System- und Empfehlungsfenster-Meldungen bleiben |
 | Markenrabatte, E5/E10-Verbrauchsfaktor | Ohne echte Fahrzeug-/Rabattdaten kein verlässlicher Ranking-Eingriff |
 | Freie Standortsuche | Kuratiertes Polling-Set statt zusätzlicher API-Requests ohne Kontingentmodell |
-| Tankrabatt und andere Preisniveau-Sprünge | Die Engine rechnet nicht mit dem angekündigten Betrag (nur Marker, [Regime-Plan](REGIME.md)). Seit 0.72.1 warnt `regime_notice` in Woche und Jetzt und unterdrückt den Abstand „günstiger als jetzt“ über einen bevorstehenden Stichtag; Gates und Kohorten ändert das nicht (A14 bleibt menschliche Bestätigung) |
+| Tankrabatt und andere Preisniveau-Sprünge | Die Engine rechnet nicht mit dem angekündigten Betrag (nur Marker, [Regime-Plan](REGIME.md)). Seit 0.72.1 warnt `regime_notice` in der Übersicht und unterdrückt den Abstand „günstiger als jetzt“ über einen bevorstehenden Stichtag; Gates und Kohorten ändert das nicht (A14 bleibt menschliche Bestätigung) |
 | Top-3-Trefferquote | Keine Kennzahl über nicht veröffentlichte Kandidatenfenster |
 | OpenAPI | Markdown-API bleibt der Vertrag; Generator erst bei weiterem API-Verbraucher neu bewerten |
 | Ensemble-Gewichte | Horizontgewichte nicht geschätzt; das optionale Ensemble erhält keine unbelegte zweite Mischung |
@@ -165,7 +165,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Live-only-Handover | 90 Tage bleiben; die Regel ist kein M7-Zeitgeber und wird nicht zur künstlichen Gate-Beschleunigung verkürzt |
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
 | Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
-| UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0) | Umgesetzt: **Jetzt** und **Woche** (§3/§4), Labor in drei Blöcken (§5), Stationen/Ich verdichtet (§6/§7), Rohdaten als Betreiber-Sicht in „System“ und kompakte globale Kopfzeile (C13/§13). Was-wäre-wenn-Annahmen, Feedback-Intents, Fällig-Prompt, „Nächste Schritte“, drei Fakten, 19-Zellen-Raster, Benefit-Block, Konfidenz-Balken/Sterne und Frische-Fußzeile bleiben gestrichen. Der **Serververtrag bleibt unverändert**. C13 ist seit 0.75.0 umgesetzt: bei 320 × 720 endet die Antwort-Überschrift im ersten Viewport; unter 1280 px liegen Profil und Aktionen im Kopfzeilen-Blatt |
+| UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0) | Historische Abnahme: **Jetzt** und **Woche** (§3/§4), Labor in drei Blöcken (§5), Stationen/Ich verdichtet (§6/§7), Rohdaten als Betreiber-Sicht in „System“ und kompakte globale Kopfzeile (C13/§13). Die gestrichenen Annahmen, Raster und Feedback-Elemente bleiben gestrichen. Für diese Batches blieb der Serververtrag unverändert; Release 0.76.0 ergänzt separat Alternativenlimit und Frischefelder und migriert die Navigation auf Übersicht/Stationen + Mehr. C13 bleibt abgenommen: bei 320 × 720 endet die Antwort-Überschrift im ersten Viewport; unter 1280 px liegen Profil und Aktionen im Kopfzeilen-Blatt |
 | ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt jetzt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der Vorlage `sample/good gui`. Die namentlich vorbereiteten `GUIDE_TONE_CLASS`-Sätze in `views/guide.ts` bleiben bestehen; sie sind mit den styles.css-Klassen deckungsgleich |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte

@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 24.09.2026 · App-Version **0.70.0** — neu seit 0.70.0 (A70): Vertrags-/Regime-Gates, Health-Verfügbarkeit. Neu seit 0.68.1: Modell-Parameter
+> Stand: 27.11.2026 · App-Version **0.76.0** — neu seit 0.76.0: `/decide` liefert höchstens fünf Alternativen, mit `price_fresh` und `ref_price_fresh`; `station_id` setzt den Bezugsanker. InfluxDB-Readiness ist eine interne Betriebswartefunktion, kein API-Endpunkt. Neu seit 0.70.0 (A70): Vertrags-/Regime-Gates, Health-Verfügbarkeit. Neu seit 0.68.1: Modell-Parameter
 > im Forecast-Payload (`beta`, `ar_phi` u. a.). Neu seit 0.68.0 (A21-B5):
 > Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
 > DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis
@@ -255,7 +255,7 @@ frei (GUI-Polling).
 | `GET /api/v1/fills` | **A3/A6** | Beleg-Verlauf (auch stornierte, mit `voided`-Flag) |
 | `DELETE /api/v1/fills/{id}` | **A3** | Beleg stornieren — Flag + Audit-Zeile, kein Löschen |
 | `GET /api/v1/fills.csv` | **A6** | Eigene Tankbelege als CSV (`;`, deutsche Dezimalkommas) |
-| `GET /api/v1/fills/summary` | **A4** | Monats-/Jahresbilanz des Wallet-Ledgers (Tab „Ich“ → Bilanz) |
+| `GET /api/v1/fills/summary` | **A4** | Monats-/Jahresbilanz des Wallet-Ledgers (Einstellungen → Bilanz) |
 | `GET /api/v1/profiles` | **A1** | Fahrzeug-/Haushaltsprofile (ohne Login, serverseitig) |
 | `GET /api/v1/stats/summary?city=...&fuel=...` | **B4** | 3 Schichten (Markt-Labor, Live-Advice, Wallet) + Güte-Kacheln |
 | `GET /api/v1/health` | erweitert | App online, **`version`/`commit` (B9)**, **`alarms[]` (B4)**, Jobs (inkl. `settlement`), Archiv, Modelle, Selektion, Collector |
@@ -281,6 +281,7 @@ Parameter (Ergänzung zu B4, Konzept §11.1):
 | Parameter | Bedeutung |
 |---|---|
 | `latest_by` | ISO-Zeit (naiv = Europe/Berlin); spätester akzeptabler Tankzeitpunkt. Fenster (`windows_today`/`windows_week`) und die F1-Entscheidung enden spätestens hier (§4.1 H, §4.3 T_max). Unlesbar → `400 invalid_latest_by`. |
+| `station_id` | Optionale Bezugsstation für `/decide`: alle Alternativen und Umwegkosten werden gegen diese ID gerechnet. Unbekannte ID → `400 unknown_station`. Ohne Angabe wählt der Server die günstigste frische Station (sonst den ersten Set-Eintrag). Die GUI sendet im Atlas nur die aktuell gewählte, angeheftete oder nächste Station mit frischem Preis. |
 | `mode` | `onroute` (Default, nur Mehrweg gegenüber der Vergleichsstation) oder `dedicated` (Extrafahrt ab Zuhause: Hin + Rück, §10) |
 | `home_lat`, `home_lon` | Heimatkoordinate für `mode=dedicated`; ohne Angabe nutzt die App die Ankerdistanz aus dem Polling-Set. Ungültig → `400 invalid_home`. |
 | `value_of_time`, `consumption`, `speed` | wie B4; der verwendete Zeitwert steht in `context` |
@@ -288,6 +289,19 @@ Parameter (Ergänzung zu B4, Konzept §11.1):
 | `tank_capacity_l` | **A2**: Tankgröße 20–120 l (Default 50), nur zusammen mit `tank_percent` wirksam. Außerhalb → `400 invalid_tank`. |
 | `range_km` | **A2**: Restreichweite direkt (z. B. Bordcomputer), 0–1500 km; schlägt `tank_percent` vor. Außerhalb → `400 invalid_tank`. |
 | `quantity_mode` | **A21-B4.3**: `physical` (Default) begrenzt die verwendete Menge auf die freie Tankkapazität; `what_if` hält die angefragten Liter als ausdrücklich hypothetisches Szenario fest und sperrt jede reale Aktionsfreigabe. Ungültig → `400 invalid_quantity_mode`. |
+
+**Bezugsstation und Alternativen (Atlas):** `primary.station.id` ist die Bezugs-ID,
+gegen die jede Zeile in `alternatives_nearby` gerechnet wurde. Der Server liefert
+höchstens **fünf Alternativen zusätzlich** zur Bezugsstation, absteigend nach
+`net_eur` (größte Netto-Ersparnis zuerst). Die vorhandene Kandidatenregel bleibt:
+Es zählt `price`, sonst `last_price`; der letztere Wert bleibt sichtbar, wird
+aber nicht als frisch ausgegeben. Jede Alternative trägt `price_fresh`, und
+`ref_price_fresh` kennzeichnet die Frische des für alle Zeilen verwendeten
+Referenzpreises. Das Feld ist auch bei `false` gesetzt, damit alte Preise nicht
+als Live-Meldung missverstanden werden. Ein Client, der Netto-€ an einer
+separaten Stationsliste darstellt, muss die ID mit der eigenen Referenz
+abgleichen und bei fehlender oder nicht frischer Referenz auf den reinen
+Preisvergleich zurückfallen.
 
 **Mengenvertrag (A21-B4.3):** `context.liters_requested` ist die angefragte Menge,
 `context.liters` und `quantity.used_liters` die tatsächlich für Rechnung,
@@ -805,7 +819,7 @@ Download-Link im System-Tab. Der Export ist dieselbe Datenbasis wie
 `GET /api/v1/fills/summary`
 
 Gruppiert die **aktiven** (nicht stornierten) Belege je Kalendermonat und
--jahr in Europe/Berlin — die „Jahresbilanz“ in „Ich“ → Bilanz (Konzept §12).
+-jahr in Europe/Berlin — die „Jahresbilanz“ in „Einstellungen“ → Bilanz (Konzept §12).
 Belege ohne interpretierbares `tanked_at` fließen in `overall`, aber in keine
 Zeile; die Differenz steht in `overall.n_without_date`.
 

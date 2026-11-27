@@ -121,8 +121,8 @@ export interface StationenViewProps {
   onTimeValue: (value: number | null) => void;
   pricesAt: string | null;
   onRetry: () => void;
-  /** In die Jetzt- oder Ich-Ansicht springen (Schritte/Verweise). */
-  onNavigate: (target: "jetzt" | "ich" | "system") => void;
+  /** Zur Übersicht, zum Beleg-Formular oder in die System-Einrichtung springen. */
+  onNavigate: (target: "overview" | "fills" | "system") => void;
   /** Ebene 2 ansteuern: der Labor-Abschnitt, der diese Zahl beweist (§7). */
   onDeepen?: (section: LabSectionId) => void;
   /** ⌘K-Signal aus der Dashboard-Root: > 0 = Fokus in die Suche. */
@@ -202,17 +202,6 @@ export function StationenView(props: StationenViewProps) {
   }, [searchFocusSignal]);
 
   const decide = decideRes.data ?? null;
-  // δ̂ der gewählten Station: über Wochen gemittelt, gegen den Stadt-Median
-  // derselben Stunde. Ohne Messung steht der ehrliche Grund da, keine Zahl.
-  const selectedDelta = (selectionRes?.data?.stations ?? []).find(
-    (row) => row.station_id === selectedId,
-  );
-  const deltaLine =
-    selectedDelta?.delta_ct != null
-      ? `Preis-Abstand zum Stadt-Median: ${centPerLiter(selectedDelta.delta_ct)}` +
-        (selectedDelta.significant === false ? " — statistisch noch nicht gesichert." : " — über Wochen gemessen.")
-      : "Preis-Abstand zum Stadt-Median: noch zu wenig Messung für eine Aussage.";
-
   const problemCode =
     decide?.error_code ?? (decideRes.error ? decideRes.errorCode : null);
 
@@ -223,6 +212,7 @@ export function StationenView(props: StationenViewProps) {
     liters,
     selectedId,
     pinnedIds,
+    serverReferenceId: decide?.primary?.station?.id ?? null,
     serverAlts: decide?.alternatives_nearby ?? [],
     worthThreshold:
     typeof decide?.thresholds?.active?.elsewhere_net_eur === "number"
@@ -249,6 +239,23 @@ export function StationenView(props: StationenViewProps) {
   const selected =
     byId.get(selectedId) ?? (ref ? byId.get(ref.station.station_id) ?? null : null);
   const referenceRow = ref ? (byId.get(ref.station.station_id) ?? null) : null;
+  const serverAlternatives = decide?.alternatives_nearby ?? [];
+  const serverReferenceMatches =
+    !!ref &&
+    decide?.primary?.station?.id === ref.station.station_id &&
+    serverAlternatives.some((alternative) => alternative.ref_price_fresh === true);
+  const mapAlternatives = serverReferenceMatches ? serverAlternatives : [];
+  // δ̂ der tatsächlich gerenderten Detailstation (auch beim Default-Fallback
+  // ohne explizite selectedId) — keine leere Messzeile nur wegen Auswahl-ID.
+  const detailStationId = selected?.station.station_id ?? ref?.station.station_id ?? selectedId;
+  const selectedDelta = (selectionRes?.data?.stations ?? []).find(
+    (row) => row.station_id === detailStationId,
+  );
+  const deltaLine =
+    selectedDelta?.delta_ct != null
+      ? `Preis-Abstand zum Stadt-Median: ${centPerLiter(selectedDelta.delta_ct)}` +
+        (selectedDelta.significant === false ? " — statistisch noch nicht gesichert." : " — über Wochen gemessen.")
+      : "Preis-Abstand zum Stadt-Median: noch zu wenig Messung für eine Aussage.";
   const contextLines = selected
     ? stationContextLines(selected, referenceRow)
     : [];
@@ -280,6 +287,7 @@ export function StationenView(props: StationenViewProps) {
           (decide?.alternatives_nearby ?? []).find(
             (alt) => alt.station_id === compareRowB.station.station_id,
           ) ?? null,
+          decide?.primary?.station?.id ?? null,
         )
       : null;
   const compareIsDefault =
@@ -469,9 +477,9 @@ export function StationenView(props: StationenViewProps) {
           <div className={`${panel} mt-4 overflow-hidden p-0`}>
             <StationMap
               stations={stations}
-              selectedId={selected?.station.station_id ?? selectedId}
+              selectedId={referenceRow?.station.station_id ?? selected?.station.station_id ?? selectedId}
               setSelectedId={setSelectedId}
-              alternatives={decide?.alternatives_nearby ?? []}
+              alternatives={mapAlternatives}
               primaryStation={decide?.primary?.station}
               anchor={data?.anchors?.[activeCity] ?? null}
               onNavigate={(url) => {
@@ -586,6 +594,11 @@ export function StationenView(props: StationenViewProps) {
                               </span>
                             )}
                             <span>{ageLabel(row)}</span>
+                            {row.serverPriceFresh === false && (
+                              <span className="text-amber-300">
+                                Serverpreis nicht frisch
+                              </span>
+                            )}
                           </span>
                         </span>
                       </button>
@@ -933,6 +946,13 @@ export function StationenView(props: StationenViewProps) {
                       Umweg)
                     </p>
                   )}
+                  {comparePair.netEur !== null &&
+                    comparePair.serverPriceFresh === false && (
+                      <p className="mt-2 text-xs text-amber-300">
+                        Der Preis für Station B ist für die Netto-Rechnung nicht
+                        frisch.
+                      </p>
+                    )}
                   {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && (
                     <p className="mt-2 text-xs leading-relaxed text-slate-400">
                       Achtung beim Lesen: „günstiger“ vergleicht nur die
@@ -942,13 +962,13 @@ export function StationenView(props: StationenViewProps) {
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                     <button
-                      onClick={() => onNavigate("jetzt")}
+                      onClick={() => onNavigate("overview")}
                       className="font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
                     >
-                      Zurück zu „Jetzt“
+                      Zurück zur Übersicht
                     </button>
                     <button
-                      onClick={() => onNavigate("ich")}
+                      onClick={() => onNavigate("fills")}
                       className="font-semibold text-sky-300 underline underline-offset-4 hover:text-sky-200"
                     >
                       Beleg für {compareRowA.station.name} buchen

@@ -1,17 +1,5 @@
-// Woche — der Zeit-Planer (docs/produkt/UI.md, Bereiche;
-// docs/planung/UX-NEUENTWURF.md §4).
-//
-// Frage: „Wann in den nächsten Tagen soll ich tanken?“ Antwort: eine
-// Bestenliste mit höchstens drei Einträgen, sortiert nach Ersparnis.
-// Kein 7-Tage-Raster, keine Detailkarte, keine zweite Liste, keine
-// Wochenlinie (deren Balken „höher = billiger“ gegen jede Lesegewohnheit
-// lief): Der Server liefert maximal drei Fenster — vier Darstellungen
-// dafür waren drei zu viel.
-//
-// Die View rendert, sie entscheidet nichts (D1): Einträge, Ersparnis,
-// Sicherheit als ein Wort und die Tank-Zeile kommen aus `week.ts` und sind
-// dort getestet. Der Tankstand wird hier nur **angezeigt** — gepflegt wird
-// er an genau einem Ort („Ich“ → Fahrzeug, §6).
+// Legacy-Komponente, nicht mehr in Dashboard geroutet. Bleibt für
+// Regressionstests und kompatible Clients erhalten.
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, Gauge } from "lucide-react";

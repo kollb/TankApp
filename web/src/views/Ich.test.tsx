@@ -115,7 +115,7 @@ function render(overrides: Partial<IchViewProps> = {}) {
   return renderToStaticMarkup(<IchView {...props} />);
 }
 
-describe("Ich: Aufbau", () => {
+describe("Einstellungen: Aufbau", () => {
   it("steuert die Unterseiten als ARIA-Tabs", () => {
     const html = render();
     expect(html).toContain('role="tablist"');
@@ -141,14 +141,12 @@ describe("Ich: Aufbau", () => {
     ]) {
       expect(html).toContain(`id="${id}"`);
     }
-    // Kraftstoff/Stadt wohnen bewusst unter „Einstellungen“.
-    expect(html).toContain(
-      "Kraftstoff und Stadt liegen unter „Einstellungen“",
-    );
+    // Kraftstoff/Stadt liegen im App-Kontext.
+    expect(html).toContain("Kraftstoff und Stadt liegen unter „App“");
   });
 });
 
-describe("Ich: Leerzustände", () => {
+describe("Einstellungen: Leerzustände", () => {
   it("Belege: ohne Buchungen der ehrliche Hinweis statt leeren Fläche", () => {
     const html = render({ initialSection: "fills" });
     expect(html).toContain("Noch keine Belege");
@@ -169,7 +167,7 @@ describe("Ich: Leerzustände", () => {
 // (Offline-Queue). Der Nutzer sah eine vorbefüllte Zahl ohne Vergleich. Der
 // Render-Test hält fest, dass die Zeile wirklich in der Maske steht — die
 // Regeln des Satzes selbst liegen in `fills.test.ts`.
-describe("Ich → Belege: Live-Preis an der Maske (O32)", () => {
+describe("Einstellungen → Belege: Live-Preis an der Maske (O32)", () => {
   function station(overrides: Partial<Station> = {}): Station {
     return {
       station_id: "nord",
@@ -215,7 +213,7 @@ describe("Ich → Belege: Live-Preis an der Maske (O32)", () => {
   });
 });
 
-describe("Ich: Einstellungen am Wirkungsort", () => {
+describe("Einstellungen: App-Kontext am Wirkungsort", () => {
   it("Stadt, Darstellung und Über — ohne Eingabefelder für die Schwellen", () => {
     const html = render({ initialSection: "settings" });
     expect(html).toContain('id="settings-city"');

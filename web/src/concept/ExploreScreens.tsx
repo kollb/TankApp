@@ -250,7 +250,7 @@ export function AlarmScreen({
         </div>
       )}
       <a
-        href="/?tab=ich"
+        href="/?tab=einstellungen"
         className="tap-44 inline-block py-3 text-sm font-semibold text-primary"
       >
         Echte Alarme & Tankprofile verwalten →

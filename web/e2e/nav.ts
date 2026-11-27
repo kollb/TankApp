@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-// B4 (Befund UX/Mathe 19.09.2026, §1.3): Die Studio-Bereiche liegen mobil
+// Die Studio-Bereiche (Einstellungen, Labor, System, Glossar) liegen mobil
 // einen Tipper tiefer — hinter dem „Mehr“-Blatt der Bottom-Leiste.
 // Desktop stehen sie direkt in der Seitenleiste. Der Helfer führt zu
 // einem Bereich, unabhängig vom Raster; damit beweisen die Specs weiter
@@ -11,7 +11,7 @@ import { expect, type Page } from "@playwright/test";
 // `lg:hidden`) — geprüft wird an der Viewport-Breite, nicht am
 // Projekt-Namen, weil die Demosuite zusätzlich ein 320-px-„narrow“-
 // Projekt führt, das dasselbe schmale Raster prüft.
-const STUDIO_AREAS = ["Labor", "Ich", "System", "Glossar"] as const;
+const STUDIO_AREAS = ["Labor", "System", "Einstellungen", "Glossar"] as const;
 const LG_BREAKPOINT = 1024;
 
 /** Klickt den Bereich in der Navigation — öffnet vorab das Studio-Blatt. */
@@ -26,11 +26,9 @@ export async function clickArea(page: Page, label: string): Promise<void> {
       sheet,
       `Das Studio-Blatt öffnet sich nicht (Bereich „${label}“).`,
     ).toBeVisible();
-    // Der accessible Name einer Blatt-Zeile ist „Name + Note“ (die Note ist
-    // Teil der Zeile, Befund §1.4.4) — deshalb Vortrags-Match, und
-    // ausschließlich im Dialog: Auf „Jetzt“ existiert daneben z. B. der
-    // Intent-Button „Ich warte“, den ein ungeschörter „Ich“-Match treffe
-    // würde.
+    // Der accessible Name einer Blatt-Zeile ist „Name + Note“ — deshalb
+    // Vortrags-Match und ausschließlich im Dialog; Seitentreffer außerhalb
+    // der Studio-Navigation können den Bereich nicht versehentlich wählen.
     await sheet
       .getByRole("button", { name: new RegExp(`^${label}(?:\\s|$)`) })
       .click();

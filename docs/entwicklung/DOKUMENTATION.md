@@ -50,7 +50,7 @@ Die vollständigen neuen Inhalte stehen direkt in den Zieldateien:
 | [Root-README](../../README.md) | Einstieg, Rollen, aktueller Stand und Datenhinweise |
 | [Doku-Index](../README.md) | Ein Navigationsverzeichnis statt Release-Erzählung und zweiter API-Kurzreferenz |
 | [Konzept](../produkt/KONZEPT.md) | Aktuelle Produktregeln und klare Trennung von Prognose, Advice und Wallet |
-| [UI](../produkt/UI.md) | Implementierte 3+1-Navigation und Anzeigeprinzipien statt alter Migrationsphasen |
+| [UI](../produkt/UI.md) | Implementierte 2+1-Navigation, Atlas-Referenz und Anzeigeprinzipien statt alter Migrationsphasen |
 | [Projektstand](../planung/LUECKEN.md) | Implementiert, offen, ausstehende Datenabnahme, bewusste Grenze |
 | [TODO](../planung/TODO.md) | Nur notwendige, jetzt ausführbare Schritte mit konkreter Abnahme |
 | [Regime-Plan](../planung/REGIME.md) | Aktuelle Planung, protokollierte Juli-Messung und Grenzen der Simulation |

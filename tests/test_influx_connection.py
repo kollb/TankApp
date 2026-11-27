@@ -632,6 +632,48 @@ def http_endpoint():
         assert not thread.is_alive()
 
 
+def test_wait_until_ready_retries_transient_health_until_pass(exporter, monkeypatch):
+    cfg = exporter.InfluxConfig(
+        "http://nas:8086", "org", "tankapp", "private-token", timeout=10
+    )
+    calls = []
+
+    def health(attempt):
+        calls.append(attempt.timeout)
+        if len(calls) == 1:
+            raise exporter.ExportError("InfluxDB meldet sich noch nicht bereit.")
+
+    monkeypatch.setattr(exporter, "check_health", health)
+    monkeypatch.setattr(exporter.time, "sleep", lambda _seconds: None)
+
+    exporter.wait_until_ready(cfg, timeout=5, interval=1)
+
+    assert len(calls) == 2
+    assert all(1 <= timeout <= 5 for timeout in calls)
+
+
+def test_wait_until_ready_is_bounded_and_does_not_echo_credentials(
+    exporter, monkeypatch
+):
+    cfg = exporter.InfluxConfig(
+        "http://nas:8086", "org", "tankapp", "not-a-real-token", timeout=10
+    )
+    calls = []
+
+    def health(_attempt):
+        calls.append(True)
+        raise exporter.ExportError("InfluxDB meldet sich noch nicht bereit.")
+
+    monkeypatch.setattr(exporter, "check_health", health)
+    with pytest.raises(
+        exporter.ExportError, match="nach 0.005 s nicht bereit"
+    ) as error:
+        exporter.wait_until_ready(cfg, timeout=0.005, interval=0.001)
+
+    assert calls
+    assert "not-a-real-token" not in str(error.value)
+
+
 def test_connection_uses_the_working_browser_query_as_plain_flux(
     exporter, http_endpoint, capsys
 ):

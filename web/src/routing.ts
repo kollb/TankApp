@@ -13,8 +13,7 @@ import { type ShareTab } from "./data";
 export type TabId =
   | "jetzt"
   | "stations"
-  | "week"
-  | "ich"
+  | "settings"
   | "labor"
   | "system"
   | "glossary";
@@ -22,8 +21,7 @@ export type TabId =
 const TAB_URL_IDS: Record<TabId, ShareTab> = {
   jetzt: "jetzt",
   stations: "stationen",
-  week: "woche",
-  ich: "ich",
+  settings: "einstellungen",
   labor: "labor",
   system: "system",
   glossary: "glossar",
@@ -32,11 +30,21 @@ const TAB_URL_IDS: Record<TabId, ShareTab> = {
 const URL_TAB_IDS: Record<ShareTab, TabId> = {
   jetzt: "jetzt",
   stationen: "stations",
-  woche: "week",
-  ich: "ich",
+  einstellungen: "settings",
   labor: "labor",
   system: "system",
   glossar: "glossary",
+};
+
+/** Alte Bereiche bleiben gültig, landen aber auf der aktuellen Zielseite. */
+const LEGACY_URL_TAB_IDS: Record<string, TabId> = {
+  woche: "jetzt",
+  week: "jetzt",
+  ich: "settings",
+  settings: "settings",
+  alltag: "jetzt",
+  werkstatt: "labor",
+  statistik: "labor",
 };
 
 export function tabToUrlId(tab: TabId): ShareTab {
@@ -45,6 +53,7 @@ export function tabToUrlId(tab: TabId): ShareTab {
 
 export function tabFromUrlId(raw: string | null | undefined): TabId {
   if (raw && raw in URL_TAB_IDS) return URL_TAB_IDS[raw as ShareTab];
+  if (raw && raw in LEGACY_URL_TAB_IDS) return LEGACY_URL_TAB_IDS[raw];
   return "jetzt";
 }
 

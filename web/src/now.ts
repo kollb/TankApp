@@ -1,4 +1,4 @@
-// Jetzt — die reine Logik des ersten Bereichs (docs/produkt/UI.md, Bereiche;
+// Übersicht — die reine Logik des ersten Bereichs (docs/produkt/UI.md, Bereiche;
 // docs/planung/UX-NEUENTWURF.md §3).
 //
 // Ein Bildschirm, **eine** Frage: „Soll ich jetzt tanken — und wenn ja, wo?“
@@ -47,13 +47,13 @@ import { labHint, type LabHint } from "./lab";
 import type { StripCell } from "./strip";
 
 /** Wohin eine Handlung der Karte führt — Ziele, nicht Tabs. */
-export type NowTarget = "stations" | "week" | "tank" | "system" | "ich";
+export type NowTarget = "overview" | "stations" | "vehicle" | "fills" | "labor" | "system";
 
 /**
  * Schnellauswahl „¼ / ½ / ¾ / voll“: Tankstand ist kein Formular, sondern
  * eine Angabe — die vier üblichen Stände in einem Tap. Gepflegt wird sie an
- * genau einem Ort („Ich“ → Fahrzeug, UX-NEUENTWURF §6); Jetzt und Woche
- * zeigen den Stand nur an.
+ * genau einem Ort („Einstellungen“ → Fahrzeug, UI.md); die Übersicht
+ * zeigt den Stand nur an.
  * „voll“ = 100 % Füllstand, nicht „Tank vollgefahren“.
  */
 export const TANK_QUICK: Array<{ label: string; percent: number }> = [

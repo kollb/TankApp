@@ -39,7 +39,6 @@ import { OverviewProvider, useOverview } from "./state/overview";
 // Layout-Verschiebungen (Lighthouse-Gate `cumulative-layout-shift`).
 const jetztModule = import("./views/Jetzt");
 const stationenModule = import("./views/Stationen");
-const wocheModule = import("./views/Woche");
 const ichModule = import("./views/Ich");
 const laborModule = import("./views/Labor");
 const systemModule = import("./views/System");
@@ -49,9 +48,6 @@ const JetztView = lazy(() =>
 );
 const StationenView = lazy(() =>
   stationenModule.then((m) => ({ default: m.StationenView })),
-);
-const WocheView = lazy(() =>
-  wocheModule.then((m) => ({ default: m.WocheView })),
 );
 const IchView = lazy(() =>
   ichModule.then((m) => ({ default: m.IchView })),
@@ -83,8 +79,7 @@ function DashboardShell() {
     setLaborFocus,
     openLabor,
     handleNowNavigate,
-    ichSection,
-    setIchSection,
+    settingsSection,
     searchFocusSignal,
     fuel,
     setFuel,
@@ -122,7 +117,6 @@ function DashboardShell() {
     elapsed,
     price,
     fresh,
-    selected,
     freshPrices,
     pinnedFirstStations,
     h,
@@ -313,7 +307,7 @@ function DashboardShell() {
   const shellSettled =
     settled(ov.prices) && settled(ov.health) && settled(ov.profilesRes);
   const primarySettled =
-    tab === "jetzt" || tab === "stations" || tab === "week"
+    tab === "jetzt" || tab === "stations"
       ? /* Ohne Stadt wird der Overview-Poll gar nicht abgefragt (URL null) —
            dann blockiert das Gate nicht, die Ansicht zeigt den Einrichtungs-
            zustand sofort. */
@@ -324,10 +318,9 @@ function DashboardShell() {
           settled(ov.statsSummaryRes) &&
           settled(ov.selection) &&
           (!ov.identity || settled(ov.forecast))
-        : tab === "ich"
-          ? /* `fillsRes` ist nur ein Overview-Teil (auf „Ich“ leer) — die
-               eigentliche Antwort des Bereichs ist `fillsSummary`. */
-            settled(ov.fillsSummary)
+        : tab === "settings"
+          ? /* Die Nutzerseite lädt ihren Verlauf und ihre Bilanz separat. */
+            settled(ov.fillsRes) && settled(ov.fillsSummary)
           : true;
   // Das View-Modul des aktiven Bereichs muss ebenfalls da sein, bevor das
   // Gate öffnet: Sonst zeigt Suspense kurz das Skeleton und tauscht es gegen
@@ -339,15 +332,13 @@ function DashboardShell() {
       ? jetztModule
       : tab === "stations"
         ? stationenModule
-        : tab === "week"
-          ? wocheModule
-          : tab === "ich"
-            ? ichModule
-            : tab === "labor"
-              ? laborModule
-              : tab === "system"
-                ? systemModule
-                : glossaryModule;
+        : tab === "settings"
+          ? ichModule
+          : tab === "labor"
+            ? laborModule
+            : tab === "system"
+              ? systemModule
+              : glossaryModule;
   const [chunkReady, setChunkReady] = useState(false);
   useEffect(() => {
     let active = true;
@@ -395,12 +386,12 @@ function DashboardShell() {
           </div>
         </div>
 
-        {/* V3: Die gebündelte Meldung — genau ein Block. Auf „Ich“ zeigt die
+        {/* V3: Die gebündelte Meldung — genau ein Block. Unter „Einstellungen“ zeigt die
             View ihre eigene Rückmeldung (FeedbackBanner im Belege-Abschnitt),
             deshalb fällt der Aktions-Kanal dort aus dem Register. */}
         <NoticesView
           result={reduceNotices(
-            notices.filter((item) => item.id !== "action" || tab !== "ich"),
+            notices.filter((item) => item.id !== "action" || tab !== "settings"),
           )}
         />
 
@@ -443,7 +434,7 @@ function DashboardShell() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB STATIONEN (GUI-Neuentwurf, Phase 2)                      */}
+        {/* TAB STATIONEN (Preis-Atlas)                      */}
         {/* ============================================================ */}
         {tab === "stations" && (
           <StationenView
@@ -480,38 +471,11 @@ function DashboardShell() {
         )}
 
         {/* ============================================================ */}
-        {/* TAB WOCHE (GUI-Neuentwurf, Phase 2)                          */}
+        {/* EINSTELLUNGEN — Fahrzeug, Belege, Bilanz, App-Einstellungen  */}
         {/* ============================================================ */}
-        {tab === "week" && (
-          <WocheView
-            activeCity={activeCity}
-            fuel={fuel}
-            stationsCount={stations.length}
-            decideRes={decideRes}
-            priceNow={price(selected)}
-            tankPercent={tankPercent}
-            tankCapacity={tankCapacity}
-            onEditTank={() => {
-              /* Der Tankstand wird an genau einem Ort gepflegt (§6):
-                 „Ich“ → Fahrzeug. */
-              setIchSection("vehicle");
-              gotoTab("ich");
-            }}
-            stripCells={stripCells}
-            forecastAt={nowForecastAt}
-            pricesAt={nowPricesAt}
-            onRetry={refreshNow}
-            onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section)}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* TAB ICH (GUI-Neuentwurf, Phase 2)                            */}
-        {/* ============================================================ */}
-        {tab === "ich" && (
+        {tab === "settings" && (
           <IchView
-            initialSection={ichSection}
+            initialSection={settingsSection}
             vehicle={{
               liters,
               setLiters,

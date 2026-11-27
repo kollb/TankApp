@@ -127,6 +127,11 @@ def test_decide_endpoint_and_gate(b4_settings):
         assert status == 200
         assert "primary" in body
         assert "alternatives_nearby" in body
+        assert len(body["alternatives_nearby"]) <= 5
+        assert body["alternatives_nearby"]
+        for alternative in body["alternatives_nearby"]:
+            assert alternative["price_fresh"] is True
+            assert alternative["ref_price_fresh"] is True
         assert "windows_today" in body
         assert "episode" in body
         assert "personal_stats" in body
@@ -141,6 +146,17 @@ def test_decide_endpoint_and_gate(b4_settings):
             "refuel_elsewhere",
         )
         assert body["episode"]["status"] in ("open", "waiting", "due")
+
+        # `station_id` selects the shared reference for primary and alternatives.
+        anchored_status, anchored = _get_json(
+            base + "/api/v1/decide?city=Frankfurt&fuel=e10&station_id=" + OTHER
+        )
+        assert anchored_status == 200
+        assert anchored["primary"]["station"]["id"] == OTHER
+        assert all(
+            alternative["ref_price_fresh"] is True
+            for alternative in anchored["alternatives_nearby"]
+        )
 
         # Alias /v1/decide
         status2, body2 = _get_json(base + "/v1/decide?city=Frankfurt&fuel=e10")

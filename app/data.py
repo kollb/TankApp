@@ -1465,6 +1465,7 @@ class LiveData:
     def __init__(self, settings, query=None, clock=None):
         self.settings = settings
         self.query = query or influx.query_rows
+        self._wait_for_influx = query is None
         # collector_status liest ein Nicht-Preis-Measurement: rohe Zeilen statt
         # Preis-Schema (siehe export_influx.query_raw). Ein injiziertes ``query``
         # (Tests) dient unverändert für beide Lesewege.
@@ -1678,6 +1679,17 @@ class LiveData:
             return
 
         def warm():
+            # Start-Recovery: der HTTP-Server bleibt sofort verfügbar, aber
+            # der Hintergrund-Prewarm beginnt erst, wenn InfluxDB /health
+            # bereit meldet. Health sendet absichtlich keinen Token.
+            if self._wait_for_influx:
+                try:
+                    cfg = influx.load_config(self.settings.influx_env, timeout=10)
+                    influx.wait_until_ready(cfg, timeout=30)
+                except Exception:
+                    # Der normale Preis-Read bleibt der Fehlerpfad, falls
+                    # InfluxDB innerhalb des begrenzten Fensters nicht kommt.
+                    return
             for fuel in FUELS:
                 self._load(fuel, metas)
 

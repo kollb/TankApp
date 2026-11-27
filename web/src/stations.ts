@@ -60,9 +60,11 @@ export type AtlasRow = {
   freshCount: number;
   /**
    * Server-Netto-€ ggü. der Referenz (Umweg inklusive) — nur, wenn der
-   * Server diese Station als Alternative zur Referenz berechnet hat.
+   * Server- und UI-Anker übereinstimmen und der Server-Anker frisch war.
    */
   netEur: number | null;
+  /** Frische des für die Server-Alternative verwendeten Preises; null ohne Alt. */
+  serverPriceFresh: boolean | null;
   /** Preisunterschied × Tankmenge — reine Preisrechnung, ohne Umweg. */
   fillEur: number | null;
   /** Server-Urteil, nur mit netEur. */
@@ -84,6 +86,8 @@ export type AtlasInput = {
   selectedId: string;
   /** Stamm-Stationen (Pin-Reihenfolge). */
   pinnedIds: string[];
+  /** decide → primary.station.id: Anker, gegen den der Server rechnet. */
+  serverReferenceId: string | null;
   /** decide → alternatives_nearby: Server-Netto-€ je Station. */
   serverAlts: ServerAlt[];
   /** Schwellen für das Server-Urteil (decide → thresholds.active). */
@@ -144,10 +148,17 @@ export function atlasRows(input: AtlasInput): AtlasRow[] {
         ? fresh.findIndex((entry) => entry.row.station_id === station.station_id) + 1
         : null;
     const serverAlt = input.serverAlts.find((alt) => alt.station_id === station.station_id) ?? null;
-    // Server-Netto gilt nur, wenn die Alternative zur *Referenz*
-    // berechnet wurde (sonst mischen wir Bezugspunkte).
+    // Server-Netto gilt nur, wenn der Server genau die sichtbare Atlas-
+    // Referenz verwendet hat. Die explizite ID schützt auch gegen gehaltene
+    // Antworten nach einem Referenzwechsel und gegen fremd verankerte Alt-Zeilen.
+    const serverReferenceMatches =
+      ref !== null && input.serverReferenceId === ref.station.station_id;
     const netEur =
-      serverAlt && ref && serverAlt.station_id !== ref.station.station_id
+      serverAlt &&
+      serverReferenceMatches &&
+      serverAlt.ref_price_fresh === true &&
+      ref &&
+      serverAlt.station_id !== ref.station.station_id
         ? serverAlt.net_eur
         : null;
     const fillEur =
@@ -174,6 +185,12 @@ export function atlasRows(input: AtlasInput): AtlasRow[] {
       rank,
       freshCount: fresh.length,
       netEur,
+      serverPriceFresh:
+        serverReferenceMatches &&
+        serverAlt?.ref_price_fresh === true &&
+        typeof serverAlt.price_fresh === "boolean"
+          ? serverAlt.price_fresh
+          : null,
       fillEur,
       verdict,
       detourKm: netEur !== null ? (serverAlt?.detour_km_est ?? serverAlt?.detour_km ?? null) : null,
@@ -355,8 +372,10 @@ export type CompareResult = {
   fillDeltaEur: number | null;
   /** Server-Umweg A→B (null = keine Route-Data). */
   detourKm: number | null;
-  /** Server-Netto-€ für B ggü. A (null = keine Route-Data). */
+  /** Server-Netto-€ für B ggü. A (null = keine passende frische Referenz). */
   netEur: number | null;
+  /** Frische des Server-Preises für B; null, wenn keine passende Alternative vorliegt. */
+  serverPriceFresh: boolean | null;
   verdict: "worth" | "borderline" | "not_worth" | null;
   /** Ein Satz, der den Vergleich zusammenfasst — oder warum nicht. */
   sentence: string;
@@ -375,16 +394,26 @@ export function compareStationsPair(
   priceB: number | null,
   liters: number,
   serverAlt: ServerAlt | null,
+  serverReferenceId: string | null,
 ): CompareResult {
   const deltaCt =
     priceA !== null && priceB !== null ? (priceB - priceA) * 100 : null;
   const fillDeltaEur = deltaCt !== null ? (deltaCt / 100) * liters : null;
-  const netEur = serverAlt?.station_id === b.station_id ? serverAlt.net_eur : null;
-  const detourKm =
-    serverAlt?.station_id === b.station_id
-      ? (serverAlt.detour_km_est ?? serverAlt.detour_km ?? null)
+  const hasServerPair =
+    serverReferenceId === a.station_id &&
+    serverAlt?.station_id === b.station_id &&
+    serverAlt.ref_price_fresh === true;
+  const netEur = hasServerPair ? (serverAlt?.net_eur ?? null) : null;
+  const serverPriceFresh =
+    hasServerPair &&
+    serverAlt &&
+    typeof serverAlt.price_fresh === "boolean"
+      ? serverAlt.price_fresh
       : null;
-  const verdict = serverAlt?.station_id === b.station_id ? serverAlt.verdict : null;
+  const detourKm = hasServerPair
+    ? (serverAlt?.detour_km_est ?? serverAlt?.detour_km ?? null)
+    : null;
+  const verdict = hasServerPair ? (serverAlt?.verdict ?? null) : null;
 
   let sentence: string;
   if (priceA === null && priceB === null) {
@@ -430,6 +459,7 @@ export function compareStationsPair(
     fillDeltaEur,
     detourKm,
     netEur,
+    serverPriceFresh,
     verdict,
     sentence,
   };

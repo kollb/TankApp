@@ -1,6 +1,6 @@
 # Datenwerkzeuge — Referenz, keine Installationskette
 
-> Stand: 21.09.2026 · App-Version 0.64.0. Nachschlagewerk für `data-tools/`
+> Stand: 27.11.2026 · App-Version 0.76.0. Nachschlagewerk für `data-tools/`
 > und `analysis/`; der Ablauf steht in [INSTALL.md](../betrieb/INSTALL.md), der
 > Dauerbetrieb in [BETRIEB.md](../betrieb/BETRIEB.md). Neu: der
 > [Regime-Check](#regime-check-durchgabe-einer-steuer--oder-deckel-änderung).
@@ -24,7 +24,7 @@
 | `discover_stations.py` | Vorläufige Auswahl aus Stationsmetadaten, ohne lange Preishistorie. |
 | `ingest_history.py` | M2-Aufbereitung; gerasterte Daten sind nicht automatisch zeitgenaue Live-Beobachtungen. |
 | `run_pipeline.py` | Optionale vertiefte Historien-/Stationsanalyse, kein Installationsbeginn mehr. Schützt Sets anderer Städte vor Überschreiben. |
-| `export_influx.py` | Nur lesender Live-Export, bestehender Lesezugang über `--env-file`; keine InfluxDB-Einrichtung. |
+| `export_influx.py` | Nur lesender Live-Export, bestehender Lesezugang über `--env-file`; `wait_until_ready()` prüft InfluxDB `/health` begrenzt und ohne Token, bevor Modell-Refresh oder Netzwerk-Prewarm lesen; keine InfluxDB-Einrichtung. |
 | `road_route.py` | Routing für die vertiefte Umweg-/Kostenbewertung. |
 | `swap_stations.py` | Tote oder ungeeignete Stationen 1:1 tauschen: liest die Modell-Fehler, sucht Ersatz aus der Kandidaten-CSV, validiert das ganze Set und schreibt **nur** den Vorschlag — Ablauf in [STATIONEN-TAUSCH.md](../betrieb/STATIONEN-TAUSCH.md). |
 | `prune_influx.py` | InfluxDB verkleinern (Delete API per Zeitfenster oder Retention kürzen), damit die SSD nicht mit der 5-Jahre-Retention wächst — Hintergrund in [SPEICHER.md](../betrieb/SPEICHER.md). |

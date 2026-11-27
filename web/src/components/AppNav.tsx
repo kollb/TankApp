@@ -1,53 +1,29 @@
-// U3 (GUI-UX-BEFUND) + B4 (Befund UX/Mathe 19.09.2026, §1.2–1.3): die
-// Hauptnavigation ist ein Abbild der drei Kernfragen des Konzepts —
-// „Jetzt oder warten?“ (Jetzt), „Wann in den nächsten Tagen?“ (Woche),
-// „Welche Station?“ (Stationen) — plus genau einem Studio-Eingang für die
-// übrigen Bereiche (Labor, Ich, System, Glossar).
+// Navigation der Alltags- und Studio-Bereiche: Übersicht · Stationen +
+// ein Studio-Eingang (Labor, System, Einstellungen, Glossar).
 //
-// Vor B4 (GUI-UX-BEFUND §13) saßen sechs gleichberechtigte Punkte in der
-// Leiste: Buchhaltung (Ich) und Betrieb (System) belegten permanent
-// Aufmerksamkeit, obwohl 95 % der Sitzungen nur die drei Kernfragen
-// stellen. Die Gleichberechtigung war der Konstruktionsfehler — nicht die
-// Bereiche selbst. Sie bleiben voll erreichbar:
+// Mobil (unter `lg`) zeigt die Daumenleiste die zwei Kernbereiche plus
+// „Mehr“; das Studio-Blatt führt in die vier übrigen Bereiche. Desktop
+// zeigt dieselben Einträge direkt in einer Seitenleiste. Die Auswahl ist
+// eine gemeinsame Datenliste, keine zweite matchMedia-Navigation.
 //
-//   * Mobil (unter `lg`): Bottom-Leiste mit Jetzt · Woche · Stationen +
-//     „Mehr“-Eintrag, der das Studio-Blatt öffnet (vier Zeilen: Labor,
-//     Ich, System, Glossar). Das Blatt ist ein kurzes Menü über der
-//     Leiste, kein zweites Navigationsmodell — ein Tap bringt zurück.
-//   * Desktop (ab `lg`): Seitenleiste links mit den drei Kernfragen,
-//     Trennlinie, „Studio“-Gruppe mit denselben vier Bereichen — alles
-//     direkt sichtbar, weil auf Desktop die Breite da ist.
+// Alte Links bleiben lesbar: `?tab=woche` landet auf Übersicht und
+// `?tab=ich` auf Einstellungen. Die kanonischen Ziele stehen in
+// `routing.ts`; Teilen erzeugt nur noch diese aktuellen Namen.
 //
-// Beide Raster teilen dieselben Listen (`MAIN_NAV_ITEMS`/
-// `STUDIO_NAV_ITEMS`). Welche Variante sichtbar ist, entscheidet allein
-// CSS (`hidden`/`lg:`-Varianten) — kein matchMedia-Zustand. Die
-// unsichtbare Variante ist `display: none` und nimmt damit weder an der
-// Tastatur-Reihenfolge noch am Accessibility-Baum teil; strenge
-// Test-Selektoren (`getByRole`) sehen pro Viewport genau eine
-// Schaltfläche je Bereich.
-//
-// URL-Schema bleibt kompatibel (U4): `?tab=labor`, `?tab=ich`,
-// `?tab=system`, `?tab=glossar` sind weiter gültig und teilbar —
-// `routing.ts` ändert sich nicht. Im Studio-Bereich trägt mobil der
-// „Mehr“-Eintrag `aria-current="page"` (Studio-Karten in der Seitenleiste
-// desktop), damit der Bereichsstand in der Navigation sichtbar bleibt.
-//
-// CI-Fix 0.41.0 bleibt bestehen: Die mobile Leiste wird in Dashboard.tsx
-// als **letztes** Element der App-Hülle gerendert (nach `<main>`), trägt
-// `z-50` und liegt damit in DOM- wie in Stapel-Reihenfolge über dem
-// Inhalt. Das Studio-Blatt hängt an derselben Fixierung — es kann von
-// keinem Inhalt überdeckt werden.
+// Die unsichtbare Raster-Variante ist `display: none` und nimmt damit weder
+// an der Tastatur-Reihenfolge noch am Accessibility-Baum teil. Die mobile
+// Leiste bleibt als letztes Element der App-Hülle montiert (nach `<main>`),
+// trägt `z-50` und liegt in DOM- wie Stapel-Reihenfolge über dem Inhalt.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen,
-  Car,
   Compass,
   FlaskConical,
-  Gauge,
   MapPin,
   Monitor,
   MoreHorizontal,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import type { TabId } from "../routing";
@@ -60,10 +36,9 @@ export interface NavItem {
   note?: string;
 }
 
-/** Die drei Kernfragen des Konzepts (Befund §1.3) — Hauptnavigation. */
+/** Die beiden Alltagsbereiche — Hauptnavigation. */
 export const MAIN_NAV_ITEMS: NavItem[] = [
-  { id: "jetzt", label: "Jetzt", icon: Compass },
-  { id: "week", label: "Woche", icon: Gauge },
+  { id: "jetzt", label: "Übersicht", icon: Compass },
   { id: "stations", label: "Stationen", icon: MapPin },
 ];
 
@@ -80,16 +55,16 @@ export const STUDIO_NAV_ITEMS: NavItem[] = [
     note: "Vertrauen, Prognose, Rechenweg",
   },
   {
-    id: "ich",
-    label: "Ich",
-    icon: Car,
-    note: "Tankstand · Belege · Bilanz · Profile",
-  },
-  {
     id: "system",
     label: "System",
     icon: Monitor,
     note: "Zustand · Läufe · Störungen",
+  },
+  {
+    id: "settings",
+    label: "Einstellungen",
+    icon: Settings,
+    note: "Fahrzeug · Belege · Bilanz · Profile",
   },
   {
     id: "glossary",
@@ -99,7 +74,7 @@ export const STUDIO_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** Alle sieben Bereiche in Navigation-Reihenfolge. */
+/** Alle sechs Bereiche in Navigation-Reihenfolge. */
 export const NAV_ITEMS: NavItem[] = [...MAIN_NAV_ITEMS, ...STUDIO_NAV_ITEMS];
 
 /** Studio-Bereich? Der mobile „Mehr“-Eintrag ist dann die aktive Markierung. */
@@ -264,8 +239,8 @@ function StudioSheet({
 }
 
 /**
- * Mobil: die feste Leiste am unteren Rand (Daumenreichweite, §13) — seit
- * B4 mit vier Zellen: die drei Kernfragen plus „Mehr“. Wird in
+ * Mobil: die feste Leiste am unteren Rand (Daumenreichweite, §13) mit
+ * drei Zellen: die zwei Alltagsbereiche plus „Mehr“. Wird in
  * Dashboard.tsx als letztes Element der App-Hülle montiert, damit sie in
  * DOM- und Stapel-Reihenfolge über dem Inhalt liegt (`z-50`); der Inhalt
  * hält per `pb-24` Abstand. Unter `lg` ist sie `display: none`.
@@ -308,7 +283,7 @@ export function MobileNav({
         aria-label="Bereiche"
         className="border-t border-outline-variant bg-sc pb-2"
       >
-        <div className="mx-auto grid max-w-3xl grid-cols-4">
+        <div className="mx-auto grid max-w-3xl grid-cols-3">
           {MAIN_NAV_ITEMS.map((item) => (
             <NavButton
               key={item.id}
@@ -346,8 +321,8 @@ export function MobileNav({
 }
 
 /**
- * Desktop (ab `lg`): die Seitenleiste links vor dem Inhalt — die drei
- * Kernfragen, dann die Studio-Gruppe (Befund §1.3). Unter `lg` ist sie
+ * Desktop (ab `lg`): die Seitenleiste links vor dem Inhalt — die zwei
+ * Alltagsbereiche, dann die Studio-Gruppe (Befund §1.3). Unter `lg` ist sie
  * `display: none`.
  */
 export function SideNav({

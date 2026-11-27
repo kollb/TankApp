@@ -1,11 +1,13 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 05.10.2026 · App-Version **0.75.0** · gilt für `web/src/**`,
+> Stand: 27.11.2026 · App-Version **0.76.0** · gilt für `web/src/**`,
 > `web/rp2/**`, `rp2/fallback_gui.py`, Fehlertexte in `app/**` und die
 > Push-Texte in `app/notify.py`. Neu mit 0.74.0 (UX-NEUENTWURF Batch 2):
 > das Labor hat drei Blöcke, Rohdaten und CSV wohnen in „System“, Stationen
-> und Ich sind verdichtet. Neu mit 0.75.0 (Batch 3): Profil und seltene
+> und Einstellungen sind verdichtet. Neu mit 0.75.0 (Batch 3): Profil und seltene
 > App-Aktionen liegen auf schmalen Displays gebündelt im Kopfzeilen-Blatt.
+> Neu mit 0.76.0: Übersicht + Stationen sind die Alltagsnavigation; alte
+> Woche- und Ich-Links leiten auf Übersicht bzw. Einstellungen um.
 > **Entfallen:** Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
 > Einflüsse-Balken, Güte-Panel, eingebettetes Glossar, Heatmap-Schalter,
 > Fachjargon im Alltag.
@@ -16,7 +18,7 @@
 - [2. Anführungszeichen und Sonderzeichen](#2-anführungszeichen-und-sonderzeichen)
 - [3. Zahlen, Einheiten, Zeiten](#3-zahlen-einheiten-zeiten)
 - [4. Benennungen](#4-benennungen)
-  - [Kopfzeile: feste Muster](#4e-kopfzeile-feste-muster)
+  - [Kopfzeile: feste Muster](#4f-kopfzeile-feste-muster)
 - [5. Zustände: leer, lädt, Fehler](#5-zustände-leer-lädt-fehler)
 - [6. Was nie im Text steht](#6-was-nie-im-text-steht)
 - [7. Prüfung](#7-prüfung)
@@ -69,7 +71,7 @@ Anzeigen ist verboten (`format-convention.test.ts`).
 
 **Niveau in €/L, Unterschied in ct/L** — gemischt nur, wenn beides sichtbar
 ist, das Niveau zuerst („1,749 €/L · 4,2 ct/L unter Tagesmedian“).
-**Zwei Spannen:** *Tankmenge* 10–100 L (Profil/„Jetzt“), *getankte Liter*
+**Zwei Spannen:** *Tankmenge* 10–100 L (Profil/Übersicht), *getankte Liter*
 5–100 L im Beleg, Schritt 0,5 — beide mit `L`, nie „Liter“ neben einer Zahl.
 Dezimaltrennzeichen Komma, Tausenderpunkt; Eingabefelder akzeptieren beides,
 zeigen Komma. Alle Zeiten sind Europe/Berlin über `timeLabel`/`epochLabel`;
@@ -80,7 +82,7 @@ eine erfundene 12-Uhr-Projektion eines Belegs ohne Zeitstempel wird benannt:
 
 | Gemeint | Wort in der App |
 |---|---|
-| Bereiche | **Jetzt** · **Stationen** · **Woche** · **Ich** · **Labor** · **System** |
+| Bereiche | **Übersicht** · **Stationen** · **Einstellungen** · **Labor** · **System** · **Glossar** |
 | Tankstelle · Tankvorgang | **Station** · **Beleg** (nicht „Fill“, „Buchung“, „Füllung“) |
 | Rechengröße · gebuchte Menge | **Tankmenge** (10–100 L) · **Liter** (5–100 L) |
 | Preis-Vorteil | **Ersparnis**, Betrag ohne Vorzeichen: „1,60 € günstiger“ |
@@ -92,25 +94,29 @@ eine erfundene 12-Uhr-Projektion eines Belegs ohne Zeitstempel wird benannt:
 
 Fachbegriffe (δ̂, MASE, PICP, Brier, ε, Regret) stehen nur in „Details für
 Neugierige“ und im Tooltip hinter einem deutschen Label; der Alltag kommt
-ohne sie aus. Der Tankstand wird nur in „Ich“ → Fahrzeug gepflegt.
+ohne sie aus. Der Tankstand wird nur in „Einstellungen“ → Fahrzeug gepflegt.
 
 ### 4a. Fallback-GUI: feste Muster
 
 Diese Sätze stehen so in `rp2/fallback_gui.py` — wiederverwenden, nicht neu formulieren: `Aktueller Preisvergleich` · `Nur Preisvergleich — Tank- und Warteentscheidungen benötigen die geprüfte NAS-Entscheidung und das persönliche Profil.` · `Noch kein frischer Preis.` · Kraftstoffzeile `<KRAFTSTOFF> · <ORT> · STAND <HH:MM> UHR` · Delta-Chip `beste`/`+<x> ct` · Lesemodus-Badge `Lesemodus · RP2` · `NAS ist gerade nicht erreichbar — die Preise zeigen den letzten gemeldeten Stand. Zur Orientierung, nicht zur Entscheidung.` · Frische-Fußzeile `Preise <4 min> alt · Prognose <35 min> alt` (Alter `—` statt „gerade eben“, wenn ein Stand fehlt).
 
-### 4b. Bereich „Jetzt“: feste Muster
+### 4b. Bereich „Übersicht“: feste Muster
 
-Genau fünf Chips, immer gleich benannt: `Jetzt tanken` (grün; rot, wenn der Tankrest das Warten blockiert) · `Warten` (blau, Überschrift `Warten bis ~18 Uhr`) · `Kaum Unterschied` (grau, `Tanken, wann’s passt`) · `Preisvergleich` (grau, `Günstigste gerade: <Station>`) · `Offline` (grau, `Letzter Stand: <Station>` + `Der Preis an der Säule zählt.`). Die Überschrift trägt höchstens 25 Wörter, die Karte genau **eine** Zahl in Euro (`spart ca. <1,60> €`, sonst `1,709 €/L`) und genau **eine** Handlung (`Route`); „Warum?“ erklärt in höchstens fünf Zeilen. Sicherheit ist **ein Wort** (`sehr sicher` · `ziemlich sicher` · `kaum einschätzbar`), nie eine Prozentzahl. Gültigkeit: `bis <17:45>`, in den letzten 30 Minuten `· noch <12> min`; eine abgelaufene Freigabe fällt auf die graue Tatsachenvariante. „Woche“ trägt höchstens drei Einträge (`<Tag> <Zeit>` · `<1,709> €/L` · `spart ca. <1,60> €` · Sicherheit als Wort) und **einen** Satz zur Prognosebreite (`Ab Tag 5 wird die Prognose unsicher.`).
+Genau fünf Chips, immer gleich benannt: `Jetzt tanken` (grün; rot, wenn der Tankrest das Warten blockiert) · `Warten` (blau, Überschrift `Warten bis ~18 Uhr`) · `Kaum Unterschied` (grau, `Tanken, wann’s passt`) · `Preisvergleich` (grau, `Günstigste gerade: <Station>`) · `Offline` (grau, `Letzter Stand: <Station>` + `Der Preis an der Säule zählt.`). Die Überschrift trägt höchstens 25 Wörter, die Karte genau **eine** Zahl in Euro (`spart ca. <1,60> €`, sonst `1,709 €/L`) und genau **eine** Handlung (`Route`); „Warum?“ erklärt in höchstens fünf Zeilen. Sicherheit ist **ein Wort** (`sehr sicher` · `ziemlich sicher` · `kaum einschätzbar`), nie eine Prozentzahl. Gültigkeit: `bis <17:45>`, in den letzten 30 Minuten `· noch <12> min`; eine abgelaufene Freigabe fällt auf die graue Tatsachenvariante. Einen eigenen Woche-Tab gibt es nicht mehr; alte Woche-Links führen zur Übersicht. `windows_week` bleibt ein API-Vertrag für kompatible Clients, aber keine sichtbare Bestenliste.
 
-### 4c. Bereich „Labor“: feste Muster
+### 4c. Preis-Atlas: feste Muster
+
+Server-Netto darf nur erscheinen, wenn die `station_id` der lokalen Referenz mit `primary.station.id` übereinstimmt und `ref_price_fresh` wahr ist. Fehlt dieser bestätigte frische Anker, bleibt es beim Preisvergleich „ohne Umweg“. Eine Alternative mit `price_fresh: false` wird neben ihrem Server-Netto sichtbar mit **„Serverpreis nicht frisch“** markiert; nie als aktueller Live-Preis bezeichnen.
+
+### 4d. Bereich „Labor“: feste Muster
 
 Drei Blöcke, sonst nichts; die Fragen stehen genau einmal in `lab.ts` (`LAB_BLOCKS`), die Tagebuch-Sprache in derselben Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`). Block 1 **„Kann ich vertrauen?“** trägt **einen** Satz als Zählung, kein Prozent: `An <26> von <30> Tagen lag die Empfehlung richtig.` Ohne Messung: `Noch nicht gemessen — die ersten Empfehlungen sind Lern-Fälle.` Darunter das filterbare Tagebuch (`Alle · Richtig · Daneben · Unentschieden · Nicht bewertbar`) mit den Worten `Warten` · `Jetzt tanken` · `Woanders tanken` · `Keine klare Empfehlung` (nie „Treffer“, nie „Fehler“). Block 2 **„Wie gut ist die Prognose?“** zeigt eine Kurve und **einen** Satz: `Im Schnitt <1,8> ct/L daneben.` Block 3 **„Wie rechnet die App?“** nennt drei Schritte in Alltagssprache (Tagesmuster der Stadt · aktuelle Lage · 12-Uhr-Regel); Formeln, acht Bausteine, Fachwerte und die Heatmap liegen gebündelt hinter `Details für Neugierige`. Rohdaten, CSV und API-Explorer stehen in „System“; das Labor verweist nur dorthin.
 
-### 4d. Bereich „System“: feste Muster
+### 4e. Bereich „System“: feste Muster
 
 Hier dürfen Datei- und Endpunktnamen stehen (`TECH_TEXT_ALLOWED` in `microcopy.test.ts`): Herkunft `Quelle: /api/v1/…`, Winter-Hinweis zur 12-Uhr-Regel, `Alles ok` · `Hinweise` · `Störungen` im Kopf. Rohdaten- und CSV-Blöcke nennen **was** exportiert wird und **woher** es kommt, nie nur „Export“.
 
-### 4e. Kopfzeile: feste Muster
+### 4f. Kopfzeile: feste Muster
 
 Unter 1280 px heißt der sichtbare Auslöser `Profil` (Screenreader-Name
 `Fahrzeug-Profil und Aktionen`); das Blatt heißt `Profil und Aktionen`.

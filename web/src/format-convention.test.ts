@@ -22,7 +22,7 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
   "state/overview.tsx": {
     count: 1,
     reason:
-      "Vorbelegung des Beleg-Preises (Ich → Belege): Punkt wie beim Tippen (commaToDot)",
+      "Vorbelegung des Beleg-Preises (Einstellungen → Belege): Punkt wie beim Tippen (commaToDot)",
   },
   "components/LineChart.tsx": {
     count: 6,

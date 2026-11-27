@@ -15,14 +15,14 @@ import { test, expect, type Page } from "@playwright/test";
 //      bei `overflow: visible`) — genau das ließ die Zahlenreihe „schief“
 //      aussehen, als „1,725“ breiter war als seine Zelle.
 //
-// Gemessen wird nicht nur der Einstieg: alle sechs Bereiche, die vier
-// Ich-Unterseiten, die sechs Labor-Abschnitte und jeder Dialog
+// Gemessen wird nicht nur der Einstieg: alle sechs aktuellen Bereiche, die vier
+// Einstellungs-Unterseiten, die sechs Labor-Abschnitte und jeder Dialog
 // (`aria-haspopup="dialog"`) eines Bereichs. Die Belege werden vorher über die
 // echte API angelegt (kein `page.route`) — sonst bliebe genau die Liste
 // ungemessen, die auf dem Handy am längsten war.
 //
-// B4 (Befund UX/Mathe 2026-09-19): Die Hauptnavigation ist 3+1 — die
-// Studio-Bereiche (Labor, Ich, System, Glossar) liegen hinter dem
+// B4 (Befund UX/Mathe 2026-09-19): Die Hauptnavigation ist 2+1 — die
+// Studio-Bereiche (Labor, System, Einstellungen, Glossar) liegen hinter dem
 // „Mehr“-Blatt. Die URL-Kennungen sind weiter gültig (`?tab=labor` usw.),
 // und die Ratchets unten halten das: `expectArea` beweist pro Bereich den
 // Landing-Ort (Leiste + Überschrift), der Scrolltiefe-Test die Verdichtung
@@ -212,28 +212,22 @@ async function seedReceipts(page: Page): Promise<string> {
   return stations[0]?.name ?? "";
 }
 
-// Die URL-Kennungen sind **alltagsdeutsch** (`routing.ts`: `stationen`,
-// `woche`) — nicht die internen `TabId`s (`stations`, `week`). Bis 0.55.0
-// stand hier die interne Schreibweise: `tabFromUrlId` kennt sie nicht und
-// liefert stillschweigend „Jetzt“. Die Suite maß deshalb zweimal den
-// Einstieg und nie „Stationen“ oder „Woche“ — genau dort lag der Querlauf,
-// den der Pixel-9-Check fand. `expectArea` unten verhindert die Wiederkehr.
-// `heading` (nur Studio-Bereiche): B4 (Befund UX/Mathe 2026-09-19) hat die
-// Studio-Bereiche hinter das „Mehr“-Blatt gelegt — in der Bottom-Leiste
-// trägt dann der „Mehr“-Eintrag `aria-current`, nicht der Bereich selbst.
-// Zwei Studio-Bereiche wären beide hinter „Mehr“; der Ratchet prüft daher
-// zusätzlich die Bereichs-Überschrift, damit ein schweigsamer Fallback
-// (z. B. labor → ich) weiter rot wird.
+// URL-Kennungen sind alltagsdeutsch (`stationen`, `einstellungen`,
+// `glossar`), nicht die internen `TabId`s. Alte `woche`- und `ich`-Links
+// werden in routing.ts auf Übersicht bzw. Einstellungen abgebildet.
+// Studio-Bereiche liegen hinter dem „Mehr“-Blatt — dort trägt die Leiste
+// `aria-current`, nicht die Studio-Zeile selbst. Die Überschrift bestätigt,
+// dass der Link trotzdem im gewünschten Bereich landet.
 const AREAS = [
-  { id: "jetzt", label: "Jetzt" },
+  { id: "jetzt", label: "Übersicht" },
   { id: "stationen", label: "Stationen" },
-  { id: "woche", label: "Woche" },
-  { id: "ich", label: "Ich", heading: "Ich" },
+  { id: "einstellungen", label: "Einstellungen", heading: "Einstellungen" },
   { id: "labor", label: "Labor", heading: "Stimmt das?" },
   { id: "system", label: "System", heading: "Einmal einrichten. Weiterlaufen lassen." },
+  { id: "glossar", label: "Glossar", heading: "Glossar" },
 ] as const;
 
-const ICH_TABS = ["Fahrzeug", "Belege", "Bilanz", "Einstellungen"];
+const SETTINGS_TABS = ["Fahrzeug", "Belege", "Bilanz", "App"];
 const LAB_SECTIONS = [
   "sicherheit",
   "prognose",
@@ -590,14 +584,14 @@ test.describe("Mobil: kein Querlauf", () => {
     }
   });
 
-  test("Ich: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
+  test("Einstellungen: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
     page,
   }) => {
     const stationName = await seedReceipts(page);
     expect(stationName, "Keine Station für die Belege geliefert.").not.toBe("");
-    await page.goto("/?tab=ich");
+    await page.goto("/?tab=einstellungen");
     await settled(page);
-    for (const tab of ICH_TABS) {
+    for (const tab of SETTINGS_TABS) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       await settled(page);
       // Die Belegliste ist der Prüfgegenstand — sie muss stehen. Der
@@ -611,7 +605,7 @@ test.describe("Mobil: kein Querlauf", () => {
             .first(),
         ).toBeVisible();
       }
-      await check(page, `Ich → ${tab}`);
+      await check(page, `Einstellungen → ${tab}`);
     }
   });
 

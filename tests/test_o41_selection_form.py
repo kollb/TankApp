@@ -147,6 +147,7 @@ def model_run(tmp_path, observations, monkeypatch):
         live.to_csv(output, index=False)
 
     monkeypatch.setattr("export_influx.export_prices", export)
+    monkeypatch.setattr("export_influx.wait_until_ready", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.history.prepare_archive",
         lambda *a: ([history], {"events": 1, "missing_days": 0}),

@@ -262,12 +262,6 @@ export function AppHeader({
             </p>
           </div>
         </a>
-        <a
-          href="/?konzept=1"
-          className="tap-44 hidden shrink-0 items-center rounded-full border border-outline-variant px-3 py-2 text-xs font-semibold text-primary lg:inline-flex"
-        >
-          Neue GUI ↗
-        </a>
         {ready && (
           <div className="relative flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 xl:flex-none">
             <button

@@ -178,6 +178,10 @@ def refresh(settings: Settings, now=None, progress=None):
     local_day = origin.tz_convert(cfg.timezone).date()
     env = influx.load_config(settings.influx_env, timeout=60)
     env.validate()
+    if progress:
+        progress.note("Warte auf InfluxDB-Bereitschaft (Health ohne Token).")
+    print("models: warte auf InfluxDB /health (bis zu 30 s) ...", flush=True)
+    influx.wait_until_ready(env, timeout=30)
     lookup = influx.station_lookup(settings.polling)
     payload = json.loads(settings.polling.read_text(encoding="utf-8-sig"))
     cadence = len(payload["sets"]) * payload.get("request_interval_seconds", 300) / 60

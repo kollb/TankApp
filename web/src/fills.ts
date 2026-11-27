@@ -1,5 +1,5 @@
 // Belege (Wallet-Ledger): eine Quelle für die Werte, die Liste und Karte
-// zeigen („Ich → Belege“, docs/produkt/UI.md, Bereiche).
+// zeigen („Einstellungen → Belege“, docs/produkt/UI.md, Bereiche).
 //
 // Warum getrennt von der View: Die Belegliste steht mobil als Karte, ab `sm`
 // als Tabelle. Beide lesen dieselben Felder aus `fillRow()` — vorher hätte die
