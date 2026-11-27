@@ -19,8 +19,8 @@
 | Datenerhebung | Mehrstadt-Collector, RAM-Ring, Heartbeat, Upload mit Ack und Wiederholung | [Architektur](../architektur/ARCHITEKTUR.md) |
 | NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup; `/health`-Readiness vor Modell-Refresh und Hintergrund-Prewarm mit maximal 30 s Wartezeit | [Betrieb](../betrieb/BETRIEB.md) |
 | Oberfläche | Seit 0.76.0: Übersicht + Stationen als Alltagsnavigation, dahinter Labor/System/Einstellungen/Glossar; alte Woche- und Ich-Links werden weitergeleitet. Die Übersicht beantwortet eine Frage; der Atlas nutzt ausgewählte → angeheftete → nächste frische Referenz. Server-Netto erfordert dieselbe Referenz-ID und `ref_price_fresh=true`; veraltete Alternativpreise sind markiert. Historische Umsetzung der drei UX-Batches (0.73–0.75) und mobile Kopfzeile siehe Release-Historie | [UI](../produkt/UI.md) |
-| Labor | Drei Blöcke (§5): Vertrauens-Satz + filterbares Tagebuch · eine Kurve + mittlerer Fehler · drei Rechenschritte; acht Bausteine, Fachwerte und Heatmap hinter „Details für Neugierige“; Layout-Regressionsschutz für lange Bezeichner bei 390 px | [UI](../produkt/UI.md#labor-drei-fragen) |
-| Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; Backtest und Veröffentlichung mit gleichem Modellpfad | [Engine](../referenz/ENGINE.md) |
+| Labor | Wochen-Heatmap, Trefferquote/Kalibrierung und Stations-Pool oben; Tagebuch, Prognose und Rechenweg liegen hinter „Warum & Rechenweg“ | [UI](../produkt/UI.md#labor-drei-fragen) |
+| Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; bei frischem Regime-Monitoralarm verkürzte Bootstrap-Halbwertszeit nur in der Live-Prognose, ohne alte PIT-Kalibrierung | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt die Übersicht, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik; `/decide` liefert maximal fünf Alternativen plus `price_fresh`/`ref_price_fresh` | [API](../referenz/API.md) |
@@ -34,6 +34,22 @@ kein offener Codepunkt mehr. Die Referenzmessung auf dem echten Bestand bleibt V
 eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 ## Offene Arbeit
+
+**Überlappende Zeitfenster:** Die publizierten Draws und die Zuordnung in
+`app/decide.py` verwenden weiterhin disjunkte 2-Stunden-Kalenderblöcke.
+Stündlich überlappende Fenster würden zusätzliche Minima und eine andere
+Zuordnung für Restfenster, DST und F3-Nachbarn benötigen; die bestehenden
+Suffix- und Settlement-Verträge beweisen diese Umstellung noch nicht. Ein
+Preistal über 12 Uhr kann deshalb weiterhin geteilt werden. Vor einer
+Umstellung sind ein versionierter kompatibler Vertrag, ein Tal-Test und die
+vollständige Settlement-/P-Seiten-Abnahme nötig.
+
+**Regime-Gewichtung:** Ein aktueller Monitor-Alarm oder eine einzelne gesperrte
+Station begrenzt die Halbwertszeit neuer Live-Draws auf sieben Tage und
+verwendet keine alte PIT-Kurve. Die historischen Backtest-Folds behalten ihren
+bisherigen Pfad; eine zeitgetrennte Gegenmessung der veränderten Live-Prognose
+und der Nachweis auf Betriebsdaten stehen aus. Ein Monitoralarm kann auch ein
+Datenproblem bedeuten und ist kein Beweis eines Marktsprungs.
 
 **UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0).** Jetzt und Woche, Labor,
 Stationen und Ich sind verdichtet; Rohdaten sind Betreiber-Sicht in „System“.

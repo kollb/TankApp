@@ -247,6 +247,7 @@ test("Labor: die Blickweite steuert die Abfrage", async ({ page }) => {
   await stubApi(page, { horizons: true });
   await page.goto("/");
   await clickArea(page, "Labor");
+  await page.getByText("Warum & Rechenweg", { exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Wie gut ist die Prognose?", exact: true }),
   ).toBeVisible();
@@ -266,6 +267,7 @@ test("Modell-Ausblick ohne Mehrtage-Horizonte sperrt die Tabs", async ({ page })
   await stubApi(page, { horizons: false });
   await page.goto("/");
   await clickArea(page, "Labor");
+  await page.getByText("Warum & Rechenweg", { exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Wie gut ist die Prognose?", exact: true }),
   ).toBeVisible();

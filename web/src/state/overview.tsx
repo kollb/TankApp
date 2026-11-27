@@ -988,8 +988,8 @@ function useOverviewState() {
   const series7d = useResource<
     { points: Point[]; error_code: string | null } | null
   >(
-    tab === "stations" && identity
-      ? `/api/v1/series?${identity}&hours=${stationsSpanHours}`
+    (tab === "stations" || tab === "jetzt") && identity
+      ? `/api/v1/series?${identity}&hours=${tab === "jetzt" ? Math.max(72, stationsSpanHours) : stationsSpanHours}`
       : null,
     60000,
     refresh,

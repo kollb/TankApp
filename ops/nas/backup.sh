@@ -161,12 +161,14 @@ fi
 gzip -t "$TMP" || fail "gzip-Integritätsprüfung fehlgeschlagen."
 ENTRIES="$(tar -tzf "$TMP" | wc -l | tr -d ' ')"
 [ "$ENTRIES" -gt 0 ] || fail "Tar enthält keine Mitglieder."
+# grep -q beendet die Pipeline beim ersten Treffer. Unter pipefail kann tar
+# dann mit SIGPIPE fehlschlagen, obwohl das Mitglied vorhanden ist.
 if [ "$HAS_STORE" = 1 ]; then
-    tar -tzf "$TMP" | grep -qx './feedback/store.json' \
+    tar -tzf "$TMP" | grep -x './feedback/store.json' > /dev/null \
         || fail "Tar enthält feedback/store.json nicht — Laufzeitverzeichnis prüfen."
 fi
 if [ "$HAS_ARCHIVE" = 1 ]; then
-    tar -tzf "$TMP" | grep -qx './feedback/archive.jsonl' \
+    tar -tzf "$TMP" | grep -x './feedback/archive.jsonl' > /dev/null \
         || fail "Tar enthält feedback/archive.jsonl nicht — Laufzeitverzeichnis prüfen."
 fi
 SIZE="$(wc -c < "$TMP" | tr -d ' ')"

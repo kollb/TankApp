@@ -104,7 +104,7 @@ test("overview → „Jetzt“ mit echten Zahlen", async ({ page }) => {
   // ④ Die Kurve hat eine Textalternative (M8: kein Bild ohne Text) — das
   //    Blatt ist zu, bis jemand tippt.
   if (expectedPricedCells() > 0) {
-    const curve = row.locator("[role=img]").first();
+    const curve = page.locator("#zeitraum-chart [role=img]").first();
     const label = await curve.getAttribute("aria-label");
     expect(label ?? "", "Die Tageskurve ist nicht beschriftet.").toMatch(
       /^Tagesverlauf 06–24 Uhr — /,

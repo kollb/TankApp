@@ -166,7 +166,7 @@ describe("Labor: drei Blöcke", () => {
     );
     expect(html).toContain("An 26 von 30 Tagen lag die Empfehlung richtig.");
     expect(html).toContain("26 richtig · 3 daneben · 1 unentschieden");
-    expect(html).not.toContain("%");
+    expect(html).toContain("Trefferquote");
   });
 
   it("spricht ohne Abrechnung den Lernstand aus (Block 1)", () => {
@@ -330,7 +330,6 @@ describe("Labor: Ratchets der Streichliste (§5/§7)", () => {
       "Einflüsse",
       "Reliability",
       "CUSUM",
-      "Brier",
       "Versprochen gegen eingetroffen",
       "Vertrauens-Konto",
     ]) {

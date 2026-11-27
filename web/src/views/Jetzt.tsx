@@ -23,13 +23,25 @@ import { BottomSheet } from "../components/BottomSheet";
 import { DayCurve } from "../components/DayCurve";
 import { FreshnessChip } from "../components/FreshnessChip";
 import { GuideBanner } from "../components/GuideBanner";
+import { LineChart } from "../components/LineChart";
+import { useChartPalette } from "../chartTheme";
+import { weekRanking } from "../week";
+import { atlasRows } from "../stations";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
 import { RegimeNotice } from "../components/RegimeNotice";
 import { SkeletonPanel } from "../components/Skeleton";
 import { panel } from "../components/ui";
 import {
+  autoTimeTicks,
+  centPerLiter,
+  currentPrice,
+  kilometersLabel,
+  segments,
+  euro,
   euroPerLiter,
+  windowTimeRangeLabel,
+  type Point,
   fuelLabel,
   timeOfDayLabel,
   type DecideResult,
@@ -41,6 +53,7 @@ import { guideLevel } from "../guide";
 import type { LabSectionId } from "../lab";
 import {
   nowAnswer,
+  nowBestNow,
   nowDayRow,
   nowFreshness,
   nowValidity,
@@ -57,8 +70,10 @@ export interface JetztViewProps {
   liters: number;
   decideRes: ResourceState<DecideResult>;
   stations: Station[];
+  priceOf?: (station: Station) => number | null;
   selectedId: string;
   stripCells: StripCell[];
+  series7d?: ResourceState<{ points: Point[]; error_code: string | null } | null>;
   /** Jüngste Preismeldung — der Frische-Chip im Kopf nennt ihr Alter. */
   pricesAt: string | null;
   /** Stand des Modell-Laufs (`forecastStamp`). */
@@ -134,10 +149,14 @@ export function JetztView(props: JetztViewProps) {
     onRetry,
     online,
     pricesAt,
+    priceOf,
     selectedId,
     stations,
     stripCells,
+    series7d,
   } = props;
+  const [timeView, setTimeView] = useState<"history" | "today" | "week">("today");
+  const colors = useChartPalette();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dayOpen, setDayOpen] = useState(false);
 
@@ -183,6 +202,24 @@ export function JetztView(props: JetztViewProps) {
   const day = nowDayRow(stripCells);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
   const validity = nowValidity(answer, now);
+  const best = nowBestNow(input);
+  const rows = atlasRows({
+    stations, priceOf: priceOf ?? ((station) => currentPrice(station, online ?? true, 0)),
+    selectedId, pinnedIds: [], liters: calculationLiters,
+    serverReferenceId: decide?.primary?.station?.id ?? null,
+    serverAlts: decide?.alternatives_nearby ?? [], worthThreshold: null, borderlineThreshold: null,
+  }).filter((row) => row.price !== null).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)).slice(0, 5);
+
+  const week = weekRanking({ windows: decide?.windows_week, notice: decide?.regime_notice, decide, referencePrice: best.price, liters: calculationLiters, now });
+  const historyPoints = (series7d?.data?.points ?? [])
+    .filter((point) => Number.isFinite(Date.parse(point.timestamp)) && Date.parse(point.timestamp) >= now - 72 * 3600000 && Date.parse(point.timestamp) <= now)
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const historySeries = segments(historyPoints).map((series) => ({ ...series, color: colors.accent }));
+  const points = historyPoints
+    .filter((point) => point.status === "open" && point.price !== null && Number.isFinite(point.price))
+    .map((point) => ({ x: Date.parse(point.timestamp), y: point.price as number }));
+  const weekPoints = week.map((entry) => ({ x: Date.parse(entry.start), y: entry.expectedPrice })).sort((a, b) => a.x - b.x);
+
   /**
    * 3-Stufen-Fallback des Guides: Stufe 1 live + Prognose, Stufe 2 ohne
    * Prognose (Preise live), Stufe 3 offline (letzter Stand). Abgeleitet
@@ -312,7 +349,7 @@ export function JetztView(props: JetztViewProps) {
             )}
             {answer.subline && (
               <p
-                className={`mt-2 max-w-xl text-sm leading-relaxed ${SUB_TONE[answer.tone]}`}
+                className={`mt-2 max-w-xl text-xs leading-relaxed ${SUB_TONE[answer.tone]}`}
               >
                 {answer.subline}
               </p>
@@ -351,32 +388,56 @@ export function JetztView(props: JetztViewProps) {
         )}
       </div>
 
-      {/* ② Die Tageszeile: eine Zeile, ein Tipp entfernt liegt die Kurve. */}
-      {day && (
-        <div id="jetzt-tag" className="mt-3 scroll-mt-24">
-          <button
-            id="jetzt-tagzeile"
-            onClick={() => setDayOpen(true)}
-            aria-haspopup="dialog"
-            className={`${panel} flex w-full items-center gap-3 p-3 text-left transition hover:border-slate-700`}
-          >
-            <span className="min-w-0 flex-1 text-emerald-400">
-              <DayCurve
-                cells={day.cells}
-                label={`Tagesverlauf 06–24 Uhr — ${day.sentence}`}
-                compact
-              />
-            </span>
-            <span className="shrink-0 text-sm font-semibold text-slate-200">
-              Heute: {day.label}
-            </span>
-            <ChevronRight
-              size={16}
-              className="shrink-0 text-slate-500"
-              aria-hidden="true"
-            />
-          </button>
+      <div id="jetzt-tag" className={`${panel} mt-3 scroll-mt-24 p-4`}>
+        <div role="tablist" aria-label="Zeitraum" onKeyDown={(event) => {
+          const ids = ["history", "today", "week"] as const;
+          const current = ids.indexOf(timeView);
+          const next = event.key === "ArrowRight" ? (current + 1) % ids.length : event.key === "ArrowLeft" ? (current + ids.length - 1) % ids.length : event.key === "Home" ? 0 : event.key === "End" ? ids.length - 1 : -1;
+          if (next < 0) return;
+          event.preventDefault();
+          setTimeView(ids[next]);
+          (event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next])?.focus();
+        }} className="flex flex-wrap gap-1 rounded-lg bg-sc-low p-1">
+          {([["history", "3 Tage zurück"], ["today", "Heute"], ["week", "Woche"]] as const).map(([id, label]) => (
+            <button id={`zeitraum-tab-${id}`} key={id} role="tab" aria-selected={timeView === id} tabIndex={timeView === id ? 0 : -1} aria-controls="zeitraum-chart" onClick={() => setTimeView(id)} className={`min-h-11 flex-1 rounded-lg px-3 text-sm font-semibold ${timeView === id ? "bg-sc-lowest text-on-surface" : "text-slate-400"}`}>
+              {label}
+            </button>
+          ))}
         </div>
+        <div id="zeitraum-chart" role="tabpanel" aria-labelledby={`zeitraum-tab-${timeView}`} className="mt-4">
+          {timeView === "today" && (day ? <>
+            <DayCurve cells={day.cells} label={`Tagesverlauf 06–24 Uhr — ${day.sentence}`} />
+            <button id="jetzt-tagzeile" onClick={() => setDayOpen(true)} aria-haspopup="dialog" className="mt-2 text-sm text-slate-300">Heute: {day.label} <ChevronRight size={16} className="inline" aria-hidden="true" /></button>
+          </> : <p className="text-sm text-slate-400">Noch kein Tagesverlauf vorhanden.</p>)}
+          {timeView === "history" && (points.length >= 2 ? <>
+            <LineChart series={[
+              ...historySeries,
+              ...(best.price === null ? [] : [{ name: "Aktueller Bestpreis", color: colors.text, dash: "4 3", pts: [{ x: points[0].x, y: best.price }, { x: points[points.length - 1].x, y: best.price }] }]),
+            ]} xTicks={autoTimeTicks(points[0].x, points[points.length - 1].x)} yFmt={(value) => euro(value, 3)} ariaLabel="Preisverlauf der gewählten Station" />
+            {best.price !== null && <p className="mt-2 text-xs text-slate-400">Gestrichelt: aktueller Bestpreis {euroPerLiter(best.price)}</p>}
+          </> : <p className="text-sm text-slate-400">{series7d?.pending ? "Verlauf wird geladen." : "Noch nicht genügend Preismeldungen für den Verlauf."}</p>)}
+          {timeView === "week" && (week.length ? <>
+            <LineChart series={[{ name: "Erwarteter Preis", color: colors.accent, pts: weekPoints }]} yFmt={(value) => euro(value, 3)} ariaLabel="Beste Zeitfenster der Woche" />
+            <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {week.map((entry) => <li key={entry.id} className="rounded-lg bg-sc-low p-3 text-sm"><span className="font-semibold">{entry.dayLabel}</span><br />{windowTimeRangeLabel(entry.start, entry.end, true)}<br /><span className="text-xs text-slate-400">{entry.priceLabel}{entry.savingLabel ? ` · ${entry.savingLabel}` : ""}</span></li>)}
+            </ol>
+          </> : <p className="text-sm text-slate-400">Noch keine Zeitfenster für die Woche vorhanden.</p>)}
+        </div>
+      </div>
+
+      {rows.length > 0 && !problem && (
+        <section className={`${panel} mt-3 p-4`} aria-labelledby="jetzt-stationen-title">
+          <h2 id="jetzt-stationen-title" className="text-sm font-semibold text-slate-100">Stationen im Vergleich</h2>
+          <table className="mt-3 w-full table-fixed text-left text-xs text-slate-300">
+            <thead className="text-slate-500"><tr><th className="w-[30%] pb-2 font-medium">Station</th><th className="w-[24%] pb-2 font-medium">Preis &amp; Diff.</th><th className="w-[29%] pb-2 font-medium">Umweg &amp; Netto</th><th className="pb-2 font-medium">Route</th></tr></thead>
+            <tbody className="divide-y divide-outline-variant/40">{rows.map((row) => {
+              const difference = row.price !== null && best.price !== null ? (row.price - best.price) * 100 : null;
+              const net = row.netEur !== null && row.serverPriceFresh !== false;
+              return <tr key={row.station.station_id}><td className="break-words py-3 pr-2">{row.station.name}</td><td className="py-3 pr-2 tabular-nums">{euroPerLiter(row.price)}<br /><span className="text-slate-500">{difference !== null ? centPerLiter(difference) : "—"}</span></td><td className="py-3 pr-2 tabular-nums">{net && row.detourKm !== null ? kilometersLabel(row.detourKm, 1) : "—"}<br />{net ? `${euro(row.netEur!)} €` : "—"}</td><td className="py-3">{row.station.maps_url ? <a href={row.station.maps_url} target="_blank" rel="noopener noreferrer" aria-label={`Route zu ${row.station.name}`} className="underline">Route</a> : "—"}</td></tr>;
+            })}</tbody>
+          </table>
+          <details className="mt-2 text-xs text-slate-400"><summary className="cursor-pointer">Warum &amp; Rechenweg</summary><p>Preisunterschied zum aktuellen Bestpreis. Netto und Umweg stammen aus dem Vergleich des Servers mit der gewählten Referenzstation; ohne passende frische Angaben bleiben sie leer.</p></details>
+        </section>
       )}
 
       {why && (

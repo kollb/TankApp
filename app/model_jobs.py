@@ -295,6 +295,7 @@ def _init(
     shared_draws: bool = True,
     model_kind: str = "profile_ar2",
     day_pair: bool = True,
+    regime_active: bool = False,
 ) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task).
 
@@ -310,6 +311,7 @@ def _init(
     _STATE["cache_dir"] = cache_dir
     _STATE["shared_draws"] = bool(shared_draws)
     _STATE["day_pair"] = bool(day_pair)
+    _STATE["regime_active"] = bool(regime_active)
     # A10/B3: Default seit 0.58.0 ist profile_ar2; ensemble bleibt Option.
     _STATE["model_kind"] = str(model_kind or "profile_ar2").strip().lower()
 
@@ -653,6 +655,17 @@ def _run(task: tuple) -> dict[str, Any]:
             )
             return out
         model = fit(item, origin, cfg)
+        from .config import regime_adjusted_half_life
+        from .regime_monitor import station_blocked
+
+        regime_active = bool(_STATE.get("regime_active")) or station_blocked(model)
+        if regime_active:
+            model["config"] = dict(model["config"])
+            model["config"]["bootstrap_ew_half_life_days"] = regime_adjusted_half_life(
+                model["config"].get("bootstrap_ew_half_life_days"), True
+            )
+            # Die frühere PIT-Kurve wurde mit anderem Bootstrap gemessen.
+            calibration = None
         if calibration is not None:
             from engine.models import with_calibration
 
@@ -711,6 +724,7 @@ class ModelTaskPool:
         shared_draws: bool = True,
         model_kind: str = "profile_ar2",
         day_pair: bool = True,
+        regime_active: bool = False,
     ) -> None:
         self.series_map = _slim_series_map(series_map)
         self.cfg = cfg
@@ -718,6 +732,7 @@ class ModelTaskPool:
         self.cache_dir = cache_dir
         self.shared_draws = bool(shared_draws)
         self.day_pair = bool(day_pair)
+        self.regime_active = bool(regime_active)
         self.model_kind = str(model_kind or "profile_ar2").strip().lower()
         # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
         # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
@@ -739,6 +754,7 @@ class ModelTaskPool:
             self.shared_draws,
             self.model_kind,
             self.day_pair,
+            self.regime_active,
         )
         if not self._serial:
             try:
@@ -754,6 +770,7 @@ class ModelTaskPool:
                         self.shared_draws,
                         self.model_kind,
                         self.day_pair,
+                        self.regime_active,
                     ),
                 )
             except _POOL_FAILURES:
@@ -853,6 +870,7 @@ class ModelTaskPool:
             self.shared_draws,
             self.model_kind,
             self.day_pair,
+            self.regime_active,
         )
 
 

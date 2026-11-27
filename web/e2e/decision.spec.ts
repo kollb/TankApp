@@ -275,3 +275,17 @@ test("Gültigkeits-Countdown wechselt ohne neue Freigabe zur Ablaufkarte", async
   await expect(page.getByText(/bis 12:01/)).toHaveCount(0);
   await expect(page.getByText("Empfehlung abgelaufen")).toHaveCount(0);
 });
+
+test("Übersicht: Zeitraum lässt sich per Tastatur wechseln", async ({ page }) => {
+  await stubBase(page);
+  await page.goto("/");
+  const tabs = page.getByRole("tablist", { name: "Zeitraum" });
+  const today = tabs.getByRole("tab", { name: "Heute" });
+  await expect(today).toHaveAttribute("aria-selected", "true");
+  await today.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(tabs.getByRole("tab", { name: "3 Tage zurück" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("End");
+  await expect(tabs.getByRole("tab", { name: "Woche" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel")).toContainText("Noch keine Zeitfenster");
+});

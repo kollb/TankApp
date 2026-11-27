@@ -29,6 +29,29 @@ BACKTEST_DAYS = 21
 CALIBRATION_REGIME_BLACKOUT_DAYS = 45
 
 
+def active_regime_monitor(bundle, origin):
+    """Nur ein frischer Monitor-Befund darf den nächsten Live-Fit beeinflussen."""
+    from .regime_monitor import evaluate_publication
+
+    if not isinstance(bundle, dict):
+        return False
+    try:
+        stamp = dt.datetime.fromisoformat(
+            str(bundle.get("published_at")).replace("Z", "+00:00")
+        )
+        if stamp.tzinfo is None:
+            return False
+        age = origin.to_pydatetime() - stamp
+    except (TypeError, ValueError, AttributeError):
+        return False
+    if age < dt.timedelta(0) or age > dt.timedelta(days=2):
+        return False
+    return evaluate_publication(bundle.get("forecasts"))["status"] in {
+        "warn",
+        "blocked",
+    }
+
+
 def calibration_regime_blackout(origin, cfg, fuel: str) -> bool:
     """Blockiert die Anwendung einer alten PIT-Kurve im Regime-Übergang."""
     from engine.regimes import regime_breaks_utc
@@ -152,13 +175,14 @@ def refresh(settings: Settings, now=None, progress=None):
     # erhalten ausschließlich den im *vorigen* Backtest gespeicherten,
     # zeitlich getrennt abgenommenen Kandidaten. Der aktuelle Backtest erzeugt
     # wiederum erst die Kandidatur für den nächsten Modell-Lauf.
+    prior_publication = publication(settings)
     prior_calibration_candidates = {
         (
             row.get("city"),
             row.get("station_id"),
             str(row.get("fuel") or "").lower(),
         ): row.get("calibration_candidate")
-        for row in publication(settings).get("forecasts", [])
+        for row in prior_publication.get("forecasts", [])
         if isinstance(row, dict)
     }
 
@@ -478,6 +502,7 @@ def refresh(settings: Settings, now=None, progress=None):
                 # TANKAPP_MODEL_KIND stellt auf ein Einzelmodell um.
                 model_kind=getattr(settings, "model_kind", "profile_ar2"),
                 day_pair=getattr(settings, "day_pair", True),
+                regime_active=active_regime_monitor(prior_publication, origin),
             ) as task_pool:
                 # Phase A: Fit + 24-h-Prognose — liefert die Modelle.
                 first = task_pool.run(

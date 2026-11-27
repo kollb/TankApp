@@ -3506,13 +3506,14 @@ function berlinClockParts(stamp: string | null | undefined): ClockParts | null {
 export function windowTimeRangeLabel(
   start: string | null | undefined,
   end: string | null | undefined,
+  includeMinutes = false,
 ): string {
   const from = berlinClockParts(start);
   const to = berlinClockParts(end);
   if (!from || !to) return "—";
 
   const sameTime = from.hour === to.hour && from.minute === to.minute;
-  const wholeHours = from.minute === 0 && to.minute === 0;
+  const wholeHours = !includeMinutes && from.minute === 0 && to.minute === 0;
   const two = (value: number) => String(value).padStart(2, "0");
   const clock = (value: ClockParts) =>
     wholeHours

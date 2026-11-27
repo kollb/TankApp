@@ -376,3 +376,36 @@ def test_backtest_horizon_labels_are_leads_not_window_length(observations, cfg):
     assert leads == [0, 72, 168]
     daily = rows.loc[rows["horizon_hours"] == DAILY_LEAD_HOURS]
     assert daily["pit"].notna().any()
+
+
+def test_regime_monitor_shortens_live_bootstrap_without_changing_uniform_default():
+    from app.config import regime_adjusted_half_life
+    from app.refresh import active_regime_monitor
+    from engine.models import exp_block_weights
+
+    assert regime_adjusted_half_life(None, False) is None
+    assert regime_adjusted_half_life(4.0, True) == 4.0
+    assert regime_adjusted_half_life(14.0, True) == 7.0
+    rows = [{"station_id": str(n), "law_rise_outside_noon": 1} for n in range(2)]
+    fresh = {"published_at": "2026-07-31T00:00:00+00:00", "forecasts": rows}
+    assert active_regime_monitor(fresh, ORIGIN)
+    assert not active_regime_monitor(
+        {**fresh, "published_at": "2026-07-01T00:00:00+00:00"}, ORIGIN
+    )
+    assert not active_regime_monitor({**fresh, "forecasts": rows[:1]}, ORIGIN)
+    faster = exp_block_weights(15, regime_adjusted_half_life(14.0, True))
+    baseline = exp_block_weights(15, 14.0)
+    assert faster[-1] / faster[0] == pytest.approx(4.0)
+    assert baseline[-1] / baseline[0] == pytest.approx(2.0)
+
+
+def test_regime_monitor_changes_live_fit_config_without_mutating_base_config(plan):
+    series_map, cfg, _ = plan
+    key = next(iter(series_map))
+    with ModelTaskPool(series_map, cfg, ORIGIN, workers=1, regime_active=True) as pool:
+        result = pool.run([("fit", key, 24)])[0]
+    assert result["ok"]
+    assert result["model"]["config"]["bootstrap_ew_half_life_days"] == min(
+        cfg.bootstrap_ew_half_life_days, 7.0
+    )
+    assert cfg.bootstrap_ew_half_life_days == 14.0
