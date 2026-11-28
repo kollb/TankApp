@@ -445,7 +445,15 @@ rot < 90 %, unter 72 Punkten keine Aussage) — rot löst das Güte-Gate aus
 Seit 11.09.2026 reduziert der Worker die Bootstrap-Pfade auf **2-h-Fenster-Minima
 je Draw** und **Nowcast-Draws** und veröffentlicht sie im Artefakt
 (`forecasts[].draws_24h` / `draws_7d`, `engine/probabilities.py`). Der Decision
-Layer rechnet daraus ohne Numerik-Abhängigkeit (`app/pside.py`):
+Layer rechnet daraus ohne Numerik-Abhängigkeit (`app/pside.py`): Neue Artefakte ergänzen
+versionierte, komprimierte Minima für 120-Minuten-Fenster mit 60-Minuten-Schritt;
+die alte Blockmatrix bleibt unverändert. F3 vergleicht ±6 Stunden anhand
+stündlicher Startabstände. Für abgeschnittene Fenster fehlen exakte Rest-Draws,
+daher wird dafür keine Verteilungswahrscheinlichkeit behauptet. Die neue
+Entscheidungs-Kohorte `decision-v1-sliding-60m` wird nicht mit historischen
+Block-Ereignissen vermischt. Das produktive Stationsdatei-Layout begrenzt die
+Größe jeder einzelnen Datei; der unveränderte Alt-Monolith bleibt lesbar.
+
 
 | Größe | Definition | Verwendung |
 |---|---|---|

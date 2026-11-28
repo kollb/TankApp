@@ -295,6 +295,7 @@ def _init(
     shared_draws: bool = True,
     model_kind: str = "profile_ar2",
     day_pair: bool = True,
+    regime_active: bool = False,
 ) -> None:
     """Wird je Prozess einmal ausgeführt (Daten via Fork/Init, nicht je Task).
 
@@ -310,6 +311,7 @@ def _init(
     _STATE["cache_dir"] = cache_dir
     _STATE["shared_draws"] = bool(shared_draws)
     _STATE["day_pair"] = bool(day_pair)
+    _STATE["regime_active"] = bool(regime_active)
     # A10/B3: Default seit 0.58.0 ist profile_ar2; ensemble bleibt Option.
     _STATE["model_kind"] = str(model_kind or "profile_ar2").strip().lower()
 
@@ -521,7 +523,9 @@ def _records(frame) -> list[dict[str, Any]]:
     return records
 
 
-def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
+def _draws(
+    index, paths, cfg, shared: bool = False, *, sliding: bool = False
+) -> dict[str, Any]:
     """Kompakte Draw-Veröffentlichung für den Decision Layer (Konzept §4).
 
     Die vollen Pfade bleiben im Worker; veröffentlicht werden nur die
@@ -539,6 +543,7 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
         block_minima,
         block_starts,
         nowcast_draws,
+        sliding_block_minima,
     )
     import numpy as np
     import pandas as pd
@@ -608,11 +613,35 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
             "missing": 65535,
             "minima_b64": base64.b64encode(deltas.tobytes()).decode("ascii"),
         }
+    sliding_payload = None
+    if sliding:
+        import zlib
+
+        starts_sliding, values = sliding_block_minima(
+            index, paths[:n], cfg.timezone, step_minutes=cfg.step_minutes
+        )
+        quantized = np.full(values.shape, -2147483648, dtype="<i4")
+        rounded = np.rint(values * 10000)
+        valid = np.isfinite(rounded) & (rounded > -2147483648) & (rounded <= 2147483647)
+        quantized[valid] = rounded[valid].astype("<i4")
+        sliding_payload = {
+            "version": 1,
+            "stride_minutes": 60,
+            "block_minutes": BLOCK_MINUTES,
+            "step_minutes": cfg.step_minutes,
+            "starts": [stamp.isoformat() for stamp in starts_sliding],
+            "rows": n,
+            "encoding": "zlib-int32-1e4",
+            "minima_b64": base64.b64encode(zlib.compress(quantized.tobytes())).decode(
+                "ascii"
+            ),
+        }
     return {
         "n": n,
         "block_minutes": BLOCK_MINUTES,
         "blocks": blocks,
         "minima": minima_rows,
+        **({"sliding": sliding_payload} if sliding else {}),
         "nowcast": nowcast_row,
         "suffix_minima": suffix,
         # A11: gemeinsame Ziehung über Stationen (Konzept §4.2). False =
@@ -653,6 +682,17 @@ def _run(task: tuple) -> dict[str, Any]:
             )
             return out
         model = fit(item, origin, cfg)
+        from .config import regime_adjusted_half_life
+        from .regime_monitor import station_blocked
+
+        regime_active = bool(_STATE.get("regime_active")) or station_blocked(model)
+        if regime_active:
+            model["config"] = dict(model["config"])
+            model["config"]["bootstrap_ew_half_life_days"] = regime_adjusted_half_life(
+                model["config"].get("bootstrap_ew_half_life_days"), True
+            )
+            # Die frühere PIT-Kurve wurde mit anderem Bootstrap gemessen.
+            calibration = None
         if calibration is not None:
             from engine.models import with_calibration
 
@@ -675,7 +715,13 @@ def _run(task: tuple) -> dict[str, Any]:
         out.update(
             ok=True,
             points=_records(frame),
-            draws=_draws(frame.index, paths, cfg, shared=shared),
+            draws=_draws(
+                frame.index,
+                paths,
+                cfg,
+                shared=shared,
+                sliding=kind == "fit" or hours == 168,
+            ),
         )
         # Nur der 24-h-Fit wird publiziert. Wide-Aufgaben brauchen ihr Modell
         # lokal für predict(), der ~100-kB-Rücktransfer war aber tote Arbeit.
@@ -711,6 +757,7 @@ class ModelTaskPool:
         shared_draws: bool = True,
         model_kind: str = "profile_ar2",
         day_pair: bool = True,
+        regime_active: bool = False,
     ) -> None:
         self.series_map = _slim_series_map(series_map)
         self.cfg = cfg
@@ -718,6 +765,7 @@ class ModelTaskPool:
         self.cache_dir = cache_dir
         self.shared_draws = bool(shared_draws)
         self.day_pair = bool(day_pair)
+        self.regime_active = bool(regime_active)
         self.model_kind = str(model_kind or "profile_ar2").strip().lower()
         # Phase B hat höchstens drei gleichzeitig unabhängige Aufgaben je
         # Station. Mehr Prozesse könnten nie Arbeit bekommen, würden aber
@@ -739,6 +787,7 @@ class ModelTaskPool:
             self.shared_draws,
             self.model_kind,
             self.day_pair,
+            self.regime_active,
         )
         if not self._serial:
             try:
@@ -754,6 +803,7 @@ class ModelTaskPool:
                         self.shared_draws,
                         self.model_kind,
                         self.day_pair,
+                        self.regime_active,
                     ),
                 )
             except _POOL_FAILURES:
@@ -853,6 +903,7 @@ class ModelTaskPool:
             self.shared_draws,
             self.model_kind,
             self.day_pair,
+            self.regime_active,
         )
 
 

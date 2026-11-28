@@ -93,7 +93,9 @@ def settings(tmp_path):
     )
 
 
-def _horizon(hours: int, cfg, seed: int) -> tuple[list[dict], dict]:
+def _horizon(
+    hours: int, cfg, seed: int, *, sliding: bool = False
+) -> tuple[list[dict], dict]:
     """(Quantils-Reihen, Draws) eines Horizonts — über die Originalfunktionen.
 
     Die Werte sind synthetisch (kein Fit), Form und Präzision sind die echten:
@@ -124,14 +126,14 @@ def _horizon(hours: int, cfg, seed: int) -> tuple[list[dict], dict]:
         np.nan,
         level[None, :] + rng.normal(0, 0.02, (cfg.bootstrap_samples, periods)),
     )
-    return _records(frame), _draws(index, paths, cfg, shared=True)
+    return _records(frame), _draws(index, paths, cfg, shared=True, sliding=sliding)
 
 
-def _forecast_row(position: int, cfg) -> dict:
+def _forecast_row(position: int, cfg, *, sliding: bool = False) -> dict:
     """Eine veröffentlichte Stations-Zeile, Feld für Feld wie in ``refresh.py``."""
-    points, draws_24h = _horizon(24, cfg, seed=position)
+    points, draws_24h = _horizon(24, cfg, seed=position, sliding=sliding)
     points_3d, _unused = _horizon(72, cfg, seed=100 + position)
-    points_7d, draws_7d = _horizon(168, cfg, seed=200 + position)
+    points_7d, draws_7d = _horizon(168, cfg, seed=200 + position, sliding=sliding)
     return {
         "city": "Frankfurt",
         "station_id": f"{UID[:-2]}{position:02d}",
@@ -413,6 +415,24 @@ def _station_file(settings, row, generation):
         / "generations"
         / generation
         / forecast_file_name(row)
+    )
+
+
+def test_eleven_sliding_forecasts_use_bounded_split_files(settings, cfg):
+    """The current production layout budgets each part, not a legacy monolith."""
+    rows = [_forecast_row(position, cfg, sliding=True) for position in range(STATIONS)]
+    sizes = _write_split(settings, rows)
+    assert sizes["file_count"] == STATIONS
+    assert sizes["largest_file_bytes"] < PUBLICATION_BUDGET_BYTES
+    assert sizes["index_bytes"] < 100_000
+    assert publication_status(settings)["readable"] is True
+    from app.decide import _sliding_draws
+
+    restored = publication(settings)["forecasts"]
+    assert len(restored) == STATIONS
+    assert all(
+        _sliding_draws(row["draws_24h"]) and _sliding_draws(row["draws_7d"])
+        for row in restored
     )
 
 

@@ -30,6 +30,7 @@ import {
   autoTimeTicks,
   centPerLiter,
   countLabel,
+  deNumber,
   euro,
   percentLabel,
   timeLabel,
@@ -129,6 +130,7 @@ export function LaborView(props: LaborViewProps) {
 
   const [diaryFilter, setDiaryFilter] = useState<DiaryFilterId>("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [methodOpen, setMethodOpen] = useState(false);
   const [horizonDays, setHorizonDays] = useState<number | null>(null);
   const blockRefs = useRef<Record<string, HTMLElement | null>>({});
 
@@ -136,6 +138,7 @@ export function LaborView(props: LaborViewProps) {
   // beweist. Alte Karten-Anker (karte-6-selektion) öffnen die Details.
   useEffect(() => {
     if (!focusSection) return;
+    setMethodOpen(true);
     const raw = String(focusSection);
     if (raw.startsWith("karte-")) {
       setDetailsOpen(true);
@@ -255,7 +258,31 @@ export function LaborView(props: LaborViewProps) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <section className={`${panel} p-4 lg:col-span-2`} aria-labelledby="labor-heatmap">
+          <h2 id="labor-heatmap" className="text-sm font-semibold text-slate-100">Wochen-Heatmap</h2>
+          {heatmap.error || heatmap.data?.error_code ? <LoadError errorCode={heatmap.data?.error_code || heatmap.errorCode} fallback="Der Wochenrhythmus konnte nicht geladen werden." onRetry={refreshNow} compact /> : heatmap.pending && !heatmap.data ? <SkeletonChart height="h-40" label="Wochenrhythmus wird geladen" /> : heatmap.data ? <HeatmapGrid heatmap={heatmap.data} livePhase={statsSummaryRes.data?.live_phase ?? null} /> : <Empty>Noch kein Wochenrhythmus geladen.</Empty>}
+        </section>
+        <section className={`${panel} p-4`} aria-labelledby="labor-kalibrierung">
+          <h2 id="labor-kalibrierung" className="text-sm font-semibold text-slate-100">Trefferquote und Kalibrierung</h2>
+          <p className="mt-2 text-sm text-slate-300">{accuracySentence(hits, total)}</p>
+          <dl className="mt-3 flex flex-wrap gap-5 text-xs text-slate-400">
+            <div><dt>Trefferquote</dt><dd className="text-2xl font-semibold tabular-nums text-slate-100">{advice?.hit_rate != null ? percentLabel(advice.hit_rate * 100, 0) : "—"}</dd></div>
+            <div><dt>Brier-Score</dt><dd className="text-2xl font-semibold tabular-nums text-slate-100">{advice?.brier_30d != null ? deNumber(advice.brier_30d) : "—"}</dd></div>
+            <div><dt>Bewertet</dt><dd className="text-2xl font-semibold tabular-nums text-slate-100">{total != null ? countLabel(total) : "—"}</dd></div>
+          </dl>
+          {(advice?.reliability ?? []).filter((bin) => bin.count > 0 && bin.empirical_hit_rate != null).map((bin) => <div key={bin.bin} className="mt-2 text-xs text-slate-400"><span>{bin.range} · {countLabel(bin.count)}</span><div className="mt-1 h-2 rounded-md bg-sc-low"><div className="h-2 rounded-md bg-slate-400" style={{width: `${Math.max(0, Math.min(100, (bin.empirical_hit_rate ?? 0) * 100))}%`}} /></div></div>)}
+        </section>
+        <section className={`${panel} p-4`} aria-labelledby="labor-pool">
+          <h2 id="labor-pool" className="text-sm font-semibold text-slate-100">Stations-Pool</h2>
+          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-100">{selection.data ? countLabel(selection.data.count) : "—"}</p>
+          <p className="text-xs text-slate-400">Stationen in der Auswahl</p>
+          {deltas.length ? <ul className="mt-3 divide-y divide-outline-variant/40">{deltas.slice(0, 5).map((station) => <li key={station.station_id} className="py-2 text-xs text-slate-300"><div className="flex justify-between gap-2"><span>{station.name}</span><span className="tabular-nums">{centPerLiter(station.delta_ct)}</span></div><div className="mt-1 h-2 rounded-md bg-sc-low"><div className="h-2 rounded-md bg-slate-400" style={{width: `${Math.abs(station.delta_ct ?? 0) / Math.max(...deltas.map((row) => Math.abs(row.delta_ct ?? 0)), 0.01) * 100}%`}} /></div></li>)}</ul> : <p className="mt-3 text-xs text-slate-400">Noch keine Stations-Abstände vorhanden.</p>}
+        </section>
+      </div>
+      <details className="mt-3" open={methodOpen} onToggle={(event) => setMethodOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-300">Warum &amp; Rechenweg</summary>
+      <div className="mt-3 grid grid-cols-1 gap-3">
         {/* 1 · Kann ich vertrauen? */}
         <LabBlockCard
           block="sicherheit"
@@ -581,6 +608,8 @@ export function LaborView(props: LaborViewProps) {
           )}
         </LabBlockCard>
       </div>
+
+      </details>
 
       {/* Frische-Fußzeile — fester Platz in dieser Ansicht */}
       <FreshnessLine

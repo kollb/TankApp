@@ -228,6 +228,18 @@ def engine_config(settings):
     )
 
 
+def regime_adjusted_half_life(half_life, regime_active: bool):
+    """Wirksame Halbwertszeit für einen bestätigten Monitor-Alarm.
+
+    Ein uniformer Bootstrap (None) bleibt ohne Alarm uniform; bei einem
+    Alarm entspricht er unendlicher Halbwertszeit und wird auf sieben Tage
+    begrenzt. Kürzer konfigurierte Halbwertszeiten bleiben unverändert.
+    """
+    if not regime_active:
+        return half_life
+    return 7.0 if half_life is None else min(float(half_life), 7.0)
+
+
 def _env_choice(name: str, default: str, allowed: set[str]) -> str:
     """Umgebungsvariable mit erlaubten Werten; Unbekanntes fällt zurück."""
     value = os.environ.get(name, "").strip().lower()

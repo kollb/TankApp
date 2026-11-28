@@ -627,3 +627,13 @@ def test_health_payload_nennt_verifiziertheit(tmp_path):
     for key in ("verified", "verified_count", "unverified_count", "verified_newest_at"):
         assert key in status
     assert status["verified"] is True
+
+
+def test_backup_member_check_reads_long_tar_listing_without_sigpipe(tmp_path):
+    runtime = _rich_runtime(tmp_path)
+    directory = runtime / "zzz"
+    directory.mkdir()
+    for i in range(1800):
+        (directory / f"{i:04d}-{'x' * 80}").write_text("x")
+    result = _run_backup(runtime, tmp_path / "backup")
+    assert result.returncode == 0, result.stderr

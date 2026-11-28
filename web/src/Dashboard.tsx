@@ -420,8 +420,10 @@ function DashboardShell() {
             liters={effLiters}
             decideRes={decideRes}
             stations={stations}
+            priceOf={price}
             selectedId={selectedId}
             stripCells={stripCells}
+            series7d={series7d}
             pricesAt={nowPricesAt}
             forecastAt={nowForecastAt}
             onNavigate={handleNowNavigate}

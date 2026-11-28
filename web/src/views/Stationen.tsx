@@ -938,13 +938,11 @@ export function StationenView(props: StationenViewProps) {
                     {comparePair.sentence}
                   </p>
                   {comparePair.netEur !== null && (
-                    <p
-                      className="mt-2 text-xs text-slate-500"
-                      title="Quelle: decide → alternatives_nearby (Server-Netto-€ inkl. Umweg)"
-                    >
-                      Quelle: die Umweg-Rechnung des Servers (Netto-€ inkl.
-                      Umweg)
-                    </p>
+                    <details className="mt-2 text-xs text-slate-500">
+                      <summary className="cursor-pointer">Warum &amp; Rechenweg</summary>
+                      <p>Quelle: die Umweg-Rechnung des Servers (Netto-€ inkl. Umweg).</p>
+                      {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && <p>„Günstiger“ vergleicht nur die Literpreise an der Säule. Umweg und Zeit stehen in der Netto-Zeile.</p>}
+                    </details>
                   )}
                   {comparePair.netEur !== null &&
                     comparePair.serverPriceFresh === false && (
@@ -953,13 +951,7 @@ export function StationenView(props: StationenViewProps) {
                         frisch.
                       </p>
                     )}
-                  {comparePair.deltaCt !== null && comparePair.deltaCt < 0 && (
-                    <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                      Achtung beim Lesen: „günstiger“ vergleicht nur die
-                      Literpreise an der Säule. Umweg und Zeit stehen in der
-                      Netto-Zeile darüber.
-                    </p>
-                  )}
+
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                     <button
                       onClick={() => onNavigate("overview")}

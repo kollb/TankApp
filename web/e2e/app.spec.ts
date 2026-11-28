@@ -37,6 +37,7 @@ test("honest setup state and all views", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Stimmt das?", exact: true }),
   ).toBeVisible();
+  await page.getByText("Warum & Rechenweg", { exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Kann ich vertrauen?", exact: true }),
   ).toBeVisible();

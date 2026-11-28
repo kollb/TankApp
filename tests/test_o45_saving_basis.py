@@ -254,3 +254,60 @@ def test_o45_clause_without_median_advantage():
     clause = _wait_saving_clause(SAVING_MINIMA, 0.0)
     assert "im günstigsten Moment bis zu 2,09 €" in clause
     assert "im Mittel kein Vorsprung gegenüber jetzt" in clause
+
+
+def test_sliding_valley_reaches_decide_and_settlement_window(o45_settings):
+    """The actual decision spans noon, and settlement sees that same range."""
+    import numpy as np
+    import pandas as pd
+
+    from app.feedback import window_settlement_kind
+    from app.model_jobs import _draws
+    from engine.config import Config
+
+    index = pd.date_range(NOW, periods=72, freq="5min")
+    local = index.tz_convert("Europe/Berlin")
+    low = ((local.hour == 11) & (local.minute >= 30)) | (
+        (local.hour == 12) & (local.minute < 30)
+    )
+    prices = np.where(low, 1.5, 1.8)
+    draws = _draws(index, np.tile(prices, (10, 1)), Config(), sliding=True)
+    points = [
+        {"timestamp": t.isoformat(), "q50": float(p)} for t, p in zip(index, prices)
+    ]
+    path = o45_settings.runtime / "engine/current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "station_id": UID,
+        "city": "Frankfurt",
+        "fuel": "e10",
+        "origin": NOW.isoformat(),
+        "points": points,
+        "points_7d": points,
+        "draws_24h": draws,
+        "draws_7d": draws,
+    }
+    path.write_text(json.dumps({"published_at": NOW.isoformat(), "forecasts": [row]}))
+    result = _decide(o45_settings)
+    primary = result["primary"]
+    window = primary["recommended_window"]
+    assert dt.datetime.fromisoformat(window["start"]) == dt.datetime(
+        2026, 9, 21, 9, tzinfo=dt.timezone.utc
+    )
+    assert dt.datetime.fromisoformat(window["end"]) == dt.datetime(
+        2026, 9, 21, 10, 55, tzinfo=dt.timezone.utc
+    )
+    assert window["expected_min_price"] == 1.5
+    assert result["gate_context"]["decision_contract"].endswith("sliding-60m")
+    snap = {
+        "action": "wait",
+        "station_id": UID,
+        "window_start": window["start"],
+        "window_end": window["end"],
+    }
+    episode = {"last_snapshot": snap}
+    assert (
+        window_settlement_kind(episode, UID, "2026-09-21T10:15:00+00:00")
+        == "im_fenster"
+    )
+    assert window_settlement_kind(episode, UID, "2026-09-21T11:15:00+00:00") == "kulanz"

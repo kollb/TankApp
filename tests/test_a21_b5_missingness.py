@@ -205,3 +205,16 @@ def test_ablation_runs_are_paired_and_reproducible(tmp_path):
     )
     assert gapped["null_fill_share_max"] > clean["null_fill_share_max"]
     assert gapped["effective_draws_min"] < clean["effective_draws_min"]
+
+
+def test_night_gaps_do_not_propagate_nan_into_daytime(fitted):
+    model, blocks = fitted
+    mask = np.zeros(blocks.shape, dtype=bool)
+    mask[::3, :72] = True  # 00:00–06:00 bei fünfminütiger Auflösung
+    corrupted = ablation.apply_gaps(model, mask)
+    for policy in ("zero_fill", "coherent_block"):
+        forecast = predict(corrupted, 24, kind="profile_ar2", missingness_policy=policy)
+        local = forecast.index.tz_convert("Europe/Berlin")
+        daytime = forecast.loc[(local.hour >= 6) & (local.hour < 22)]
+        assert not daytime.empty
+        assert np.isfinite(daytime[["q025", "q10", "q50", "q90", "q975"]]).all().all()

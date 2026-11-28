@@ -89,6 +89,8 @@ export function weekRanking(input: {
   /** Preisniveau-Termin (Tankrabatt) — er entwertet Abstände hinter der Kante. */
   notice?: RegimeNotice | null;
   decide?: DecideResult | null;
+  referencePrice?: number | null;
+  liters?: number;
   now?: number;
 }): WeekEntry[] {
   const now = input.now ?? Date.now();
@@ -117,7 +119,10 @@ export function weekRanking(input: {
     );
     if (!Number.isFinite(index) || index < 0 || index > 6) continue;
     const pastEdge = windowPastRegimeEdge(window, notice);
-    const saving = pastEdge ? null : windowSavingEur(window);
+    const hasReference = input.referencePrice != null && Number.isFinite(input.referencePrice) && input.liters != null && Number.isFinite(input.liters) && input.liters > 0;
+    const saving = pastEdge ? null : hasReference
+      ? Math.max(0, (input.referencePrice! - window.expected_price) * input.liters!)
+      : "referencePrice" in input ? null : windowSavingEur(window);
     const percent =
       stage === "A" && window.p !== null && window.p !== undefined
         ? Math.round(window.p * 100)

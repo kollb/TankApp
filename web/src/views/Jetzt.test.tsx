@@ -10,6 +10,8 @@
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { Level1Sheet } from "../components/Level1Sheet";
 import type { DecideResult, Station } from "../data";
 import { JetztView, type JetztViewProps } from "./Jetzt";
@@ -146,8 +148,9 @@ describe("Jetzt: Aufbau (§3 — eine Frage, eine Antwort)", () => {
     const html = render();
     expect(html).toContain("Warten bis ~18 Uhr");
     expect(html).toContain("spart ca. 1,60 €");
-    // Genau ein Route-Link, genau ein „Warum?“.
-    expect((html.match(/https:\/\/maps\.example\//g) ?? []).length).toBe(1);
+    // Genau ein Route-Link in der Urteilskarte; die Tabelle hat eigene Routen.
+    const card = html.split('id="jetzt-tag"')[0];
+    expect((card.match(/https:\/\/maps\.example\//g) ?? []).length).toBe(1);
     expect((html.match(/Warum\?/g) ?? []).length).toBe(1);
   });
 
@@ -161,9 +164,10 @@ describe("Jetzt: Aufbau (§3 — eine Frage, eine Antwort)", () => {
     expect(html).not.toMatch(/<dialog[^>]* open/);
   });
 
-  it("ohne Messwerte gibt es keine Tageszeile", () => {
+  it("ohne Messwerte bleibt der Zeitraum-Umschalter mit Leerzustand", () => {
     const html = render({ stripCells: [] });
-    expect(html).not.toContain('id="jetzt-tag"');
+    expect(html).toContain("Noch kein Tagesverlauf vorhanden.");
+    expect(html).toContain('role="tablist"');
     expect(html).toContain('id="jetzt-antwort"');
   });
 });
@@ -357,4 +361,49 @@ describe("Ebene 1: Begründungs-Sheet", () => {
     expect(html).toContain("Grundlage: die geladenen Preismeldungen.");
     expect(html).toContain("Im Labor vertiefen: Was die App vorhersagt");
   });
+});
+
+describe("Zeitraum-Umschalter", () => {
+  it("zeigt Heute als ausgewählten Tab", () => {
+    const html = render();
+    expect(html).toContain('role="tablist"');
+    expect(html).toMatch(/role="tab" aria-selected="true"[^>]*>Heute/);
+    expect(html).toContain("3 Tage zurück");
+    expect(html).toContain("Woche");
+  });
+});
+
+
+it("wechselt zwischen Verlauf, Tageskurve und Wochenfenstern", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const decision = decide("wait");
+  decision.windows_week = [{ start: "2026-09-15T18:00:00+02:00", end: "2026-09-15T20:00:00+02:00", expected_price: 1.7, expected_saving_eur: 99, p: null }];
+  act(() => root.render(<JetztView {...baseProps} decideRes={idle(decision)} series7d={{ data: { points: [{ timestamp: minutesAgo(60), price: 1.8, status: "open" }, { timestamp: minutesAgo(10), price: 1.75, status: "open" }], error_code: null }, error: false, errorCode: null, pending: false, receivedAt: 0 }} />));
+  const tab = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === label)!;
+  act(() => tab("3 Tage zurück").click());
+  expect(host.textContent).toContain("aktueller Bestpreis");
+  expect(host.querySelector('[aria-label="Preisverlauf der gewählten Station"]')).toBeTruthy();
+  act(() => tab("Woche").click());
+  expect(host.textContent).toContain("18:00–20:00 Uhr");
+  expect(host.textContent).toContain("spart ca. 1,96 €");
+  expect(host.textContent).not.toContain("99,00 €");
+  act(() => tab("Heute").click());
+  expect(host.querySelector('[aria-label^="Tagesverlauf"]')).toBeTruthy();
+  act(() => root.unmount());
+  host.remove();
+});
+
+
+it("zeigt höchstens fünf offene Stationspreise in fester Spaltenfolge", () => {
+  const entries = Array.from({ length: 6 }, (_, i) => station(String(i), { price: 1.7 + i / 100 }));
+  const html = render({ stations: [...entries, station("zu", { status: "closed", price: null })] });
+  const table = html.split("<table")[1].split("</table>")[0];
+  expect(table.indexOf("Station")).toBeLessThan(table.indexOf("Preis &amp; Diff."));
+  expect(table.indexOf("Preis &amp; Diff.")).toBeLessThan(table.indexOf("Umweg &amp; Netto"));
+  expect((table.match(/<tr>/g) ?? []).length).toBe(6);
+  expect(table).not.toContain("Station 5");
+  expect(table).not.toContain("Station zu");
 });

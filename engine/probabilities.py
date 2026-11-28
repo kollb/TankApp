@@ -103,3 +103,45 @@ def nowcast_draws(paths: np.ndarray) -> np.ndarray:
     if paths.shape[1] == 0:
         return np.full(paths.shape[0], np.nan)
     return paths[:, 0]
+
+
+def sliding_block_minima(
+    index: pd.DatetimeIndex,
+    paths: np.ndarray,
+    timezone: str,
+    *,
+    step_minutes: int = 5,
+) -> tuple[pd.DatetimeIndex, np.ndarray]:
+    """Minima of complete two-hour windows beginning each local clock hour.
+
+    Window identity and duration are real UTC instants. In particular, the
+    repeated autumn hour has two distinct starts. Missing path values remain
+    missing; an incomplete *time grid* is rejected rather than manufacturing
+    evidence for a partially covered window. This is an engine primitive, not
+    yet part of the published decision contract.
+    """
+    if index.tz is None:
+        raise ValueError("sliding windows require a timezone-aware index")
+    if step_minutes <= 0 or BLOCK_MINUTES % step_minutes or 60 % step_minutes:
+        raise ValueError("step must divide both the stride and window duration")
+    if paths.ndim != 2 or paths.shape[1] != len(index):
+        raise ValueError("paths must have one column per timestamp")
+    utc = index.tz_convert("UTC")
+    if len(utc) > 1 and not np.all(
+        (utc[1:] - utc[:-1]) == pd.Timedelta(minutes=step_minutes)
+    ):
+        raise ValueError("sliding windows require a regular increasing time grid")
+    count = BLOCK_MINUTES // step_minutes
+    starts = []
+    columns = []
+    for position in range(max(0, len(utc) - count + 1)):
+        stamp = utc[position]
+        if stamp.to_pydatetime() != block_key_utc(stamp.to_pydatetime(), timezone, 60):
+            continue
+        segment = paths[:, position : position + count]
+        safe = np.where(np.isfinite(segment), segment, np.inf)
+        values = safe.min(axis=1) if len(paths) else np.array([], dtype=float)
+        columns.append(np.where(np.isfinite(values), values, np.nan))
+        starts.append(stamp)
+    result = np.column_stack(columns) if columns else np.empty((paths.shape[0], 0))
+    return pd.DatetimeIndex(starts, tz="UTC"), result

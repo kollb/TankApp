@@ -320,3 +320,19 @@ describe("weekEntryWhy: höchstens fünf Zeilen (§4/§7)", () => {
     );
   });
 });
+
+
+describe("Wochenliste mit aktuellem Bestpreis", () => {
+  it("berechnet und sortiert Ersparnisse gegen den angegebenen Preis", () => {
+    const entries = ranking([
+      window("2026-09-14T18:00:00+02:00", { expected_price: 1.70, expected_saving_eur: 20 }),
+      window("2026-09-15T18:00:00+02:00", { expected_price: 1.65, expected_saving_eur: 1 }),
+    ], { referencePrice: 1.75, liters: 40 });
+    expect(entries[0].savingLabel).toBe("spart ca. 4,00 €");
+    expect(entries[1].savingLabel).toBe("spart ca. 2,00 €");
+  });
+  it("zeigt ohne Bestpreis keine Ersatzreferenz", () => {
+    const entries = ranking([window("2026-09-14T18:00:00+02:00", { expected_saving_eur: 5 })], { referencePrice: null, liters: 40 });
+    expect(entries[0].savingLabel).toBeNull();
+  });
+});

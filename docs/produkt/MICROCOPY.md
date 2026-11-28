@@ -3,13 +3,13 @@
 > Stand: 27.11.2026 · App-Version **0.76.0** · gilt für `web/src/**`,
 > `web/rp2/**`, `rp2/fallback_gui.py`, Fehlertexte in `app/**` und die
 > Push-Texte in `app/notify.py`. Neu mit 0.74.0 (UX-NEUENTWURF Batch 2):
-> das Labor hat drei Blöcke, Rohdaten und CSV wohnen in „System“, Stationen
+> die Labor-Methodik hat drei Blöcke, Rohdaten und CSV wohnen in „System“, Stationen
 > und Einstellungen sind verdichtet. Neu mit 0.75.0 (Batch 3): Profil und seltene
 > App-Aktionen liegen auf schmalen Displays gebündelt im Kopfzeilen-Blatt.
 > Neu mit 0.76.0: Übersicht + Stationen sind die Alltagsnavigation; alte
 > Woche- und Ich-Links leiten auf Übersicht bzw. Einstellungen um.
 > **Entfallen:** Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
-> Einflüsse-Balken, Güte-Panel, eingebettetes Glossar, Heatmap-Schalter,
+> Einflüsse-Balken, eingebettetes Glossar, Heatmap-Schalter,
 > Fachjargon im Alltag.
 
 ## Inhaltsverzeichnis
@@ -102,7 +102,7 @@ Diese Sätze stehen so in `rp2/fallback_gui.py` — wiederverwenden, nicht neu f
 
 ### 4b. Bereich „Übersicht“: feste Muster
 
-Genau fünf Chips, immer gleich benannt: `Jetzt tanken` (grün; rot, wenn der Tankrest das Warten blockiert) · `Warten` (blau, Überschrift `Warten bis ~18 Uhr`) · `Kaum Unterschied` (grau, `Tanken, wann’s passt`) · `Preisvergleich` (grau, `Günstigste gerade: <Station>`) · `Offline` (grau, `Letzter Stand: <Station>` + `Der Preis an der Säule zählt.`). Die Überschrift trägt höchstens 25 Wörter, die Karte genau **eine** Zahl in Euro (`spart ca. <1,60> €`, sonst `1,709 €/L`) und genau **eine** Handlung (`Route`); „Warum?“ erklärt in höchstens fünf Zeilen. Sicherheit ist **ein Wort** (`sehr sicher` · `ziemlich sicher` · `kaum einschätzbar`), nie eine Prozentzahl. Gültigkeit: `bis <17:45>`, in den letzten 30 Minuten `· noch <12> min`; eine abgelaufene Freigabe fällt auf die graue Tatsachenvariante. Einen eigenen Woche-Tab gibt es nicht mehr; alte Woche-Links führen zur Übersicht. `windows_week` bleibt ein API-Vertrag für kompatible Clients, aber keine sichtbare Bestenliste.
+Genau fünf Chips, immer gleich benannt: `Jetzt tanken` (grün; rot, wenn der Tankrest das Warten blockiert) · `Warten` (blau, Überschrift `Warten bis ~18 Uhr`) · `Kaum Unterschied` (grau, `Tanken, wann’s passt`) · `Preisvergleich` (grau, `Günstigste gerade: <Station>`) · `Offline` (grau, `Letzter Stand: <Station>` + `Der Preis an der Säule zählt.`). Die Überschrift trägt höchstens 25 Wörter, die Karte genau **eine** Zahl in Euro (`spart ca. <1,60> €`, sonst `1,709 €/L`) und genau **eine** Handlung (`Route`); „Warum?“ erklärt in höchstens fünf Zeilen. Sicherheit ist **ein Wort** (`sehr sicher` · `ziemlich sicher` · `kaum einschätzbar`), nie eine Prozentzahl. Gültigkeit: `bis <17:45>`, in den letzten 30 Minuten `· noch <12> min`; eine abgelaufene Freigabe fällt auf die graue Tatsachenvariante. Einen eigenen Woche-Tab gibt es nicht mehr; alte Woche-Links führen zur Übersicht. Der Zeitraum-Umschalter zeigt `3 Tage zurück`, `Heute` und `Woche`; in der Wochenliste stehen die besten Zeitfenster mit `windowTimeRangeLabel(..., true)` als `HH:MM–HH:MM Uhr`. Ersparnisse beziehen sich auf den aktuellen Bestpreis, fehlen ohne belastbare Referenz und hinter einer Regime-Kante.
 
 ### 4c. Preis-Atlas: feste Muster
 
@@ -110,7 +110,8 @@ Server-Netto darf nur erscheinen, wenn die `station_id` der lokalen Referenz mit
 
 ### 4d. Bereich „Labor“: feste Muster
 
-Drei Blöcke, sonst nichts; die Fragen stehen genau einmal in `lab.ts` (`LAB_BLOCKS`), die Tagebuch-Sprache in derselben Datei (`diaryActionWord`, `diaryOutcome`, `voidReasonWord`). Block 1 **„Kann ich vertrauen?“** trägt **einen** Satz als Zählung, kein Prozent: `An <26> von <30> Tagen lag die Empfehlung richtig.` Ohne Messung: `Noch nicht gemessen — die ersten Empfehlungen sind Lern-Fälle.` Darunter das filterbare Tagebuch (`Alle · Richtig · Daneben · Unentschieden · Nicht bewertbar`) mit den Worten `Warten` · `Jetzt tanken` · `Woanders tanken` · `Keine klare Empfehlung` (nie „Treffer“, nie „Fehler“). Block 2 **„Wie gut ist die Prognose?“** zeigt eine Kurve und **einen** Satz: `Im Schnitt <1,8> ct/L daneben.` Block 3 **„Wie rechnet die App?“** nennt drei Schritte in Alltagssprache (Tagesmuster der Stadt · aktuelle Lage · 12-Uhr-Regel); Formeln, acht Bausteine, Fachwerte und die Heatmap liegen gebündelt hinter `Details für Neugierige`. Rohdaten, CSV und API-Explorer stehen in „System“; das Labor verweist nur dorthin.
+Oben stehen Wochen-Heatmap, Trefferquote und Kalibrierung sowie Stations-Pool. Fehlende Kennzahlen stehen als `—`, nie als Null. Die Zählung bleibt ein Satz: `An <26> von <30> Tagen lag die Empfehlung richtig.` Ohne Messung: `Noch nicht gemessen — die ersten Empfehlungen sind Lern-Fälle.` Trefferquote, Brier-Score und Zahl der bewerteten Empfehlungen dürfen als Kennzahlen erscheinen; Ergebnisworte bleiben `richtig` · `daneben` · `unentschieden` (nie „Treffer“ oder „Fehler“). Unter „Warum & Rechenweg“ liegen die drei Fragen aus `lab.ts`, das Tagebuch, die Prognosekurve und die Methodik. Rohdaten, CSV und API-Explorer stehen in „System“.
+
 
 ### 4e. Bereich „System“: feste Muster
 

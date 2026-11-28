@@ -448,6 +448,74 @@ def _calendar_block_key(stamp: dt.datetime) -> dt.datetime:
     return block_key_utc(stamp, "Europe/Berlin", 120)
 
 
+def _sliding_draws(draws: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Decode and validate the additive hourly-grid artifact with strict bounds."""
+    import base64
+    import struct
+    import zlib
+
+    if not isinstance(draws, dict) or not isinstance(draws.get("sliding"), dict):
+        return None
+    data = draws["sliding"]
+    try:
+        starts = data["starts"]
+        rows = data["rows"]
+        if (
+            data["version"] != 1
+            or data["encoding"] != "zlib-int32-1e4"
+            or data["stride_minutes"] != 60
+            or data["block_minutes"] != 120
+            or type(data["step_minutes"]) is not int
+            or data["step_minutes"] <= 0
+            or 60 % data["step_minutes"] != 0
+            or type(rows) is not int
+            or not 0 <= rows <= 500
+            or not isinstance(starts, list)
+            or len(starts) > 168
+            or rows != draws.get("n")
+        ):
+            return None
+        parsed = [_parse_ts(item) for item in starts]
+        if any(stamp is None for stamp in parsed):
+            return None
+        if any(b - a != dt.timedelta(hours=1) for a, b in zip(parsed, parsed[1:])):
+            return None
+        if any(block_key_utc(stamp, "Europe/Berlin", 60) != stamp for stamp in parsed):
+            return None
+        encoded = data["minima_b64"]
+        if not isinstance(encoded, str) or len(encoded) > 500_000:
+            return None
+        packed = base64.b64decode(encoded, validate=True)
+        expected = rows * len(starts) * 4
+        inflater = zlib.decompressobj()
+        raw = inflater.decompress(packed, expected + 1)
+        if len(raw) != expected or not inflater.eof or inflater.unused_data:
+            return None
+        flat = struct.unpack(f"<{rows * len(starts)}i", raw)
+        matrix = [
+            [
+                None if x == -2147483648 else x / 10000
+                for x in flat[i * len(starts) : (i + 1) * len(starts)]
+            ]
+            for i in range(rows)
+        ]
+        return {
+            "blocks": [
+                {
+                    "start": stamp.isoformat(),
+                    "end": (stamp + dt.timedelta(hours=2)).isoformat(),
+                }
+                for stamp in parsed
+            ],
+            "minima": matrix,
+            "stride_minutes": 60,
+            "step_minutes": data["step_minutes"],
+            "suffix_minima": None,
+        }
+    except (KeyError, ValueError, TypeError, OverflowError, struct.error, zlib.error):
+        return None
+
+
 def _block_for_window(draws: dict[str, Any], window_start: str) -> int | None:
     """Index des veröffentlichten Blocks zu einem Fensterbeginn.
 
@@ -458,7 +526,7 @@ def _block_for_window(draws: dict[str, Any], window_start: str) -> int | None:
     stamp = _parse_ts(window_start)
     if stamp is None:
         return None
-    target = _calendar_block_key(stamp)
+    target = stamp if draws.get("stride_minutes") == 60 else _calendar_block_key(stamp)
     for index, block in enumerate(draws.get("blocks", []) or []):
         if _parse_ts(block.get("start")) == target:
             return index
@@ -486,7 +554,11 @@ def _window_p_value(
     minima = draws.get("minima")
     if not minima:
         return None
-    return window_p_details(minima, _block_for_window(draws, window_start))
+    return window_p_details(
+        minima,
+        _block_for_window(draws, window_start),
+        block_hours=1.0 if draws.get("stride_minutes") == 60 else 2.0,
+    )
 
 
 def _draws_for_window(
@@ -505,7 +577,14 @@ def _draws_for_window(
     """
     if not draws:
         return None, None, "unavailable"
-    block_idx = _block_for_window(draws, window.get("start"))
+    if window.get("_sliding"):
+        draws = _sliding_draws(draws)
+        if draws is None:
+            return None, None, "unavailable"
+    block_idx = _block_for_window(
+        draws,
+        window.get("_block_start") if window.get("_sliding") else window.get("start"),
+    )
     if block_idx is None:
         return None, None, "unavailable"
     blocks = draws.get("blocks") or []
@@ -519,6 +598,10 @@ def _draws_for_window(
         return None, None, "unavailable"
     if latest_by is not None and latest_by < block_end:
         return None, None, "partial_without_prefix_artifact"
+    if window.get("_sliding"):
+        window_end = _parse_ts(window.get("end"))
+        if window_end != block_end - dt.timedelta(minutes=draws["step_minutes"]):
+            return None, None, "partial_without_prefix_artifact"
     if window_start != block_start:
         suffix = draws.get("suffix_minima")
         if isinstance(suffix, dict) and suffix.get("block") == block_idx:
@@ -640,7 +723,13 @@ def _format_window_item(
         if scoped_draws and minima is not None
         else None
     )
-    p_info = _window_p_value(draw_view, w["start"]) if draw_view else None
+    p_info = (
+        _window_p_value(
+            draw_view, w.get("_block_start") if w.get("_sliding") else w["start"]
+        )
+        if draw_view
+        else None
+    )
     return {
         "start": w["start"],
         "end": w["end"],
@@ -748,6 +837,54 @@ def _rank_windows(
         )
     )
     return windows
+
+
+def _overlapping_windows(
+    points: list[dict[str, Any]],
+    clock_now: dt.datetime,
+    latest_by: dt.datetime | None,
+    sliding: dict[str, Any],
+    *,
+    today_only: bool,
+    wh_hours: list[float] | None,
+    anchor: float | None,
+) -> list[dict[str, Any]]:
+    entries = sorted(
+        (stamp, value)
+        for p in points
+        if (stamp := _parse_ts(p.get("timestamp"))) is not None
+        and (value := _q50(p)) is not None
+    )
+    windows = []
+    today = clock_now.astimezone(BERLIN_TZ).date()
+    for block in sliding["blocks"]:
+        start = _parse_ts(block["start"])
+        end = _parse_ts(block["end"])
+        if today_only and start.astimezone(BERLIN_TZ).date() != today:
+            continue
+        usable = [
+            (t, v)
+            for t, v in entries
+            if start <= t < end
+            and t >= clock_now
+            and (latest_by is None or t <= latest_by)
+        ]
+        if not usable:
+            continue
+        first, last = usable[0][0], usable[-1][0]
+        local_start, local_end = first.astimezone(BERLIN_TZ), last.astimezone(BERLIN_TZ)
+        windows.append(
+            {
+                "start": first.isoformat(),
+                "end": last.isoformat(),
+                "expected_price": round(statistics.median(v for _, v in usable), 3),
+                "start_hour": round(local_start.hour + local_start.minute / 60, 2),
+                "end_hour": round(local_end.hour + local_end.minute / 60, 2),
+                "_block_start": start.isoformat(),
+                "_sliding": True,
+            }
+        )
+    return _rank_windows(windows, wh_hours=wh_hours, anchor=anchor)[:3]
 
 
 def _today_windows(
@@ -1560,13 +1697,44 @@ def evaluate_decide(
     wh_default_n = int(wallet_stats.get("wh_default_n") or 0)
     wh_profile = wh_weekday if wh_personalized else None
 
+    sliding_24h = _sliding_draws(draws_24h)
+    sliding_7d = _sliding_draws(draws_7d)
+
     # Beste Fenster heute und über die Woche (echte 2-h-Blöcke).
     # latest_by schneidet den Horizont ab (Konzept §4.3: Fenster ⊆ [jetzt, T_max]).
-    windows_today = _today_windows(
-        points, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+    windows_today = (
+        _overlapping_windows(
+            points,
+            clock_now,
+            latest_by,
+            sliding_24h,
+            today_only=True,
+            wh_hours=wh_profile,
+            anchor=anchor,
+        )
+        if sliding_24h is not None
+        else []
+        if "sliding" in draws_24h
+        else _today_windows(
+            points, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+        )
     )
-    windows_week = _week_windows(
-        points_7d, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+    windows_week = (
+        _overlapping_windows(
+            points_7d,
+            clock_now,
+            latest_by,
+            sliding_7d,
+            today_only=False,
+            wh_hours=wh_profile,
+            anchor=anchor,
+        )
+        if sliding_7d is not None
+        else []
+        if "sliding" in draws_7d
+        else _week_windows(
+            points_7d, clock_now, latest_by, wh_hours=wh_profile, anchor=anchor
+        )
     )
     # „Es gäbe Prognosen, aber keins mehr vor deinem spätesten Zeitpunkt“ —
     # das ist eine andere Aussage als „keine Prognose vorhanden“.
@@ -1678,13 +1846,30 @@ def evaluate_decide(
         if rec_draws and rec_minima is not None
         else None
     )
-    p_better_own = _p_besser_value(rec_draw_view, rec_start, anchor)
+    rec_block_key = (
+        windows_today[0].get("_block_start")
+        if windows_today and windows_today[0].get("_sliding")
+        else rec_start
+    )
+    p_better_own = _p_besser_value(rec_draw_view, rec_block_key, anchor)
     alt_draws = (
         by_station.get(best_alt["station_id"], {}).get("draws_24h")
         if best_alt
         else None
     )
-    p_better_alt = _p_besser_value(alt_draws, rec_start, anchor)
+    if windows_today and windows_today[0].get("_sliding"):
+        alt_scoped, alt_index, alt_scope = _draws_for_window(
+            windows_today[0], alt_draws, latest_by
+        )
+        alt_minima, _ = _scoped_minima(
+            windows_today[0], alt_scoped, alt_index, alt_scope
+        )
+        alt_draws = (
+            {**alt_scoped, "minima": alt_minima}
+            if alt_scoped and alt_minima is not None
+            else None
+        )
+    p_better_alt = _p_besser_value(alt_draws, rec_block_key, anchor)
 
     no_window_reason = (
         "Kein Fenster mehr vor deinem spätesten Tankzeitpunkt "
