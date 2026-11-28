@@ -117,8 +117,14 @@ def sliding_block_minima(
     Window identity and duration are real UTC instants. In particular, the
     repeated autumn hour has two distinct starts. Missing path values remain
     missing; an incomplete *time grid* is rejected rather than manufacturing
-    evidence for a partially covered window. This is an engine primitive, not
-    yet part of the published decision contract.
+    evidence for a partially covered window.
+
+    Additiv zum Altformat veröffentlicht: ``app/model_jobs.py::_draws`` legt
+    die Minima als versioniertes ``sliding``-Artefakt neben die disjunkten
+    Blöcke, ``app/decide.py`` entscheidet daraus (``_overlapping_windows``)
+    und vergibt die eigene M7-Kohorte ``decision-v1-sliding-60m``. Ein
+    angeschnittenes Fenster erhält bewusst keine Verteilungswahrscheinlichkeit
+    — dafür fehlen Präfix-/Suffix-Draws.
     """
     if index.tz is None:
         raise ValueError("sliding windows require a timezone-aware index")

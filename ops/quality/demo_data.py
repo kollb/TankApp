@@ -323,6 +323,9 @@ def build_publication(
                 "model_kind": "profile_ar2",
                 "day_pair": True,
                 "shared_draws": True,
+                # A21-B5.1: Der Demo-Stack spricht denselben Vertrag wie der
+                # Betrieb — inklusive ausgewiesenem Bootstrap-Modus.
+                "bootstrap_mode": "default",
                 "pava_pool_stats": diagnostics.get("pava_pool_stats"),
                 "calibration": model.get("calibration"),
                 "calibrated": bool(model.get("calibrated", False)),
@@ -351,7 +354,9 @@ def build_publication(
     }
 
 
-def build_selection_artifact(settings, observations: pd.DataFrame, n_boot: int = 400) -> dict:
+def build_selection_artifact(
+    settings, observations: pd.DataFrame, n_boot: int = 400
+) -> dict:
     """O16: δ̂-Selektion für den Demo-Stapel — derselbe Pfad wie der NAS-Lauf.
 
     Schreibt die synthetischen Beobachtungen als Trainingsbestand
@@ -372,9 +377,7 @@ def build_selection_artifact(settings, observations: pd.DataFrame, n_boot: int =
     # O41: derselbe Schreiber wie der NAS-Lauf — und dieselbe Regel: ein
     # struktureller Grund ohne Daten wird nicht veröffentlicht.
     if result.get("error_code") in (None, "selection_not_available"):
-        publish_selection(
-            settings, result["generated_at"], result.get("by_fuel") or {}
-        )
+        publish_selection(settings, result["generated_at"], result.get("by_fuel") or {})
     return result
 
 

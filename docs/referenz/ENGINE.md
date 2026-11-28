@@ -763,6 +763,9 @@ Neu in `report.json` (und als Abschnitt „Messgrundlagen (B0)“ in `report.md`
   Default von App und Backtest ist `profile_ar2` mit gemeinsamer Ziehung und
   Day-Pair. `harmonic_ar2` und `ensemble` bleiben explizite Alternativen;
   `backtest_model_kind` und `model_kind` müssen zur Veröffentlichung passen.
+  Die Veröffentlichung führt zusätzlich `bootstrap_mode`
+  (`default`|`regime_short`) — der Backtest misst immer den Standardlauf,
+  ein regimeverkürzter Live-Lauf ist eine eigene Kohorte.
 
 - `pit` — PIT-Paare als Histogramm je Station und Horizont (`24h`, `72h`,
   `168h`), jeweils `all` und `break_free`. PIT = Mittelrang der Beobachtung
@@ -957,9 +960,25 @@ genau eines:
 | `harmonic_ar2` | Forschung | nein | nein | nein |
 | `ensemble` | Holdout | ja | ja | nein (Vergleichspfad, keine Entscheidung) |
 
+**Bootstrap-Modus als Kohortenglied (0.77.0, A21-B5.1):** Die
+Bootstrap-Halbwertszeit ist verteilungsrelevant (Issue 46). Ein frischer
+Regime-Monitoralarm oder eine gesperrte Einzelstation verkürzt sie in der
+Live-Prognose auf sieben Tage (`app/config.py::regime_adjusted_half_life`);
+der Backtest-Pfad bleibt unberührt. Jede Veröffentlichung trägt deshalb
+`bootstrap_mode` (`default` | `regime_short`, aus
+`app/model_contracts.py::bootstrap_mode` gegen die Basis 14 Tage), und die
+Vertrags-Kohorte lautet
+`{kind}+day_pair=…+shared=…+bootstrap=…`. Zwei verschiedene
+Ziehverteilungen landen damit nicht in einer M7-Statistik. Altbestände ohne
+Feld ergeben `model_contract = unknown` und öffnen keine Freigabe
+rückwirkend.
+
 - `is_forecast_released(model_kind)` ist die einzige Stelle, die der
   Freigabekette die Antwort gibt; ein nicht freigegebener Pfad sperrt mit
-  `model_not_released` (§6.5 der Kette, vor M7).
+  `model_not_released` (§6.5 der Kette, vor M7). Der Bootstrap-Modus ist
+  **kein** Freigabegrund, sondern eine Kohortengrenze — ein älteres, aber
+  gültiges Artefakt ohne das Feld bleibt freigabefähig, trifft aber keine
+  gemessene Evidenz.
 - `CONTRACT_FINGERPRINT` verändert sich nur bei Vertragsänderung und steht
   in den A70-Tests als Zeuge.
 - Die 12-Uhr-Regime-Auffälligkeit sperrt mit `regime_check_pending`

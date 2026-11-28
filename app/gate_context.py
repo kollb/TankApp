@@ -57,6 +57,8 @@ import math
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .model_contracts import BOOTSTRAP_MODES
+
 # A21-B5.1: Version des Entscheidungs-/Ereignisvertrags des M7-Gates.
 # Anheben, wenn sich fachlich ändert: das Abrechnungsereignis (Fenstermin
 # vs. Anker − θ), θ, die Symmetrie der Win-/Loss-Regeln, der
@@ -107,10 +109,17 @@ def model_contract_id(forecast: Any) -> str:
     """Fachliche Modell-Vertrags-ID einer Veröffentlichung.
 
     Enthält Modellkern und die verteilungsrelevanten Ziehungsmodi
-    (Day-Pair, Shared Draws) — **keine** Fit-ID, keinen Origin, keine
-    Parameter eines einzelnen Fits. Ein Refresh im selben statistischen
-    Vertrag verwirst damit die Historie nicht (Issue 211); ein Wechsel des
-    Kerns oder der Ziehungslogik bildet eine neue Kohorte.
+    (Day-Pair, Shared Draws, Bootstrap-Halbwertszeit) — **keine** Fit-ID,
+    keinen Origin, keine Parameter eines einzelnen Fits. Ein Refresh im selben
+    statistischen Vertrag verwirft damit die Historie nicht (Issue 211); ein
+    Wechsel des Kerns, der Ziehungslogik oder der Regime-Verkürzung bildet
+    eine neue Kohorte.
+
+    Die Regime-Halbwertszeit (sieben statt vierzehn Tage) ist
+    verteilungsrelevant: Sie verschiebt die Ziehgewichte der Tagesblöcke und
+    damit die Pfadabdeckung. Solche Settlements gehören deshalb nicht in
+    dieselbe Kohorte wie der Standardlauf — und eine vor der Verkürzung
+    gemessene M7-Freigabe öffnet den verkürzten Lauf nicht.
     """
     if not isinstance(forecast, dict):
         return UNKNOWN
@@ -118,10 +127,14 @@ def model_contract_id(forecast: Any) -> str:
     day_pair = forecast.get("day_pair")
     draws = forecast.get("draws_24h")
     shared = draws.get("shared") if isinstance(draws, dict) else None
-    if not kind or day_pair is None or shared is None:
+    mode = forecast.get("bootstrap_mode")
+    if not kind or day_pair is None or shared is None or mode not in BOOTSTRAP_MODES:
         # Teilweise bekannte Alt-Artefakte erklären keinen Vertrag.
         return UNKNOWN
-    return f"{kind}+day_pair={int(bool(day_pair))}+shared={int(bool(shared))}"
+    return (
+        f"{kind}+day_pair={int(bool(day_pair))}+shared={int(bool(shared))}"
+        f"+bootstrap={mode}"
+    )
 
 
 def forecast_calibration_mode(forecast: Any) -> str:

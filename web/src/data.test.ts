@@ -626,7 +626,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
       m7GateScopeLine({
         gate_context: {
           fuel: "e10",
-          model_contract: "profile_ar2+day_pair=1+shared=1",
+          model_contract: "profile_ar2+day_pair=1+shared=1+bootstrap=default",
           calibration_mode: "pit_24h",
           decision_contract: "decision-v1",
           regime_ref: "2026-07-01T00:00",
@@ -635,7 +635,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
       }),
     ).toBe(
       "Gültigkeitsbereich dieser Freigabe: e10, Modellvertrag " +
-        "profile_ar2+day_pair=1+shared=1, 24-h-PIT-Kalibrierung, decision-v1, " +
+        "profile_ar2+day_pair=1+shared=1+bootstrap=default, 24-h-PIT-Kalibrierung, decision-v1, " +
         "nach bestätigter Regime-Kante. Ein Vertragswechsel braucht eine " +
         "eigens belegte Freigabe.",
     );
@@ -644,7 +644,7 @@ describe("live phase hints (Kalibrierungs-Freigabe)", () => {
       m7GateScopeLine({
         gate_context: {
           fuel: "e10",
-          model_contract: "profile_ar2+day_pair=1+shared=1",
+          model_contract: "profile_ar2+day_pair=1+shared=1+bootstrap=default",
           calibration_mode: "raw",
           decision_contract: "decision-v1",
           regime_ref: null,

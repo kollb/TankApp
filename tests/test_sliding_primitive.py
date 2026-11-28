@@ -175,3 +175,70 @@ def test_settlement_uses_exact_sliding_range(monkeypatch):
     assert captured == [(start, end)]
     assert result["p_realized"] == 1.5
     assert result["outcome"] == "win"
+
+
+def test_regime_bootstrap_is_its_own_gate_cohort():
+    """A21-B5.1: Die Regime-Verkürzung ist verteilungsrelevant, nicht Kosmetik.
+
+    Ein frischer Monitoralarm zieht die Tagesblöcke mit sieben statt vierzehn
+    Tagen Halbwertszeit (``app/config.py::regime_adjusted_half_life``). Damit
+    trägt der Lauf eine andere Pfadverteilung — er darf weder in derselben
+    M7-Kohorte wie der Standardlauf landen noch eine vorher gemessene Freigabe
+    erben.
+    """
+    import datetime as dt
+
+    from app.feedback import select_gate_cohort
+    from app.gate_context import (
+        gate_context_key,
+        model_contract_id,
+        statistical_gate_context,
+    )
+
+    forecast = {
+        "model_kind": "profile_ar2",
+        "day_pair": True,
+        "bootstrap_mode": "default",
+        "draws_24h": {"shared": True},
+    }
+    when = dt.datetime(2026, 9, 21, tzinfo=dt.timezone.utc)
+    standard = statistical_gate_context(forecast, "e10", when, [])
+    shortened = statistical_gate_context(
+        {**forecast, "bootstrap_mode": "regime_short"}, "e10", when, []
+    )
+    assert standard["model_contract"] != shortened["model_contract"]
+    historical = {
+        "gate_cohorts": [
+            {"context_key": gate_context_key(standard), "calibrated": True}
+        ]
+    }
+    assert select_gate_cohort(historical, standard)["calibrated"] is True
+    assert select_gate_cohort(historical, shortened)["calibrated"] is False
+    # Ein stündlicher Refresh im selben Modus bleibt derselbe Vertrag
+    # (Issue 211) — die Halbwertszeit selbst ist kein Fit-Feld im Vertrag.
+    assert model_contract_id(forecast) == model_contract_id({**forecast, "origin": "x"})
+    # Altbestand ohne Feld erklärt keinen Vertrag.
+    assert (
+        model_contract_id(
+            {
+                "model_kind": "profile_ar2",
+                "day_pair": True,
+                "draws_24h": {"shared": True},
+            }
+        )
+        == "unknown"
+    )
+
+
+def test_bootstrap_mode_reads_the_effective_half_life_against_the_base():
+    from app.model_contracts import bootstrap_mode
+
+    # Standardlauf: unverändert, uniform oder länger als die Basis.
+    assert bootstrap_mode(14.0, 14.0) == "default"
+    assert bootstrap_mode(None, 14.0) == "default"
+    assert bootstrap_mode(30.0, 14.0) == "default"
+    # Verkürzt: der Regime-Pfad kappt auf sieben Tage (auch kürzere Configs).
+    assert bootstrap_mode(7.0, 14.0) == "regime_short"
+    assert bootstrap_mode(4.0, 14.0) == "regime_short"
+    # Ohne Basis kein Vergleich — dann gilt der unverkürzte Modus.
+    assert bootstrap_mode(7.0, None) == "default"

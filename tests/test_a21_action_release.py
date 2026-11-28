@@ -197,9 +197,9 @@ PIT_ENVELOPE = {
 def _evidence_row(**overrides):
     """Eine Prognosezeile mit **vollständiger** Evidenz — per Override lochen.
 
-    ``model_kind``/``day_pair``/``shared`` bilden den Modellvertrag des
-    M7-Gültigkeitsbereichs (A21-B5.1) — dieselben Felder, die eine
-    Veröffentlichung aus dem Modell-Lauf trägt.
+    ``model_kind``/``day_pair``/``shared``/``bootstrap_mode`` bilden den
+    Modellvertrag des M7-Gültigkeitsbereichs (A21-B5.1) — dieselben Felder,
+    die eine Veröffentlichung aus dem Modell-Lauf trägt.
     """
     row = {
         "station_id": UID,
@@ -209,6 +209,9 @@ def _evidence_row(**overrides):
         "points": POINTS,
         "model_kind": "profile_ar2",
         "day_pair": True,
+        # A21-B5.1: Der Bootstrap-Modus gehört zum Vertrag — ohne ihn ist
+        # die Empfehlung nicht belegt (``model_not_released``).
+        "bootstrap_mode": "default",
         "draws_24h": {
             "n": 4,
             "block_minutes": 120,

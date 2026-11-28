@@ -1556,9 +1556,13 @@ def predict(
     zum Stand vor 0.58.0. Paare über eine Regime-Kante (R2) werden
     ausgelassen; fehlt jedes Paar, fällt die Ziehung auf unabhängige Tage.
 
-    ``kind`` wählt das Punktmodell (A10, Konzept §3.2 M3): ``harmonic_ar2``
-    (Default, wie vor 0.31.0), ``profile_ar2`` (Zweitmodell) oder
-    ``ensemble`` (inverse-MASE-gewichtete Mischung beider Punktprognosen).
+    ``kind`` wählt das Punktmodell (A10, Konzept §3.2 M3): ``profile_ar2``
+    (produktiver Default seit 0.58.0), ``harmonic_ar2`` (das frühere
+    Defaultmodell, jetzt experimenteller Vergleich) oder ``ensemble``
+    (inverse-MASE-gewichtete Mischung beider Punktprognosen, deaktiviert).
+    Der Default dieser Funktion bleibt aus Kompatibilitätsgründen
+    ``harmonic_ar2``; der produktive Pfad setzt den Kern explizit
+    (``app/model_jobs.py``, normativ ``app/model_contracts.py``).
     Die Verteilungsform kommt in allen drei Fällen aus dem Tagesblock-
     Bootstrap; das Ensemble verschiebt sie auf den gewichteten Punktwert.
 

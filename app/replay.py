@@ -44,6 +44,8 @@ import pandas as pd
 from engine.config import Config
 from engine.models import utc_time
 
+from .model_contracts import BOOTSTRAP_MODE_DEFAULT
+
 BERLIN = "Europe/Berlin"
 REPLAY_SEED = 20260922
 DECISION_PARAMS: dict[str, Any] = {
@@ -573,7 +575,13 @@ def run_fold(
         origin_hour=local_origin.hour + local_origin.minute / 60.0,
         fuel=fuel,
         pooling="shared",
-        model_contract="profile_ar2+day_pair=1+shared=1",
+        # A21-B5.1: Der Replay misst den Standardlauf. Sobald die
+        # Regime-Verkürzung ins Spiel kommt, lautet die ID
+        # ``…+bootstrap=regime_short`` — genau wie im Gate-Kontext
+        # (``app/gate_context.py::model_contract_id``).
+        model_contract=(
+            f"profile_ar2+day_pair=1+shared=1+bootstrap={BOOTSTRAP_MODE_DEFAULT}"
+        ),
         horizon_hours=max(horizons),
         data_quality=data_quality_label(
             before.set_index("timestamp"),
@@ -601,6 +609,23 @@ def run_fold(
             refresh(settings, now=origin)
         published = publication(settings)
         fold.regime_ref = (published or {}).get("regime_ref")
+        # A21-B5.1: Der Fold weist den Vertrag aus, den der Lauf tatsächlich
+        # veröffentlicht hat. Ein frischer Monitoralarm verkürzt die
+        # Bootstrap-Halbwertszeit auf sieben Tage — dieser Lauf gehört in eine
+        # eigene Kohorte, und die Replay-Auswertung darf ihn nicht mit
+        # Standardläufen mitteln.
+        published_contexts = {
+            str(row.get("bootstrap_mode") or BOOTSTRAP_MODE_DEFAULT)
+            for row in published.get("forecasts", [])
+        }
+        if len(published_contexts) > 1:
+            fold.error = f"mixed_bootstrap_modes: {sorted(published_contexts)}"
+        mode = (
+            sorted(published_contexts)[0]
+            if published_contexts
+            else (BOOTSTRAP_MODE_DEFAULT)
+        )
+        fold.model_contract = f"profile_ar2+day_pair=1+shared=1+bootstrap={mode}"
 
         truth_by_station: dict[str, pd.Series] = {}
         for station in stations:

@@ -32,7 +32,7 @@ NOW = dt.datetime(2026, 9, 10, 14, 0, tzinfo=dt.timezone.utc)
 # Aktionsfreigabe (``test_a21_b5_gate_context.py``).
 CONTEXT = {
     "fuel": "e10",
-    "model_contract": "profile_ar2+day_pair=1+shared=1",
+    "model_contract": "profile_ar2+day_pair=1+shared=1+bootstrap=default",
     "calibration_mode": "raw",
     "decision_contract": decision_contract_id(),
     "regime_ref": None,
