@@ -1,4 +1,4 @@
-"""C7: Glossar-Tabelle (web/src/data.ts) gegen docs/referenz/ANALYSE.md — Konsistenz (0.32.0).
+"""C7: Glossar-Tabelle (web/src/features/glossary/terms.ts) gegen docs/referenz/ANALYSE.md — Konsistenz (0.32.0).
 
 Der Hilfe-Tab („Was heißt das?“) verweist je Begriff auf einen Doku-Anker
 (``docs/referenz/ANALYSE.md#…``). Diese Verweise standen zeitweise auf Abschnitte,
@@ -12,12 +12,12 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_TS = ROOT / "web" / "src" / "data.ts"
+DATA_TS = ROOT / "web" / "src" / "features" / "glossary" / "terms.ts"
 ANALYSE = ROOT / "docs/referenz/ANALYSE.md"
 
 
 def _glossary_entries():
-    """Liest die GLOSSARY-Tabelle aus data.ts (stabile, flache Struktur)."""
+    """Liest die GLOSSARY-Tabelle aus der dedizierten, flachen Glossarquelle."""
     text = DATA_TS.read_text(encoding="utf-8")
     block = text.split("export const GLOSSARY", 1)[1].split("] as const;", 1)[0]
     entries = []
