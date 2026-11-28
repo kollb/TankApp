@@ -28,7 +28,6 @@ Linkreparatur oder redaktionelle Neuordnung sind keine Vollabnahme gegen
 | [INSTALL.md](../betrieb/INSTALL.md) | 0.78.0 |
 | [KONZEPT.md](../produkt/KONZEPT.md) | 0.68.0 |
 | [MICROCOPY.md](../produkt/MICROCOPY.md) | 0.78.0 |
-| [QUALITAET.md](QUALITAET.md) | 0.78.0 |
 | [README.md](../adr/README.md) | 0.75.0 |
 | [REGIME.md](../planung/REGIME.md) | 0.59.1 |
 | [RP2.md](../betrieb/RP2.md) | 0.61.0 |

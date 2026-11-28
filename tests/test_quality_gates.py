@@ -182,26 +182,37 @@ def test_query_honoriert_stationsfilter_des_flux_texts(tmp_path):
 
 
 def test_e2e_demo_suite_ist_keine_mock_suite():
-    """Die unmocked E2E-Suite bleibt unmocked und bleibt verdrahtet.
+    """Die aktuelle Live-Suite bleibt gegen Demo-Stack und Pi-Failover verdrahtet.
 
-    LUECKEN „Bewusst offen“: Die Alltagssuite mockt jeden API-Pfad und bewies
-    deshalb nur Rendering — B1/B3/der defekte Demo-Stack fielen erst im
-    Sanity-Check auf. Diese Zusage ist ein Ratchet: eigene Konfiguration
-    gegen den Demo-Stack, kein ``page.route`` in der Spec, eigener CI-Schritt
-    und ein Skript, das beides startet.
+    Die gemockte Alltagssuite prüft die Shell unter kontrollierten Antworten.
+    Die Live-Browserfälle prüfen die echte Entscheidung, den ehrlichen
+    Leerzustand ohne Stadt-/Stationsfilter, Stationsnamen und ETag/304; die Failover-Spec
+    prüft zusätzlich das Einreihen und einmalige Synchronisieren eines Belegs
+    nach 503. Der Python-Servertest prüft separat die stationsbezogene Kurve.
     """
     spec = (ROOT / "web/e2e/demo.spec.ts").read_text(encoding="utf-8")
-    # Nur der Aufruf zählt — der Kommentar *nennt* ``page.route`` als das, was
-    # hier bewusst fehlt.
+    # Nur der Aufruf zählt — der Kommentar darf ``page.route`` als das nennen,
+    # was hier bewusst fehlt.
     assert "page.route(" not in spec, "die unmocked Suite darf keine Routen mocken"
     assert "/api/v1/overview" in spec
-    assert "Heute im Blick" in spec, "die Zusage aus LUECKEN fehlt (overview → Zellen)"
-    assert "Europe/Berlin" in spec, "Ortszeit-Prüfung fehlt (B3-Klasse)"
+    assert ".decision-card" in spec, "die aktuelle Entscheidungsansicht fehlt"
+    assert ".day-curve-card" in spec, "der ehrliche Tageskurven-Zustand fehlt"
+    assert "Noch kein Tagesverlauf vorhanden." in spec
+    assert "/api/v1/stations" in spec and ".station-row" in spec
+    assert "payload.stations" in spec, "Stationsnamen kommen nicht aus der echten Antwort"
+    assert "if-none-match" in spec and "304" in spec, "ETag-Revalidierung im Browser fehlt"
 
     config = (ROOT / "web/playwright.demo.config.ts").read_text(encoding="utf-8")
     assert "ops/quality/demo_server.py" in config
     assert "1357" in config, "eigener Port — sonst kollidiert sie mit der Alltagssuite"
     assert "--rebuild" in config, "stale Demo-Daten würden die Zellen leeren"
+    assert "(demo|mobile|failover)" in config, "Live-Specs fehlen im Projekt-Matcher"
+
+    failover = (ROOT / "web/e2e/failover.spec.ts").read_text(encoding="utf-8")
+    assert "the offline fill queue flushes once after NAS recovery" in failover
+    assert "API-Anfrage fehlgeschlagen \\(503\\)" in failover
+    assert "entries(page)).toHaveLength(1)" in failover
+    assert "1 synchronisiert, 0 offen" in failover
 
     base = (ROOT / "web/playwright.config.ts").read_text(encoding="utf-8")
     assert "demo.spec.ts" in base and "testIgnore" in base, (

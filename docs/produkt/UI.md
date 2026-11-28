@@ -22,6 +22,12 @@
 > als eingeklapptes Blatt, kein vierter Untertab), der Konzept-Einstieg ist
 > entfernt, und die Übersicht endet mit „Alle X Stationen & Karte anzeigen“
 > ([Release 0.78.0](../releases/CHANGELOG.md#0780--2026-11-28)).
+>
+> Prüfhinweis (28.11.2026): Navigation, Kopfzeile, Bereichsübersicht,
+> Entscheidungskarte, Labor und Testverzeichnis wurden mit der 0.79-Shell
+> abgeglichen. Die übrigen visuellen und Interaktions-Entwurfsabschnitte sind
+> weiterhin der 0.78-Stand und keine vollständige Abnahme der aktuellen
+> Oberfläche; siehe [Prüfstände](../entwicklung/PRUEFSTAENDE.md).
 
 ## Inhaltsverzeichnis
 
@@ -32,7 +38,7 @@
 - [Übersicht: eine Antwort, ein Tipp in die Tiefe](#übersicht-eine-antwort-ein-tipp-in-die-tiefe)
 - [Wochenblick: kein eigener Bereich](#wochenblick-kein-eigener-bereich)
 - [Stationen: Atlas-Referenz und Server-Netto](#stationen-atlas-referenz-und-server-netto)
-- [Labor: drei Fragen](#labor-drei-fragen)
+- [Labor: aktuelle Datenansichten](#labor-aktuelle-datenansichten)
 - [Antwort, Begründung und Beweis](#antwort-begründung-und-beweis)
 - [Urteilstöne und Elevation](#urteilstöne-und-elevation)
 - [Zustände und Datenwahrheit](#zustände-und-datenwahrheit)
@@ -41,154 +47,101 @@
 
 ## Navigation
 
-Seit 0.70.1 öffnet der Kontext-Chip im Kopf Stadt und Kraftstoff in einem
-Bottom Sheet. Das Tagesverlauf-Detail der Tageszeile öffnet ebenfalls als
-Sheet; native Dialoge begrenzen den Tastaturfokus und schließen mit Escape,
-danach kehrt der Fokus zum Auslöser zurück. Die Gültigkeit zählt die letzten
-30 Minuten herunter (`bis 17:45 · noch 12 min`); ab dem Ablaufzeitpunkt
-zeigt die Karte auch ohne neue Serverantwort die neutrale Tatsachenvariante
-(`Preisvergleich`) statt des Urteils.
+Die aktuelle Kopfzeile (`web/src/components/layout/TopBar.tsx`) bietet
+beschriftete Auswahlfelder für Stadt und Kraftstoff, den Profilwechsel, den
+Datenstands-/Offline-Hinweis und „Daten aktualisieren“. Sie enthält weder den
+früheren Kontext-Chip noch ein separates Auswahlblatt für diese Filter. Der
+Tagesverlauf steht als Karte direkt auf der Übersicht; ohne Stadt- und
+Stationsfilter bleibt er als ehrlicher Leerzustand sichtbar.
 
-Die RP2-Leseausgabe (`web/rp2`) teilt Theme, Formatter und Sheet mit der
-Vollversion, bleibt aber ausdrücklich beim lesenden `pi-v1`-Vertrag.
-Navigation: Übersicht · Stationen · Mehr. Python bleibt Server und Notausgabe,
-wenn kein React-Build installiert ist; [Deployment](../betrieb/RP2.md#template-updates).
+Die RP2-Leseausgabe (`web/rp2`) teilt Formatter, Theme-Helfer und Sheet-
+Komponente mit der Vollversion, bleibt aber ausdrücklich beim lesenden
+`pi-v1`-Vertrag. Navigation: Übersicht · Stationen · Mehr. Python bleibt
+Server und Notausgabe, wenn kein React-Build installiert ist;
+[Deployment](../betrieb/RP2.md#template-updates).
 
-Seit 0.76.0 ist die Alltagsnavigation **2+1**:
+Die Desktop-Seitenleiste zeigt alle sechs Bereiche. Mobil bleiben Übersicht
+und Stationen in der unteren Navigation direkt erreichbar; „Mehr“ öffnet die
+übrigen Bereiche:
 
 ```text
-Übersicht
-Stationen
-Mehr / Studio
+Übersicht · Stationen · Mehr
 ├── Labor
 ├── System
 ├── Einstellungen
 └── Glossar
 ```
 
-Mobil öffnet „Mehr“ ein nicht-modales Auswahlblatt; Escape schließt es und der
-Fokus springt beim Öffnen auf die aktive Zeile. Der aktive Studio-Bereich ist
-am Mehr-Eintrag markiert. Auf dem Desktop stehen dieselben Einträge in einer
-Studio-Gruppe der Seitenleiste.
+Das mobile Bereiche-Blatt ist ein modales Dialogfenster mit Fokusführung.
+Escape schließt es und stellt den Fokus am Menü-Auslöser wieder her. Auf dem
+Desktop stehen dieselben Bereiche in der Seitenleiste.
 
 Die kanonischen URLs sind `?tab=stationen`, `?tab=einstellungen`,
-`?tab=labor`, `?tab=system` und `?tab=glossar`; Labor-Abschnitte bleiben über
-`?section=…` direkt erreichbar. Alte Links `?tab=woche`/`?tab=week` führen zur
-Übersicht, `?tab=ich` zur Einstellungen-Seite. Alarm-Pille und Update-Banner
-bleiben global.
+`?tab=labor`, `?tab=system` und `?tab=glossar`; beim Bereichswechsel bleiben
+andere Query-Parameter und der Hash erhalten. `?section=…` wird derzeit nicht
+als Sprungziel im Labor ausgewertet. Alte Links `?tab=woche`/`?tab=week`
+führen zur Übersicht, `?tab=ich` zur Einstellungen-Seite. Das Update-Banner
+bleibt global.
 
 ### Kompakte Kopfzeile
 
-Seit 0.75.0 (UX-Neuentwurf Batch 3 / C13) bleibt die Kopfzeile unter
-1280 px eine Zeile: Marke, Stadt/Kraftstoff und ein aktiver Alarmstatus
-(falls vorhanden). Der Kontext-Chip öffnet wie bisher die Auswahl für Stadt
-und Kraftstoff. Profilwechsel und -verwaltung, Teilen und Aktualisieren
-liegen gemeinsam hinter dem Knopf „Profil und Aktionen“ im gleichnamigen
-Blatt. Die Steuerungen behalten ihre deutschen Namen und Touch-Ziele; beim
-Öffnen liegt der Fokus im Blatt, Escape schließt es und gibt den Fokus an den
-Auslöser zurück. Die Profilverwaltung schließt das Blatt zuerst, damit nie
-zwei Dialoge ineinander liegen.
+Die aktuelle Kopfzeile ist in `web/src/components/layout/TopBar.tsx` umgesetzt.
+Sie zeigt Stadt und Kraftstoff immer direkt; Profil, Datenstand und
+Aktualisieren stehen daneben. Unter 1024 px blendet CSS nur das Profilfeld aus,
+damit die übrigen Steuerungen in schmalen Viewports erreichbar bleiben. Es gibt
+hier kein Profil-und-Aktionen-Blatt und keinen Teilen-Knopf; Profilverwaltung
+liegt in „Einstellungen“.
 
-Ab 1280 px bleiben Profil, Alarm, Teilen und Aktualisieren direkt in der
-Kopfzeile. Meldungen, Installationshinweise und ein verfügbares Update bleiben
-im normalen Seitenfluss sichtbar — sie verschwinden nicht im Aktionsblatt.
-Die 320 × 720-Abnahme hält die Kopfzeile bei höchstens 80 px; Stadt und
-Kraftstoff sind im Prüfraster nicht abgeschnitten, die Antwort-Überschrift
-steht im ersten Viewport und Hinweise bleiben sichtbar.
+Die Responsive-Browserprüfung misst bei 390 px und 320 px, dass alle sechs
+Hauptbereiche und die drei Einstellungen-Unterbereiche ohne horizontalen
+Seitenüberlauf bleiben. Sie prüft außerdem, dass das modale Bereiche-Blatt per
+Escape schließt und den Fokus an den Menü-Auslöser zurückgibt. Die alte
+Abnahme der 80-px-Kopfzeile und der Antwort-Überschrift im ersten Viewport ist
+kein aktueller Testvertrag.
 
 ## Bereiche
 
 | Bereich | Verantwortung | Abgrenzung |
 |---|---|---|
-| Übersicht | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung und der heutige Verlauf | Keine drei Fakten, keine separate Woche-Ansicht, kein Was-wäre-wenn-Formular und keine zweite Stationsliste |
-| Stationen | Karte, Liste, frische Referenz, Preisvergleich und A-gegen-B | Server-Netto nur bei passender Referenz-ID und bestätigtem frischem Referenzpreis; sonst reiner Preisvergleich |
-| Einstellungen | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)** und App-Kontext; „Belege und Bilanz“ als eingeklapptes Blatt (Verlauf und Bilanz laden erst beim Öffnen) | Bestätigungs-Intent ist kein Beleg; die Buchhaltung ist kein eigener Tab mehr |
-| Labor | Drei Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet die App? | Beweise statt Sammelakte; Rohdaten und CSV gehören dem Betreiber in „System“ |
-| System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox, **Rohdaten, CSV-Exporte und API-Explorer** | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
+| Übersicht | Entscheidung, Tagesverlauf, fünf günstigste frische Stationen sowie Reichweiten- und Datenstatus | Ungefilterter Tagesverlauf bleibt ehrlich leer, wenn keine Tagesdaten vorliegen |
+| Stationen | Karte, Liste, Frischfilter, Stationsreferenz und A-gegen-B-Vergleich | Server-Netto nur bei passender Referenz und bestätigten frischen Preisen |
+| Einstellungen | Fahrzeug/Tankstand, Profile sowie Belege/Bilanz in drei Unterbereichen | Tankstand wird lokal gespeichert; Receipt-Schreibfehler 400 wird nicht in die Offline-Queue übernommen |
+| Labor | Gütekennzahlen, Modell-Pipeline, Reliability-Bins, Prognose/Beobachtung, Heatmap und Tagebuch | Diagnoseansicht; keine Freigabe einer gesperrten Entscheidung |
+| System | Jobs, Datenstand, Outbox-Synchronisierung, Exporte und API-Explorer | Betreiberfunktionen getrennt von den Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
-Die Übersicht hält den Auftrag **eine Frage, eine Antwort — der Rest ein Tipp
-entfernt**: Urteilskarte mit **einer** großen Zahl, ein gemeinsamer
-Zeitraum-Rahmen („3 Tage zurück“ | „Heute“ | „Woche“) und die Top-5-Tabelle
-nach effektivem Gesamtpreis — jede Zeile am Bestpreis der ersten gemessen.
-Darunter steht „Alle X Stationen & Karte anzeigen“; Herleitung und Quellen
-liegen im eingeklappten „Warum & Rechenweg“. Der eigene Wochen-Bereich ist
-entfallen; alte Woche-Links landen hier. Der Stationen-Atlas
-wählt seine Referenz aus frischen Preisen und zeigt Server-Netto nur, wenn
-Server und UI dieselbe frische Referenz bestätigen.
+Die Übersicht (`web/src/features/overview/OverviewPage.tsx`) zeigt eine
+Entscheidungskarte, die Tagesverlauf-Karte, eine Liste der fünf günstigsten
+frischen Stationen und Reichweiten-/Datenstatus. Für einen ungefilterten Tag
+ohne konkrete Stationsreferenz bleibt die Tageskarte sichtbar und zeigt den
+ehrlichen Leerzustand; der Browservertrag dafür steht in
+`web/e2e/demo.spec.ts`. Alte Woche-Links führen zur Übersicht. Die
+Stationsseite ist der separate Ort für Atlas und Stationsdetails.
 
 ## Tank-Guide: eine Frage, eine Antwort
 
-Die Übersicht beantwortet genau eine Frage: **Soll ich jetzt tanken?**
-Die Antwortkarte (`web/src/now.ts`) trägt genau das, was die Frage braucht —
-Chip, Überschrift, **eine** Zahl in Euro, eine Nebenzeile und **eine**
-Handlung („Route“, daneben „Warum?“). Alles Statistische ordnet sich unter
-und liegt einen Tipp entfernt (`web/src/guide.ts` hält die Fallback-Texte):
+Die aktuelle Entscheidung wird von `web/src/features/overview/decision.ts`
+aufbereitet und in `web/src/features/overview/OverviewPage.tsx` dargestellt.
+Der Server bleibt maßgeblich: Ein gesperrter Datensatz darf weder eine
+Handlung noch eine erwartete Ersparnis freigeben.
 
-1. Chip — einer von fünf Ausgängen (siehe unten).
-2. Überschrift — „Jetzt tanken“, „Warten bis ~18 Uhr“,
-   „Tanken, wann’s passt“, „Günstigste gerade: <Station>“, „Letzter Stand:
-   <Station>“. Höchstens 25 Wörter, kein Fachwort.
-3. **Eine** Zahl in Euro — `spart ca. 1,60 €` beim Warten, sonst der
-   günstigste Preis als `1,709 €/L`.
-4. Genau eine primäre Handlung: „Route“ zur Station der Antwort.
+| Eingabezustand | Darstellung |
+|---|---|
+| `refuel_now` oder `wait` mit einer Primärentscheidung | Titel, Begründung, Preis, Station, Ablaufzeit und — nur falls geliefert — erwarteter Vorteil. „Route“ erscheint bei Kartenlink; sonst kann „Warum?“ die Begründung einblenden. |
+| `decision_ready=false` oder `action=no_advice` | Neutrale Preisvergleichsvariante aus frischen Stationspreisen; kein erwarteter Vorteil und keine Handlungsfreigabe. Ohne frische Preise: „Keine Prognose“. |
+| Backend offline | Neutrale Offline-Karte mit Hinweis, dass angezeigte Daten veraltet sein können; keine Handlung oder Ersparnis. |
+| Keine Primärentscheidung / keine Overview-Antwort | „Keine Prognose“ ohne erfundenen Preis oder Stationsnamen. |
 
-**Geld und Zeit stehen in Nutzer-Einheiten:** Cent je Liter sind eine
-Modellgröße, die Antwort ist der Betrag auf die Tankmenge
-(`ca. 3,60 € pro Tankfüllung`). Zeitangaben sind konkrete Uhrzeiten
-(„Gegen 19 Uhr“), nie Spannen und nie Wahrscheinlichkeitsdichten.
+Die Branches sind in `web/src/features/overview/decision.test.ts` abgedeckt;
+der Browserfall „gesperrt“ ist zusätzlich in `web/e2e/app.spec.ts` sichtbar.
+Die Ablaufzeit wird als Berliner Uhrzeit oder Countdown dargestellt. Zahlen
+werden über `web/src/utils/format.ts` mit deutscher Formatierung ausgegeben.
 
-### Drei Fallback-Stufen
-
-Ein anhaltender Zustand bekommt **kein** Modal und keinen Alert-Dialog. Das
-Inline-Banner sitzt über der Karte und lässt die Preise sichtbar.
-
-| Stufe | Auslöser | Banner | Karte |
-|---|---|---|---|
-| 1 · Voller Guide | Verbindung und `decision_ready` | keiner (außer Tankrabatt-Hinweis) | Urteilston wie oben |
-| 2 · Ohne Prognose | `decision_ready=false`, Preise live | „Die Prognose macht gerade Pause“ | Neutral („Günstigste gerade: <Station>“) — ein Ort, kein Urteil über die Zeit |
-| 3 · Offline | keine Verbindung | letzter Stand | Neutral („Letzter Stand: <Station>“) — „Der Preis an der Säule zählt.“ |
-
-Genau **ein** Banner steht gleichzeitig; die Rangfolge ist offline →
-keine Prognose → Hinweis (Tankrabatt). Die Tageszeile hängt nicht an der
-Stufe, sondern an Messwerten: Sie erscheint, wenn der Tag bepreiste Stunden
-hat, und fehlt sonst — geschätzt wird nie.
-
-Die Faustregel folgt der 12-Uhr-Regel (seit 01.04.2026 darf der Preis nur um
-12:00 Uhr steigen): `Vormittag` tief, `Nach 12` hoch, `Nachmittag` und `Abend`
-mittel — nie „abends am günstigsten“. Liegt ein Preisniveau-Termin (Tankrabatt)
-im Sichtfeld der Prognose, steht in Woche und Jetzt ein Inline-Banner
-(`regime_notice`); Fenster hinter dem bevorstehenden Stichtag tragen keinen
-Abstand zu „jetzt“. Das Banner ist zeitlich begrenzt (Termin höchstens 7 Tage
-voraus oder 14 Tage zurück) und zählt wie das Fensterende-Feedback nicht zur
-Scrolltiefe-Messung von „Jetzt“ (Ratchet ≤ 1,5 Viewports, `data-regime-notice`).
-Die Stationenliste öffnet nach Preis, günstigste zuerst.
-
-Der Tagesverlauf liegt **einen Tipp entfernt**, nicht offen unter der Karte:
-Die Startseite trägt eine Frage und eine Antwort (B4 aus dem Befund
-UX/Mathe 2026-09-19, §9 des Neuentwurfs). Wer den Tag sehen will, tippt die
-Tageszeile und bekommt im Blatt die große Kurve mit drei Zahlen (tiefster
-Preis, jetzt, Tagesmedian) und der Abdeckung (`n von m Stunden mit offener
-Meldung`). Gemessene Scrolltiefe des Entscheidungsbildschirms: 1,41
-Viewports auf 390 × 844 (Ratchet in `web/e2e/mobile.spec.ts`: ≤ 1,5); die
-Antwort-Überschrift endet im ersten Viewport.
-
-Die Karte trägt die Antwort und höchstens eine Nebenzeile; Spanne,
-Preisalter, Herkunft und Sicherheit stehen im „Warum?“ -Blatt — **höchstens
-fünf Zeilen** (Fenster, Ersparnis, Sicherheit, Tank, Stand), danach der Weg
-ins Labor. Was der Antwort **widerspricht**, bleibt benennbar: Ohne
-freigegebene Aktion zeigt die Karte die Tatsache (günstigster bekannter
-Preis) statt eines Urteils.
-
-Beide Fallback-Stufen bieten **eine** Handlung: „Erneut versuchen“ mit
-Inline-Ladeindikator. Kommen die Daten zurück, springt die Ansicht leise auf
-Stufe 1 — der Banner verschwindet, ohne Erfolgsmeldung.
-
-**Eine Farbe, eine Bedeutung.** Der Entwurf („Tankklar“) ordnet „Warten“ Rot
-zu. Rot trägt in dieser App aber schon eine sicherheitsrelevante Aussage:
-„Reserve reicht nicht bis zum Fenster“. Rot wird deshalb **nicht**
-umgewidmet — „Besser warten“ bleibt blau. Die Reihenfolge des Entwurfs ist
-übernommen, nicht seine Farbe gegen eine bestehende Warnung.
+Der Tagesverlauf steht als eigene Karte direkt auf der Übersicht. Wenn keine
+Punkte vorhanden sind, zeigt sie „Noch kein Tagesverlauf vorhanden.“; sie
+erfindet weder Stunden noch Preise. Stationsangebote darunter kommen aus
+frischen, endlichen Preisen. Ein globaler Statushinweis erklärt eine
+Gesperrt- oder Offline-Situation ohne `role="alert"`.
 
 ### Labor: das Angebot bleibt freiwillig
 
@@ -253,49 +206,23 @@ bleibt zulässig, trägt aber `price_fresh: false` und wird im Atlas als
 „Serverpreis nicht frisch“ markiert. Die Serverantwort enthält höchstens fünf
 Alternativen zusätzlich zur Referenz, absteigend nach `net_eur`.
 
-## Labor: drei Fragen
+## Labor: aktuelle Datenansichten
 
-Seit 0.77.0 ist das Labor **zweistufig** (`views/Labor.tsx`, Vokabular in
-`lab.ts`): oben die Beweise ohne Klick, darunter die Erklärungen hinter einem
-Tipp. Die drei Fragen selbst stehen unverändert genau einmal in `LAB_BLOCKS`.
+Die aktuelle Implementierung liegt in `web/src/features/lab/LabPage.tsx`;
+`web/src/features/lab/logic.ts` übersetzt die Reliability-Bins der API in
+Anzeige-Felder. Die Seite enthält:
 
-**Oben — drei Karten, direkt sichtbar:**
+- Kennzahlen zur empirischen Güte und Modell-Pipeline.
+- Kalibrierungs-Bins; fehlende oder ungültige Werte bleiben leer statt durch
+  erfundene Fallback-Zahlen ersetzt zu werden.
+- Prognose-vs.-Ist-Sparkline mit Horizonten 24 h, 3 Tage und 7 Tage.
+- Wochen-Heatmap, filterbares Prognose-Tagebuch und eingeklappte Parameter.
 
-| Karte | Inhalt |
-|---|---|
-| Wochen-Heatmap | Der Wochenrhythmus der Stadt; dieselbe Grafik wie im Betreiber-Block, hier als Beweis für die Alltagsfrage |
-| Trefferquote und Kalibrierung | **Ein** Satz als Zählung („An 26 von 30 Tagen lag die Empfehlung richtig.“); daneben Trefferquote, Brier-Score und Zahl der bewerteten Empfehlungen, darunter die Reliability-Balken je Bin. Fehlende Kennzahlen stehen als `—`, nie als Null |
-| Stations-Pool | Zahl der Stationen in der Auswahl und die fünf größten Preis-Abstände in ct/L |
-
-**Darunter — „Warum & Rechenweg“ (zugeklappt), die drei Fragen:**
-
-| Block | Frage | Inhalt |
-|---|---|---|
-| 1 · `#labor-sicherheit` | Kann ich vertrauen? | Der aufgeschlüsselte Zähler (richtig · daneben · unentschieden · nicht bewertbar) und das filterbare Prognose-Tagebuch (Alle/Richtig/Daneben/Unentschieden/Nicht bewertbar) |
-| 2 · `#labor-prognose` | Wie gut ist die Prognose? | **Eine** Kurve (erwartet vs. echt, Blickweite 24 h/3 Tage/7 Tage) und **ein** Satz: „Im Schnitt 1,8 ct/L daneben.“ |
-| 3 · `#labor-rechenweg` | Wie rechnet die App? | Drei Schritte in Alltagssprache (Tagesmuster der Stadt, aktuelle Lage, 12-Uhr-Regel); darunter „Details für Neugierige“ mit acht Bausteinen, Fachwerten und dem Wochenrhythmus |
-
-Die Zählung steht **genau einmal** — oben in der Karte. Block 1 wiederholt sie
-nicht, sondern schlüsselt sie auf. Ein `?section=…`-Sprung öffnet den Rahmen
-automatisch und scrollt auf den zugehörigen Block.
-
-Gestrichen und nicht wiederkehrend (§7): Sub-Tabs, Spielplatz-Regler,
-Experimente, Tankprofil-Rechner, Einflüsse-Balken, CUSUM, die beiden
-MASE-Werte, eingebettetes Glossar, Heatmap-Schalter und der Rohdatenraum.
-Trefferquote, Brier-Score und Reliability-Balken sind **keine** Rückkehr des
-alten Güte-Panels: Sie beantworten die erste Frage direkt, statt sie hinter
-einen Tipp zu legen (`MICROCOPY.md` §4d). Rohdaten, die vier CSV-Exporte und
-der API-Explorer stehen als Betreiber-Sicht in „System“ (Abschnitt
-„Datenreichweite & Herkunft“ und `#rohdaten-section`); das Labor verweist nur
-dorthin.
-
-Adressen: `?tab=labor&section=sicherheit|prognose|stationen|lernen|glossar`
-springt auf den zugehörigen Block; die alten Sub-Tab-Links
-(`?subtab=ueberblick|modell|guete|daten`) übersetzt `sectionFromLegacySubTab`.
-Lange Modellbezeichner in Kette, Titel und Erklärung der acht Bausteine brechen
-innerhalb ihrer verfügbaren Breite um — Text wird dabei nicht gekürzt. Der
-geometrische Browsertest prüft dies bei 390 px mit einem absichtlich
-überlangen Bezeichner.
+`web/src/features/lab/logic.test.ts` und der Browserfall in
+`web/e2e/app.spec.ts` halten die Zuordnung `lo`/`hi`, `p`/`rate` und `n` fest.
+Das aktuelle Labor hat keine alten drei `LAB_BLOCKS`, die Legacy-Subtabs oder
+jene alten Sprung-IDs. `?section=…` bleibt beim URL-Bereichswechsel erhalten,
+wird aber nicht als Scrollziel implementiert.
 
 ## Antwort, Begründung und Beweis
 
@@ -305,8 +232,10 @@ geometrische Browsertest prüft dies bei 390 px mit einem absichtlich
 
 Tooltips ergänzen bekannte Begriffe; sie ersetzen keine notwendige Erklärung.
 Preise verwenden €/L, Differenzen ct/L, Tankbeträge €. Zeitangaben folgen
-Europe/Berlin. Formatierung erfolgt über `web/src/data.ts`; verbindliche
-Formulierungen stehen in [Microcopy](MICROCOPY.md).
+Europe/Berlin. Formatierung erfolgt über `web/src/utils/format.ts`; aktuelle
+Entscheidungstexte werden von `web/src/features/overview/decision.ts`
+abgeleitet. Fachliche Muster in [Microcopy](MICROCOPY.md) sind zum Stand
+0.78 dokumentiert.
 
 Fenster-Vorteil („bis zu“) und Median-Erwartung sind verschiedene Größen.
 Die GUI darf sie weder sprachlich noch rechnerisch austauschen. Ebenso bleiben
@@ -417,15 +346,28 @@ Für das Labor bleiben alle historischen Abschnittssprünge (über
 langer Bezeichner in den acht Bausteinen Teil der Demo-Browser-Suite. Eine
 bestandene Layoutprüfung ersetzt keine Modell- oder Hardwareabnahme.
 
-Die **historische** Abnahme von „Jetzt“ und „Woche“ seit 0.73.0 bleibt als Regression der ausgelagerten Komponenten dokumentiert; die aktuelle Navigation wird separat geprüft:
+Die Tests aus der alten `web/src/views/*`-Shell (`Jetzt.test.tsx`,
+`Woche.test.tsx` und `web/src/microcopy.test.ts`) gehörten zu entfernten Views
+und wurden im Frontend-Audit entfernt. Sie sind **keine** Regressionstests der
+heutigen Oberfläche und ihre alten Ratchets sind keine aktuellen Zusagen.
 
-- **Sichtprüfung bei 390 px und auf dem Desktop:** die Antwort ist ohne
-  Scrollen sichtbar, die Details liegen einen Tipp entfernt (§9).
-- **Ratchets in `web/e2e/mobile.spec.ts`:** die Antwort-Überschrift endet
-  im ersten Viewport, die Tageszeile ist zu, das „Warum?“ -Blatt trägt
-  höchstens fünf Zeilen, der Fokus liegt beim Öffnen im Dialog.
-- **Streichlisten in den Unit-Tests** (`views/Jetzt.test.tsx`,
-  `views/Woche.test.tsx`): die in der Legacy-Komponente gestrichenen Bausteine kehren nicht zurück.
-- **Microcopy-Ratchet** (`web/src/microcopy.test.ts`): genau fünf
-  Antwort-Chips, Frische aus einem Baustein, keine abgelaufene
-  Urteils-Headline.
+Die aktuelle Shell wird stattdessen durch folgende aktive Tests abgedeckt:
+
+- `web/src/routing.test.ts` und `web/e2e/app.spec.ts`: kanonische Routen,
+  alter `ich`-Alias, Browser-History und aktive Navigation.
+- `web/src/features/overview/decision.test.ts` sowie der gemockte Browserfall:
+  eine gesperrte Entscheidung gibt weder Handlung noch erwartete Ersparnis
+  frei.
+- `web/src/api/client.test.ts` und `web/e2e/app.spec.ts`: ETag-Cache,
+  `If-None-Match`/304 und Trennung der UI-Verträge.
+- `web/src/settings.test.tsx` und `web/e2e/app.spec.ts`: aktuelle
+  Einstellungen-Bereiche, lokaler Tankstand, Profilbearbeitung und -aktivierung,
+  Kraftstoffwechsel, Stadt-/Kraftstoffpräferenzen und retrybare 503-Belegqueue
+  (400 bleibt abgewiesen).
+- `web/e2e/demo.spec.ts`, `web/e2e/mobile.spec.ts` und
+  `web/e2e/failover.spec.ts`: echte Demo-Antworten, ehrlicher Tageszustand
+  ohne Stadt-/Stationsfilter, Stationsnamen, schmale Layouts, mobile
+  Fokuswiederherstellung und Outbox-Sync nach NAS-Rückkehr.
+
+Die konkrete Browserabnahme und ihr Laufstand stehen in
+[QUALITAET.md](../entwicklung/QUALITAET.md).

@@ -43,7 +43,7 @@ async function recover(page: Page) {
 
 async function entries(page: Page) {
   return page.evaluate(() => new Promise<any[]>((resolve, reject) => {
-    const request = indexedDB.open("tankapp.outbox.v1", 1);
+    const request = indexedDB.open("tankapp-outbox-v2", 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -88,46 +88,52 @@ test("Pi-Tab bleibt beim Vertrag; Rückwechsel erhält Kraftstoff, Ort und Einga
   expect(errors).toEqual([]);
 });
 
-test("NAS-Tab überlebt Ausfall mit Beleg-Outbox und ungesendetem Entwurf", async ({ page }, testInfo) => {
+test("the offline fill queue flushes once after NAS recovery", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Refresh-Knopf ist im Desktop-Header; Pi-Rückwechsel läuft in allen Breiten.");
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  // Freeze periodic retries: only recognition of NAS recovery can flush this
-  // outbox. No navigator online event, timer tick, reload or mount is involved.
+  // Freeze background polling so the explicit system-page sync is the only
+  // request that can flush this queued fill.
   await page.clock.install();
   await page.clock.pauseAt(new Date());
   await page.goto(pi);
-  await expect(page.locator("#jetzt-headline")).toBeVisible();
+  await expect(page.locator(".decision-card")).toBeVisible();
   const timeOrigin = await page.evaluate(() => performance.timeOrigin);
   await clickArea(page, "Einstellungen");
   await openReceipts(page);
-  const form = page.getByRole("region", { name: "Tanken erfassen" });
+  const form = page.locator(".feature-grid").filter({
+    has: page.getByRole("heading", { name: "Beleg erfassen", exact: true }),
+  });
+  const fields = form.getByRole("spinbutton");
   await link("offline");
   await page.getByRole("button", { name: "Daten aktualisieren" }).click();
-  await expect(page.getByText(/Antwort kommt vom Pi-Fallback/)).toBeVisible();
-  await form.getByRole("textbox").nth(0).fill("37.5");
-  await form.getByRole("textbox").nth(1).fill("1.777");
-  await form.getByRole("button", { name: "Beleg buchen", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(/API-Anfrage fehlgeschlagen \(503\)/);
+  await form.getByRole("combobox", { name: "Station" }).selectOption({ label: "Demo-Tank Nord" });
+  await fields.nth(0).fill("37.5");
+  await fields.nth(1).fill("1.777");
+  await form.getByRole("button", { name: "Beleg speichern", exact: true }).click();
+  await expect(page.getByText("Beleg offline vorgemerkt — wird bei Verbindung nachgereicht.", { exact: true })).toBeVisible();
   await expect.poll(() => entries(page)).toHaveLength(1);
   const queued = (await entries(page))[0];
-  const fill = JSON.parse(queued.body);
-  await form.getByRole("textbox").nth(0).fill("23.5");
-  await form.getByRole("textbox").nth(1).fill("1.888");
+  const fill = queued.payload;
+  const fillId = fill.id ?? queued.id;
+  expect(fill).toMatchObject({ station_id: expect.any(String), liters: 37.5, price_paid: 1.777 });
   // A second tab must not change the NAS tab's contract (no shared mode cookie).
   const other = await page.context().newPage();
   await other.goto(pi + "/?fallback=1");
   await expect(other.locator("#answer-title")).toContainText("Preisvergleich");
   expect((await entries(page))[0].id).toBe(queued.id);
+
   await recover(page);
+  await clickArea(page, "System");
   const sent = page.waitForResponse((response) => response.url().endsWith("/api/v1/fills") && response.request().method() === "POST" && response.ok());
-  await page.getByRole("button", { name: "Daten aktualisieren" }).click();
+  await page.getByRole("button", { name: "Synchronisieren", exact: true }).click();
   await sent;
   await expect.poll(() => entries(page)).toHaveLength(0);
-  await expect(form.getByRole("textbox").nth(0)).toHaveValue("23.5");
-  await expect(form.getByRole("textbox").nth(1)).toHaveValue("1.888");
+  await expect(page.getByText("1 synchronisiert, 0 offen", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(timeOrigin);
   const fills = await (await page.request.get(pi + "/api/v1/fills")).json();
-  expect(fills.fills.filter((row: any) => row.id === fill.id)).toHaveLength(1);
+  expect(fills.fills.filter((row: any) => row.id === fillId)).toHaveLength(1);
   expect(errors).toEqual([]);
   await other.close();
 });

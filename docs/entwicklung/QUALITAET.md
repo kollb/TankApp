@@ -1,21 +1,21 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 28.11.2026 · App-Version **0.78.0** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 28.11.2026 · App-Version **0.79.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
 „Lighthouse > 90“) und **ob das Polling unter Last trägt** (B7: ein Aggregat
 statt sechs Einzelabrufe). Beides wird seit D4 (0.31.0) gemessen — gegen
-denselben Demo-Stack, damit die Zahlen vergleichbar bleiben. Dazu kommt seit
-0.38.0 die **Suite ohne Mocks**: dieselbe Oberfläche, dieselben Antworten, aber
-im echten Browser gegen die echte App (Abschnitt
-[E2E ohne Mocks](#e2e-ohne-mocks-seit-0380)).
+denselben Demo-Stack, damit die Zahlen vergleichbar bleiben. Die
+Browserprüfungen trennen eine gemockte Alltagssuite von Live-Tests gegen echte
+Serverantworten (siehe [Browser-Integration](#browser-integration-gemockt-und-ohne-mocks)).
 
 ## Inhaltsverzeichnis
 
 - [Was gemessen wird](#was-gemessen-wird)
+- [Frontend-Unit-Tests (Vitest)](#frontend-unit-tests-vitest)
 - [Der Demo-Stack](#der-demo-stack)
-- [E2E ohne Mocks (seit 0.38.0)](#e2e-ohne-mocks-seit-0380)
+- [Browser-Integration: gemockt und ohne Mocks](#browser-integration-gemockt-und-ohne-mocks)
 - [Selbstmessung des Servers (seit 0.52.0)](#selbstmessung-des-servers-seit-0520)
 - [Lokal ausführen](#lokal-ausführen)
 - [Budgets](#budgets)
@@ -29,6 +29,7 @@ im echten Browser gegen die echte App (Abschnitt
 
 | Gate | Werkzeug | Gegenstand | Wann |
 |---|---|---|---|
+| Frontend-Unit-Tests | Vitest (`npm --prefix web run test`) | Aktive API-, Routing-, Entscheidungs-, Profil-, Formatter-, Glossar- und Barrierefreiheits-Verträge | `tests.yml`, web-Job vor Build und Browserprüfungen |
 | Lighthouse | `@lhci/cli` (Chrome aus dem Playwright-Cache) | Drei GUI-Zustände: gefüllter Einstieg („Jetzt“), Labor (`?tab=labor`) und Einrichtungszustand (leerer Server), je 3 Läufe | eigener Workflow `quality.yml`: auf Abruf, sonntags 04:17 UTC, und bei PRs, die `web/`, `app/`, `engine/` oder `ops/quality/` anfassen |
 | Lastpfad | `node web/load/overview.mjs` (keine Abhängigkeit) | `GET /api/v1/overview` — 8 Clients, 30 s, gemischt aus Volllesen und `If-None-Match`-Revalidierung | derselbe Workflow |
 
@@ -38,6 +39,24 @@ Chrome-Download lauffähig bleiben. Die Gates sind teuer (Minuten), der Spiegel
 ist schnell (Sekunden) — beides vermischt man nicht.
 
 ---
+
+## Frontend-Unit-Tests (Vitest)
+
+`npm --prefix web run test` läuft ohne Backend und ohne Browser. Beim Audit am
+28.11.2026 wurden die Specs mit dem Importgraph der aktuellen Shell und den
+Feature-Modulen abgeglichen. **38 verwaiste Specs** importierten entfernte
+Module (`src/data.ts`, `src/views/*`, `src/state/overview.tsx`) oder
+UI-Komponenten, die nicht mehr erreichbar sind. Sie wurden nicht durch
+Kompatibilitätsdateien reaktiviert. Noch lebende Zusagen sind in aktuelle Tests
+überführt: ETag-/Token-Cache (`api/client.test.ts`), Routing samt Browser-
+History, Profil- und Filterpräferenzen, gesperrte Entscheidungen,
+Stationsreferenz, Formatierung, Kontrast, Theme-Bootstrap, Glossar,
+lokale Tankstand- und Profilbearbeitung sowie die retrybare Beleg-Outbox. Es gibt keine Tests mehr für nicht importierte
+Legacy-Views oder doppelte Outbox-Implementierungen.
+
+Lokaler Lauf am 28.11.2026: **15 Testdateien, 77 Tests bestanden**. Die Suite
+läuft ohne Backend und Browser; sie ist keine E2E-Abnahme. Browserprüfungen
+bleiben getrennte CI-Gates (siehe unten).
 
 ## Der Demo-Stack
 
@@ -59,84 +78,96 @@ Startschirm: den gefüllten Einstieg auf dem Demo-Stack, den Labor-Bereich
 Einrichtungszustand auf einem zweiten, leeren Server (Port 1356). Die alte
 zweite URL `?tab=statistik` zeigte nie einen eigenen Bereich — „Statistik“
 ist seit dem Neuentwurf abgeschafft, beide Läufe sahen denselben Bildschirm.
-Die Bereiche laden als eigene Chunks (`React.lazy` je View), damit der
-Einstieg das Labor und die Karte nicht mitschleppt.
+Die aktuelle `AppShell` importiert die Feature-Seiten statisch; die frühere
+Zusage `React.lazy` je View und eigene Bereichs-Chunks gilt daher nicht mehr.
+Das Lighthouse-Gate misst die ausgelieferten Zustände, verspricht kein
+Route-Code-Splitting.
 
 ---
 
-## E2E ohne Mocks (seit 0.38.0)
+## Browser-Integration: gemockt und ohne Mocks
 
-Die Playwright-Suite in `web/e2e/` mockt jeden API-Pfad (`page.route`). Sie
-beweist, dass das GUI mit **erwarteten** Antworten richtig rendert — nicht, dass
-der Server diese Antworten liefert. Genau diese Lücke hat der Sanity-Check vom
-15.09. sichtbar gemacht: NaN brach `/last_forecasts` (B1), der Fallback zeigte
-UTC-Fenster (B3), der Demo-Stack lieferte keine Tageskurve. Kein gemockter Test
-konnte das sehen.
+Die Browserprüfungen sind bewusst getrennt. Die Alltagssuite
+`web/e2e/app.spec.ts` verwendet `web/e2e/mockApi.ts` und routet die
+`/api/v1/*`-Antworten. Sie prüft Verhalten der heutigen Shell unter
+kontrollierten Antworten, nicht den Vertrag zum Server. Die Live-Suite lässt
+die API unangetastet und fährt gegen den echten Demo-Stack beziehungsweise
+den echten NAS/Pi-Failover-Handler. Sie deckt damit die Integrationslücke ab,
+die ein reiner `page.route`-Test nicht sehen kann.
 
-Die zweite Suite tut dasselbe ohne Mocks, gegen den echten Demo-Stack:
+### Gemockte Alltagssuite
 
 | | |
 |---|---|
-| Spec | `web/e2e/demo.spec.ts` (kein `page.route`) |
-| Config | `web/playwright.demo.config.ts` — eigenes `webServer`-Kommando mit `ops/quality/demo_server.py --rebuild`, Port **1357**, Desktop 1440 px + Mobil 390 px + schmal 320 px |
+| Specs | `web/e2e/app.spec.ts` und `web/e2e/mockApi.ts` |
+| Config / Aufruf | `web/playwright.config.ts` · `npm --prefix web run test:e2e` |
+| Zusagen | Aktuelle Routen, Alias und Browser-History; Zuordnung einer gesperrten Entscheidung ohne Handlung oder Ersparnis; Profil-/Kraftstoff- und Filterpräferenzen; Labor-Bin-Vertrag; mobile Navigation und Überlauf; ETag-Cache mit 200/304. |
+| Letzter lokaler Lauf | 14 Fälle über Desktop und Mobil: **12 bestanden, 2 viewport-bedingt übersprungen**. |
+
+### E2E ohne Mocks (seit 0.38.0)
+
+Der historische Abschnittsanker bleibt für Release-Notizen erhalten; aktuell
+umfasst die Live-Suite die folgenden Demo-, Responsive- und Failover-Specs.
+
+#### Live-Demo und Failover ohne Mocks
+
+| | |
+|---|---|
+| Specs | `web/e2e/demo.spec.ts`, `web/e2e/mobile.spec.ts` und `web/e2e/failover.spec.ts`; keine `page.route`-Mocks. |
+| Config | `web/playwright.demo.config.ts` startet `ops/quality/demo_server.py --rebuild` auf Port **1357**; Projekte 1440 × 1050, 390 × 844 und 320 × 720. |
 | Aufruf | `npm --prefix web run test:e2e:demo` |
-| Läuft in | `.github/workflows/tests.yml` (web-Job) **nach** der gemockten Suite — nicht in `quality.yml`, weil sie Sekunden braucht und zum CI-Spiegel gehört |
-| Zusagen | Übersicht mit der Antwortkarte (fünf Ausgänge, Berliner Zeit), Tageszeile (Kurve mit Textalternative), Stationenliste und Navigation „Übersicht · Stationen · Mehr“ im RP2-Lesemodus; `If-None-Match` → 304 beim Aktualisieren, keine `role="alert"`; der Beleg aus „Einstellungen → Belege und Bilanz“ trägt den eingetragenen Preis (`price_source: manuell`), nie eine Prognose; dazu Server-Vertrag ohne Browser in `tests/test_e2e_demo.py` |
-| Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` — prüft, dass die Suite mockfrei bleibt und Config, Skript und CI-Schritt zusammenpassen |
-| Laufzeit | 6 Tests (3 Fälle × Desktop/Mobil) in **13,3 s** im ersten grünen CI-Lauf (Demo-Aufbau inklusive) |
+| Läuft in | `.github/workflows/tests.yml` (web-Job) nach der gemockten Suite; der Demo-Stack gehört zum CI-Spiegel, nicht zum langsameren `quality.yml`-Workflow. |
+| Zusagen | Live-Entscheidung; ohne Stadt- und Stationsfilter bleibt der Tag ehrlich leer (`day: null`, „Noch kein Tagesverlauf vorhanden.“); echte Stationsnamen; `If-None-Match` → 304; Pi/NAS-Vertrag; Beleg-Outbox reiht einen retrybaren 503 ein und synchronisiert nach NAS-Rückkehr genau einmal. Die 400-Abweisung ohne Queue ist im Vitest-Regressionstest abgedeckt. `tests/test_e2e_demo.py` prüft separat die echte stationsbezogene Tageskurve samt Server-ETag. |
+| Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` hält Mockfreiheit, aktuellen Leerzustand und Demo-Config/CI-Verdrahtung fest. |
+| Letzter lokaler Lauf | 24 Fälle: **20 bestanden, 4 projektbedingt übersprungen** (28.11.2026, ca. 23 s). |
 
-**Mobil-Zusagen (0.73.0/0.75.0, UX-NEUENTWURF §9/§13).**
-`web/e2e/mobile.spec.ts` misst zusätzlich zur Überlauf-Prüfung:
+**Responsive Zusagen der aktuellen Shell.** `web/e2e/mobile.spec.ts` prüft
+im echten Demo-Stack bei 390 px und 320 px:
 
-- Bei 390 × 844 endet die Antwort-Überschrift (`#jetzt-headline`) im ersten
-  Viewport.
-- Bei 320 × 720 bleibt die Kopfzeile höchstens 80 px hoch, der Stadt-/
-  Kraftstoff-Chip ist nicht abgeschnitten und die Antwort-Überschrift
-  (`#jetzt-headline`) endet im ersten Viewport (C13).
-- Genau ein Banner, „Warum?“ mit höchstens fünf Zeilen, Fokus im Dialog.
-- Streichliste: keine drei Fakten, kein 19-Zellen-Raster, keine Was-wäre-wenn-
-  Annahmen, keine Tankstands-Pflege in „Jetzt“.
-- Scrolltiefe des Entscheidungsbildschirms ≤ 1,5 Viewports (B4, unverändert).
-- Kopfzeilen-Steuerungen bleiben bei schmalen Breiten im Blatt erreichbar;
-  Escape stellt den Fokus wieder her, Profilverwaltung öffnet keinen
-  verschachtelten Dialog.
+- Übersicht, Stationen, Labor, System, Einstellungen und Glossar ohne
+  horizontalen Überlauf auf Dokumentebene.
+- Alle drei Einstellungen-Unterbereiche ebenfalls ohne Überlauf.
+- Das mobile Bereiche-Blatt schließt auf Escape und gibt den Fokus an den
+  Menü-Auslöser zurück.
 
-Der Browser-Teil braucht Chromium: im Normalfall
-`npx --prefix web playwright install chromium` (lädt von `cdn.playwright.dev`).
-Ist der Download gesperrt (Sandkasten ohne Netzzugang zu diesem CDN), lässt
-sich ein Chromium aus dem npm-Registry-Paket `@sparticuz/chromium` verwenden —
-der Weg ist am 18.09.2026 gelaufen und liefert beide Suiten grün:
+Die alte „Jetzt/Woche“-Abnahme mit `#jetzt-headline`, Microcopy-Streichlisten
+und Legacy-View-Tests ist nicht mehr Teil dieser Suite; dafür gibt es keine
+Kompatibilitäts-Views.
+
+Der Browser-Teil braucht Chromium: `cd web && npx playwright install chromium`
+(lädt von `cdn.playwright.dev`). Ist der Download gesperrt, lässt sich ein
+Chromium aus dem npm-Registry-Paket `@sparticuz/chromium` verwenden:
 
 ```bash
 # 1. Chromium für Serverless + Puppeteer (npm-Registry ist erreichbar):
 mkdir -p /tmp/chrome && cd /tmp/chrome && npm init -y
 npm i @sparticuz/chromium puppeteer-core
 node -e "import('@sparticuz/chromium').then(c => c.default.executablePath()).then(console.log)"
-# → /tmp/chromium (entpackt sich selbst; AL2023 kennt nur 3 Pflicht-Bibliotheken)
+# → /tmp/chromium
 
-# 2. NSS/NSPR für den Start nachlegen (Debian hat sie in keinem Paket dabei):
+# 2. NSS/NSPR für den Start nachlegen:
 python3 -m venv /tmp/brotlivenv && /tmp/brotlivenv/bin/pip install brotli
 /tmp/brotlivenv/bin/python -c "
 import brotli, tarfile, io
 raw = brotli.decompress(open('/tmp/chrome/node_modules/@sparticuz/chromium/bin/al2023.tar.br','rb').read())
 tarfile.open(fileobj=io.BytesIO(raw)).extractall('/tmp/chromium-libs')"
 
-# 3. Die beiden Suiten starten (jeweils aus web/):
-#    Alltagssuite, gemockt — gegen einen LEEREN Server (TANKAPP_DATA_DIR leer):
-TANKAPP_DATA_DIR=/tmp/empty-data .venv/bin/python tankapp.py serve --host 127.0.0.1 --port 1359 &
-TANKAPP_TEST_URL=http://127.0.0.1:1359 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/tmp/chromium \
-  LD_LIBRARY_PATH=/tmp/chromium-libs/lib npx playwright test        # 38 grün
-#    Demo-/Mobil-Suite: Start über web/playwright.demo.local.config.ts (gitignored),
-#    der Demo-Server kommt aus dem webServer-Block der Demo-Config:
-LD_LIBRARY_PATH=/tmp/chromium-libs/lib npx playwright test \
-  --config playwright.demo.local.config.ts                          # 25 grün, 11 skipped
+# 3. Einmal aus dem Repository-Root bauen, dann aus web/ testen:
+npm --prefix web run build
+cd web
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/tmp/chromium \
+  LD_LIBRARY_PATH=/tmp/chromium-libs/lib npm run test:e2e       # 12 bestanden, 2 übersprungen
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/tmp/chromium \
+  LD_LIBRARY_PATH=/tmp/chromium-libs/lib npm run test:e2e:demo  # 20 bestanden, 4 übersprungen
 ```
 
-**Nicht** mit dem Demo-Server gegen die gemockte Suite fahren: Sechs ihrer Fälle
-prüfen den Leerzustand („Erst Stationen einrichten, dann der Atlas“) und scheitern dann an
-den Demo-Daten — das sieht nach einem Regressionsfehler aus, ist aber der
-falsche Server. Deshalb liegt der Server-Teil der Zusage zusätzlich als
-Python-Test daneben, der überall läuft.
+Die Alltagssuite wird von `playwright.config.ts` mit dem normalen Testserver
+versorgt und stubbt ausschließlich die API. Die Live-Suite startet ihren
+Demo-Server selbst. Der Browser zeigt bei der Übersicht ohne Stadt-/Stationsfilter bewusst
+`day: null`; der separate Serververtrag in `tests/test_e2e_demo.py` fragt mit
+einer konkreten Station ab und prüft eine gefüllte Tageskurve samt Ortszeit.
+Das sind unterschiedliche, beabsichtigte Verträge — kein widersprüchlicher
+Teststand.
 
 ---
 
@@ -369,10 +400,11 @@ wenn sich die Rahmenbedingungen ändern.
    zeigt — der lokale Lauf misst gegen einen anderen Chromium-Stack
    (SwiftShader). Bestätigt die CI die Werte, wird das Budget auf
    `error`/≥ 0,90 nachgezogen.
-2. **Nicht alle Bereiche im Gate.** Gemessen werden der gefüllte Einstieg,
-   das Labor und der Einrichtungszustand (U7). Die übrigen Bereiche (Woche,
-   Stationen, Ich, System) folgen, sobald das M4-Ziel (> 0,90) steht — sie
-   laden als eigene Chunks, ein eigener Lauf je Bereich ist damit billig.
+2. **Nicht alle aktuellen Bereiche im Lighthouse-Gate.** Gemessen werden der
+   gefüllte Einstieg, das Labor und der Einrichtungszustand (U7). Für
+   Stationen, System, Einstellungen und Glossar gibt es noch keine eigenen
+   Lighthouse-Läufe; der Frontend-Browsercheck auf Layout und Funktion ersetzt
+   diese Performance-Messung nicht.
 3. **Kein Docker-Stack.** Gegen `ops/nas/app/compose.yml` ist der Lastpfad
    noch nicht gelaufen — die Compose-Variante braucht eine InfluxDB mit
    Inhalt. Bis dahin gilt der Demo-Stack als Referenz.

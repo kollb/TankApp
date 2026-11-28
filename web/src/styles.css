@@ -30,7 +30,7 @@
   --surface-3: #242B32;
   --text-primary: #ECEFF1;
   --text-secondary: #A7B1B9;
-  --text-muted: #737F89;
+  --text-muted: #87939C;
   --accent-go: #3DDC84;
   --accent-go-container: #0D3822;
   --accent-wait: #7CC4FA;
@@ -104,6 +104,12 @@ button:disabled { cursor: wait; opacity: .55; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--accent-wait); outline-offset: 2px; }
 .data-font, .numeric { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.update-banner { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:20px; border:1px solid var(--surface-2-border); border-radius:12px; background:var(--accent-wait-container); padding:12px 14px; color:var(--text-primary); }
+.update-banner-copy { min-width:0; flex:1; }
+.update-banner-title { margin:0; font-weight:700; }
+.update-banner-note { margin:3px 0 0; color:var(--text-secondary); font-size:12px; line-height:1.45; }
+.update-banner-action, .update-banner-dismiss { min-height:40px; border:1px solid var(--surface-2-border); border-radius:999px; background:var(--surface-2); padding:0 14px; color:var(--text-primary); font-weight:650; }
+.update-banner-dismiss { display:grid; min-width:40px; place-items:center; padding:0; }
 
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; display: flex; width: 220px; flex-direction: column; border-right: 1px solid var(--surface-1-border); background: var(--surface-1); padding: 20px 12px; }

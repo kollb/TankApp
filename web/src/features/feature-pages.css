@@ -1,4 +1,5 @@
-.feature-stack { display:grid; gap:16px; min-width:0; }
+.feature-stack { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; min-width:0; }
+.feature-stack > *, .feature-grid > * { min-width:0; }
 .feature-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
 .feature-stack h2 { font-size:16px; margin:0 0 16px; } .feature-stack h3 { font-size:14px; }
 .feature-stack label { display:grid; gap:6px; color:var(--text-secondary); font-size:13px; }

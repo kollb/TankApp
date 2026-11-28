@@ -8,14 +8,22 @@ import type { OverviewState } from "../../state/useOverview";
 import { getDecisionView, validityLabel } from "./decision";
 
 function StatusBanner({ overview, offline, error }: { overview: OverviewResponse | null; offline: boolean; error: string | null }) {
-  const text = offline ? `Backend offline — ${error ?? "angezeigte Daten können veraltet sein."}` : !overview?.decide?.primary ? "Keine Prognose verfügbar." : overview.decide.primary.action === "no_advice" ? (overview.decide.blocking_reasons?.[0] ?? "Modell derzeit ohne belastbare Empfehlung.") : null;
+  const decision = overview?.decide;
+  const blocked = decision?.decision_ready === false || decision?.primary?.action === "no_advice";
+  const text = offline
+    ? `Backend offline — ${error ?? "angezeigte Daten können veraltet sein."}`
+    : blocked
+      ? decision?.blocking_reasons?.[0] ?? "Modell derzeit ohne belastbare Empfehlung."
+      : !decision?.primary
+        ? "Keine Prognose verfügbar."
+        : null;
   if (!text) return null;
   return <div className="status-banner" role="status" title={text}>{text}</div>;
 }
 
 function DecisionCard({ overview, state, offline, stations }: { overview: OverviewState; state: ReturnType<typeof getDecisionView>; offline: boolean; stations: Station[] }) {
   const [whyOpen, setWhyOpen] = useState(false);
-  const tone = state.state === "refuel" ? "go" : state.state === "wait" ? "wait" : state.state === "offline" || state.state === "forecast" ? "neutral" : "risk";
+  const tone = state.state === "refuel" ? "go" : state.state === "wait" ? "wait" : "neutral";
   const expiry = validityLabel(state.validUntil);
   return <Card tone={tone} className="decision-card">
     <div className="card-kicker"><span>Tankentscheidung</span><Badge tone={tone}>{state.state === "offline" ? "OFFLINE" : state.state === "forecast" ? "KEINE PROGNOSE" : state.state.toUpperCase()}</Badge></div>

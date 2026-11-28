@@ -13,8 +13,9 @@ import { BookOpen, FlaskConical, Home, MapPin, Menu, Server, Settings } from "lu
 import { Sheet } from "../ui/Sheet";
 import { TopBar } from "./TopBar";
 import { useOverview } from "../../state/useOverview";
+import { UpdateBanner } from "../UpdateBanner";
+import { routeFromSearch, urlForTab, type TabId } from "../../routing";
 
-export type TabId = "overview" | "stationen" | "labor" | "system" | "einstellungen" | "glossar";
 const tabs: Array<{ id: TabId; label: string; Icon: typeof Home }> = [
   { id: "overview", label: "Übersicht", Icon: Home },
   { id: "stationen", label: "Stationen", Icon: MapPin },
@@ -23,21 +24,11 @@ const tabs: Array<{ id: TabId; label: string; Icon: typeof Home }> = [
   { id: "einstellungen", label: "Einstellungen", Icon: Settings },
   { id: "glossar", label: "Glossar", Icon: BookOpen },
 ];
-const validTabs = new Set<string>(tabs.map(({ id }) => id));
-function routeFromUrl(): TabId {
-  const raw = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
-  if (raw === "woche" || raw === "week") return "overview";
-  if (raw === "ich") return "einstellungen";
-  return raw && validTabs.has(raw) ? raw as TabId : "overview";
-}
 function normalizeUrl(tab: TabId, replace = false) {
-  const params = new URLSearchParams(window.location.search);
-  if (tab === "overview" && !params.has("tab")) return;
-  params.set("tab", tab);
-  const query = params.toString();
-  const url = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
-  if (replace) window.history.replaceState(null, "", url);
-  else window.history.pushState(null, "", url);
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const next = urlForTab(current, tab);
+  if (replace) window.history.replaceState(null, "", next);
+  else if (next !== current) window.history.pushState(null, "", next);
 }
 
 function NavButton({ id, label, Icon, active, onClick }: { id?: TabId; label: string; Icon: typeof Home; active: boolean; onClick: () => void }) {
@@ -47,7 +38,7 @@ function NavButton({ id, label, Icon, active, onClick }: { id?: TabId; label: st
 }
 
 export function AppShell() {
-  const [tab, setTab] = useState<TabId>(() => routeFromUrl());
+  const [tab, setTab] = useState<TabId>(() => routeFromSearch(window.location.search));
   const [menuOpen, setMenuOpen] = useState(false);
   const { city, fuel, refreshKey } = useAppContext();
   const overview = useOverview();
@@ -60,10 +51,10 @@ export function AppShell() {
     return () => controller.abort();
   }, [city, fuel, refreshKey]);
   useEffect(() => {
-    const initial = routeFromUrl();
+    const initial = routeFromSearch(window.location.search);
     setTab(initial);
     normalizeUrl(initial, true);
-    const onPopState = () => setTab(routeFromUrl());
+    const onPopState = () => setTab(routeFromSearch(window.location.search));
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -89,6 +80,7 @@ export function AppShell() {
     <div className="main-column">
       <TopBar health={overview.health} generatedAt={dataAge} offline={overview.offline} refresh={overview.refresh} />
       <main className="page-content">
+        <UpdateBanner />
         <h1 className="page-heading">{selected.label}</h1>
         {overview.error && tab !== "overview" && tab !== "stationen" && <div className="panel" role="status" style={{ marginBottom: 14, color: "var(--accent-neutral)" }}>{overview.error}</div>}
         {tab === "overview" ? <OverviewPage data={overview} stations={stations} navigate={(next) => go(next)} /> : tab === "stationen" ? <StationsPage /> : tab === "labor" ? <LabPage /> : tab === "system" ? <SystemPage health={overview.health} /> : tab === "einstellungen" ? <SettingsPage /> : <GlossaryPage />}

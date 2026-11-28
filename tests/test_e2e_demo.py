@@ -1,16 +1,18 @@
 """E2E ohne Mocks: der echte Server gegen echte Antworten (LUECKEN „Bewusst offen“).
 
-Warum diese Datei: Die Browser-Suite mockt jeden ``/api/v1/*``-Pfad
-(``page.route``) und beweist damit Rendering-Logik, nicht die Integration
-Server ↔ GUI. Genau dort fielen B1 (NaN brach ``/last_forecasts``), B3 (UTC
-statt Ortszeit) und der defekte Demo-Stack in den Sanity-Check statt in die CI.
+Warum diese Datei: Die gemockte Browser-Alltagssuite (`web/e2e/app.spec.ts`)
+mockt ``/api/v1/*`` via ``page.route`` und beweist Rendering-Logik, nicht die
+Integration Server ↔ GUI. Die Live-Browser-Suite bleibt davon getrennt und
+prüft den aktuellen GUI-Vertrag; diese Python-Spec hält zusätzlich die
+stationsbezogene Serverantwort fest.
 
 Diese Datei ist die **server-seitige Hälfte** dieser Lücke: Sie startet den
 echten HTTP-Server aus ``app.server`` gegen den Demo-Datenbestand
-(``ops/quality/demo_data.py``) und prüft die Verträge, auf die sich die
-Browser-Spec ``web/e2e/demo.spec.ts`` stützt — Alltagsaggregat, Tageskurve,
-Revalidierung. Die Browser-Hälfte prüft danach, dass dieselben Zahlen im DOM
-ankommen; sie läuft im CI (dort ist Chromium installierbar).
+(``ops/quality/demo_data.py``) und prüft das stationsbezogene Aggregat,
+einschließlich befüllter Tageskurve und Berliner Zeit, sowie die echte
+ETag-Revalidierung. Die Browser-Spec ``web/e2e/demo.spec.ts`` prüft davon
+getrennt die Startansicht ohne Stadt- und Stationsfilter (dort ist
+``day: null`` ehrlich), echte Stationsnamen und die sichtbare ETag/304-Revalidierung.
 
 Kein Mock, keine Attrappe: derselbe ``make_server``-Pfad wie im Betrieb,
 nur mit injizierter Preisabfrage statt InfluxDB.
@@ -99,11 +101,11 @@ def _get(url, headers=None):
 
 
 def test_overview_liefert_entscheidung_und_gefüllte_tageskurve(demo_server, demo_data):
-    """Der Alltagspfad: eine Anfrage, echte Entscheidung, Zellen mit Preisen.
+    """Stationengescope Serverantwort mit echter Entscheidung und Tageskurve.
 
-    Der Browser-Test (``web/e2e/demo.spec.ts``) sieht genau diese Antwort als
-    DOM. Fällt hier etwas aus — NaN, leere Tageskurve, falscher Fehlercode —,
-    ist der GUI-Test nicht mehr die erste Stelle, die es merkt.
+    Dieser Vertrag fordert ``station_id`` ausdrücklich an. Die Browser-Spec
+    prüft dagegen die Startansicht ohne Stadt- und Stationsfilter und erwartet
+dort ehrlich ``day: null``. Beide Zustände sind verschieden und jeweils beabsichtigt.
     """
     station_id = demo_data.STATIONS[0][0]
     url = (
@@ -155,12 +157,13 @@ def test_overview_liefert_entscheidung_und_gefüllte_tageskurve(demo_server, dem
 def test_overview_revalidiert_mit_echtem_etag(demo_server):
     """B7 ohne Mock: Der echte Server antwortet auf ``If-None-Match`` mit 304.
 
-    Der gemockte Browser-Test kann das nicht zeigen — dort kommt die Antwort
-    aus ``page.route``. Hier läuft die Revalidierung gegen ``data_version()``:
-    Der zweite Aufruf derselben Ansicht ist eine **Bestätigung** derselben
-    Entscheidung, schreibt den Ledger also nicht neu. Genau davon hängt die
-    Revalidierung ab — ``data_version`` liest den mtime-Wert des Stores; ein
-    Schreiben pro Aufruf würde jedes ETag schon beim Ausliefern entwerten.
+    Die Live-Browser-Spec prüft den sichtbaren 304-Aktualisierungspfad; dieser
+    Test hält zusätzlich fest, dass der echte Server nach ``data_version()``
+    revalidiert: Der zweite Aufruf derselben Ansicht ist eine **Bestätigung**
+    derselben Entscheidung, schreibt den Ledger also nicht neu. Genau davon
+    hängt die Revalidierung ab — ``data_version`` liest den mtime-Wert des
+    Stores; ein Schreiben pro Aufruf würde jedes ETag schon beim Ausliefern
+    entwerten.
     """
     url = f"{demo_server}/api/v1/overview?city={CITY}&fuel={FUEL}"
     # Der **erste** Aufruf legt die Entscheidung an — das ist eine echte
