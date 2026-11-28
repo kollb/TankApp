@@ -52,6 +52,7 @@ export interface DecisionResponse {
   }>;
   valid_until?: string | null;
   decision_ready?: boolean;
+  tank?: { range_km?: number | null; reserve_range_km?: number | null; state?: string | null; [key: string]: unknown } | null;
   blocking_reasons?: string[];
   [key: string]: unknown;
 }
