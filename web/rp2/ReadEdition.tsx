@@ -6,7 +6,7 @@ import {
   clockLabel,
   countLabel,
   euroPerLiter,
-} from "../src/data";
+} from "../src/utils/format";
 import { BottomSheet } from "../src/components/BottomSheet";
 
 // Deliberately a separate contract: no NAS decision hooks, writes or service

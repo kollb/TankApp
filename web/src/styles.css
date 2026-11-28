@@ -1,704 +1,176 @@
 @import "tailwindcss";
 
-/*
- * Neue GUI („Tankklar“) — Material Design 3, helle Basis; die Vorlage
- * steht in `docs/produkt/GUI-VORLAGEN.md`.
- *
- * Die Design-Basis ist jetzt das helle Material-You-Schema des Konzepts
- * (Primary #006c4c, Error #ba1a1a, Tertiary #3d6373, Warnung #7c5800,
- * Surface-Rampe #ffffff → #e4eae3 auf #f5fbf5). `:root` trägt diesen
- * Stand. Wer „Dunkel“ wählt, bekommt unter `html.dark` die bisherige
- * dunkle Slate-Welt — jede Klasse im Code bleibt unverändert, nur die
- * Variablen kippen (derselbe Schwenk wie früher `html.light`, umgekehrt).
- *
- * Geprüft von src/a11y.test.ts: gedämpfte Texttöne ≥ 4,5:1 auf ihren
- * Flächen, jedes M3-Paar container/on-container ≥ 4,5:1, die Ampel der
- * Stundenbalken ≥ 3:1 (Fläche, kein Text).
- */
-
-/*
- * M3-Rohpalette des Konzepts als Tailwind-Tokens (sample-Bezeichner):
- * bg-primary, text-on-surface, bg-sc-low, border-outline-variant, …
- *
- * `@theme inline` kompiliert die Klassen als Verweis `var(--color-m3-…)`.
- * Die Werte selbst stehen im `:root`- bzw. `html.dark`-Block weiter unten
- * — so schaltet auch jede M3-Utility zuverlässig zwischen den Themen,
- * statt die helle Palette fest zu verdrahten.
- */
+/* Tailwind palette bridge retained for the isolated RP2 reader, whose JSX uses
+   slate/emerald utilities. The main app below uses only explicit M3 tokens. */
 @theme inline {
-  --color-primary: var(--color-m3-primary);
-  --color-on-primary: var(--color-m3-on-primary);
-  --color-primary-container: var(--color-m3-primary-container);
-  --color-on-primary-container: var(--color-m3-on-primary-container);
-
-  --color-secondary-container: var(--color-m3-secondary-container);
-  --color-on-secondary-container: var(--color-m3-on-secondary-container);
-
-  --color-error: var(--color-m3-error);
-  --color-on-error: var(--color-m3-on-error);
-  --color-error-container: var(--color-m3-error-container);
-  --color-on-error-container: var(--color-m3-on-error-container);
-
-  --color-tertiary: var(--color-m3-tertiary);
-  --color-on-tertiary: var(--color-m3-on-tertiary);
-  --color-tertiary-container: var(--color-m3-tertiary-container);
-  --color-on-tertiary-container: var(--color-m3-on-tertiary-container);
-
-  --color-warn: var(--color-m3-warn);
-  --color-warn-container: var(--color-m3-warn-container);
-  --color-on-warn-container: var(--color-m3-on-warn-container);
-
-  --color-surface: var(--color-m3-surface);
-  --color-sc-lowest: var(--color-m3-surface-lowest);
-  --color-sc-low: var(--color-m3-surface-low);
-  --color-sc: var(--color-m3-sc);
-  --color-sc-high: var(--color-m3-surface-high);
-  --color-sc-highest: var(--color-m3-sc-highest);
-
-  --color-on-surface: var(--color-m3-on-surface);
-  --color-on-surface-variant: var(--color-m3-on-surface-variant);
-  --color-outline: var(--color-m3-outline);
-  --color-outline-variant: var(--color-m3-outline-variant);
-
-  --color-inverse-surface: var(--color-m3-inverse-surface);
-  --color-inverse-on-surface: var(--color-m3-on-inverse-surface);
-  --color-inverse-primary: var(--color-m3-inverse-primary);
+  --color-slate-50: var(--rp2-slate-50);
+  --color-slate-100: var(--rp2-slate-100);
+  --color-slate-200: var(--rp2-slate-200);
+  --color-slate-300: var(--rp2-slate-300);
+  --color-slate-400: var(--rp2-slate-400);
+  --color-slate-500: var(--rp2-slate-500);
+  --color-slate-600: var(--rp2-slate-600);
+  --color-slate-700: var(--rp2-slate-700);
+  --color-slate-800: var(--rp2-slate-800);
+  --color-slate-900: var(--rp2-slate-900);
+  --color-slate-950: var(--rp2-slate-950);
+  --color-emerald-400: var(--rp2-emerald-400);
+  --color-amber-100: var(--rp2-amber-100);
+  --color-amber-400: var(--rp2-amber-400);
+  --color-amber-500: var(--rp2-amber-500);
 }
 
-/*
- * Elevation der M3-Ebene (`docs/produkt/GUI-VORLAGEN.md`): Level 1 für Karten
- * über der Fläche, Level 3 für FAB und Snackbar.
- */
-.elev-1 {
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.18),
-    0 1px 3px 1px rgba(0, 0, 0, 0.08);
-}
-.elev-3 {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.2),
-    0 4px 8px 3px rgba(0, 0, 0, 0.1);
-}
-
-/*
- * Helles Material-You-Schema (Default) — siehe Kopfkommentar.
- *
- * Die Tailwind-Slates tragen Rollen (Seite, Karte, Rand, Text, gedämpft)
- * weiter; nur die Helligkeit und der Farbton kommen jetzt aus dem
- * M3-Grün-Raster. Die gedämpften Töne slate-500/600 sind bewusst dunkler
- * als Tailwinds Original, damit sie auf allen hellen Flächen AA halten.
- */
 :root {
-  /* Slate-Skala in M3-Grünwerten: */
-  --color-slate-50: #ffffff;
-  --color-slate-100: #171d1a;
-  --color-slate-200: #212822;
-  --color-slate-300: #404943;
-  --color-slate-400: #4a5550;
-  --color-slate-500: #566058; /* ≥ 4,5:1 auf allen hellen Flächen */
-  --color-slate-600: #566058; /* Rolle „gebrochen“, Ton wie 500 */
-  --color-slate-700: #bfc9c1; /* Ränder */
-  --color-slate-800: #e4eae3; /* Insets, Trenner (Surface-High) */
-  --color-slate-900: #ffffff; /* Karten (Surface-Lowest) */
-  --color-slate-950: #f5fbf5; /* Seite (Surface) */
-  /* text-white ist im dunklen Stand heller Text; im hellen der Haupttext. */
-  --color-white: #171d1a;
-
-  /* Akzent-Texttöne auf hellen Flächen: Emerald trägt jetzt die
-     Primary-Linie #006c4c („die App ist grün“), Amber/Warn das Ocker des
-     Konzepts, Rose das Error-Rot #ba1a1a, Sky das Schieferblau. */
-  --color-emerald-200: #005741;
-  --color-emerald-300: #006c4c;
-  --color-emerald-400: #0d7d58;
-  --color-emerald-500: #006c4c;
-  /* Pastell-Töne (50/100/600) tragen im dunklen Stand helle Textrollen auf
-     getönten Flächen — im hellen Stand sind es dunkle Texttöne auf hellen
-     Tönungen (M3 on-container). */
-  --color-emerald-100: #002114;
-  --color-amber-100: #261900;
-  --color-rose-100: #410002;
-  --color-sky-100: #001f29;
-  --color-violet-100: #341e6b;
-  --color-violet-200: #4c1d95;
-  --color-violet-300: #5b21b6;
-  --color-violet-400: #6d28d9;
-  --color-amber-200: #5c4700;
-  --color-amber-300: #7c5800;
-  --color-amber-400: #8a6400;
-  --color-rose-200: #8c1d18;
-  --color-rose-300: #ba1a1a;
-  --color-rose-400: #d32f2f;
-  --color-sky-200: #1f4a5c;
-  --color-sky-300: #274f61;
-  --color-sky-400: #3d6373;
-  /* Helle Tönungen für Info-/Warn-/Erfolgsflächen im hinteren Rang. */
-  --color-emerald-900: #c9f5dc;
-  --color-emerald-950: #e0f8ea;
-  --color-amber-950: #fdf0d0;
-  --color-rose-950: #fee9e7;
-  --color-sky-950: #e3f0f7;
-
-  /*
-   * M3-Farbrollen (Material You) — Leitfarben exakt nach Konzept
-   * (UX-Konzept v2, `docs/produkt/GUI-VORLAGEN.md`):
-   * Primary #006c4c / Container #89f8c7 · Error #ba1a1a / #ffdad6 ·
-   * Tertiary #3d6373 / #c1e8fb · Warnung #7c5800 / #ffdea3.
-   *
-   * Der Tank-Guide antwortet in einer Farbe: Grün = jetzt tanken, Blau =
-   * besser warten, Grau = kein Zeitdruck, Rot = Tankrest-Risiko, Ocker =
-   * offline. Keine Komponente trägt eigene Hexwerte — sonst erzählt
-   * „Rot“ an zwei Stellen zweierlei.
-   */
-  --color-m3-primary: #006c4c;
-  --color-m3-on-primary: #ffffff;
-  --color-m3-primary-container: #89f8c7;
-  --color-m3-on-primary-container: #002114;
-
-  --color-m3-secondary-container: #cfe9d9;
-  --color-m3-on-secondary-container: #0b1f16;
-  --color-m3-on-secondary: #ffffff;
-
-  --color-m3-error: #ba1a1a;
-  --color-m3-on-error: #ffffff;
-  --color-m3-error-container: #ffdad6;
-  --color-m3-on-error-container: #410002;
-
-  --color-m3-tertiary: #3d6373;
-  --color-m3-on-tertiary: #ffffff;
-  --color-m3-tertiary-container: #c1e8fb;
-  --color-m3-on-tertiary-container: #001f29;
-
-  /* „Warmes Warn-Banner“ (Stufe 3, offline) — Ocker statt Error-Rot:
-     Offline ist kein Fehler der Nutzerin oder des Nutzers. */
-  --color-m3-warn: #7c5800;
-  --color-m3-on-warn: #ffffff;
-  --color-m3-warn-container: #ffdea3;
-  --color-m3-on-warn-container: #261900;
-
-  /* Ampel der Stundenbalken („Heute im Überblick“): Flächen, kein Text —
-     3:1 gegen die Kartenfläche genügen (WCAG 1.4.11). Das Mittel-Gelb des
-     Konzepts (#d9a400) hätte auf Weiß nur 2,3:1 — darum um eine Stufe
-     abgedunkelt, optisch derselbe ockerne Ton. */
-  --color-m3-bar-low: #006c4c;
-  --color-m3-bar-mid: #b08800;
-  --color-m3-bar-high: #ba1a1a;
-
-  /* Flächen-Abstufung ohne harte Schlagschatten (M3 Surface Containers)
-     auf der Seite #f5fbf5 — exakt die Rampe des Konzepts. */
-  --color-m3-surface: #f5fbf5;
-  --color-m3-surface-lowest: #ffffff;
-  --color-m3-surface-low: #eff5ef;
-  --color-m3-sc: #e9efe9;
-  --color-m3-surface-high: #e4eae3;
-  --color-m3-sc-highest: #dee4de;
-  --color-m3-on-surface: #171d1a;
-  --color-m3-on-surface-variant: #404943;
-  --color-m3-outline: #707973;
-  --color-m3-outline-variant: #bfc9c1;
-  /* Snackbar („Wieder online“): invertierte Fläche. */
-  --color-m3-inverse-surface: #2b322e;
-  --color-m3-on-inverse-surface: #ecf2ec;
-  --color-m3-inverse-primary: #6cdbac;
+  color-scheme: dark;
+  --surface-bg: #0E1113;
+  --surface-1: #15191C;
+  --surface-1-border: #262D33;
+  --surface-2: #1C2227;
+  --surface-2-border: #2E363D;
+  --surface-3: #242B32;
+  --text-primary: #ECEFF1;
+  --text-secondary: #A7B1B9;
+  --text-muted: #737F89;
+  --accent-go: #3DDC84;
+  --accent-go-container: #0D3822;
+  --accent-wait: #7CC4FA;
+  --accent-wait-container: #132F46;
+  --accent-risk: #FFB4AB;
+  --accent-risk-container: #4A1816;
+  --accent-neutral: #9AA5AE;
+  --accent-neutral-container: #22272B;
+  --font-ui: Inter, Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-data: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --rp2-slate-50: #f8fafc;
+  --rp2-slate-100: #f1f5f9;
+  --rp2-slate-200: #e2e8f0;
+  --rp2-slate-300: #cbd5e1;
+  --rp2-slate-400: #94a3b8;
+  --rp2-slate-500: #8598b0;
+  --rp2-slate-600: #8295ad;
+  --rp2-slate-700: #334155;
+  --rp2-slate-800: #1e293b;
+  --rp2-slate-900: #0f172a;
+  --rp2-slate-950: #020617;
+  --rp2-emerald-400: #34d399;
+  --rp2-amber-100: #fef3c7;
+  --rp2-amber-400: #fbbf24;
+  --rp2-amber-500: #f59e0b;
+  font-family: var(--font-ui);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  background: var(--surface-bg);
+  color: var(--text-primary);
 }
 
-/*
- * Dunkles Thema („Dunkel“ in den Einstellungen): die bisherige
- * Design-Welt — dunkler Slate-Hintergrund, Emerald-/Sky-/Amber-Akzente,
- * M3-Rollen in ihren Dark-Farben. Nichts davon ändert eine Klasse im
- * Code; die Wahl ist gerätelokal (C4).
- */
-html.dark {
-  /* C5: Auf den dunklen Flächen angehoben (Tailwinds slate-500/#64748b
-     hielte nur 3,1:1 auf slate-950). */
-  --color-slate-500: #8598b0;
-  --color-slate-600: #8295ad;
-
-  --color-slate-50: #f8fafc;
-  --color-slate-100: #f1f5f9;
-  --color-slate-200: #e2e8f0;
-  --color-slate-300: #cbd5e1;
-  --color-slate-400: #94a3b8;
-  --color-slate-700: #334155;
-  --color-slate-800: #1e293b;
-  --color-slate-900: #0f172a;
-  --color-slate-950: #020617;
-  --color-white: #ffffff;
-
-  --color-emerald-200: #6ee7b7;
-  --color-emerald-300: #6ee7b7;
-  --color-emerald-400: #34d399;
-  --color-emerald-500: #10b981;
-  /* Pastell = helle Textrolle im Dunklen (siehe :root-Kommentar). */
-  --color-emerald-100: #d1fae5;
-  --color-amber-100: #fef3c7;
-  --color-rose-100: #ffe4e6;
-  --color-sky-100: #e0f2fe;
-  --color-violet-100: #ede9fe;
-  --color-violet-200: #ddd6fe;
-  --color-violet-300: #c4b5fd;
-  --color-violet-400: #a78bfa;
-  --color-amber-200: #fcd34d;
-  --color-amber-300: #fcd34d;
-  --color-amber-400: #fbbf24;
-  --color-rose-200: #fda4af;
-  --color-rose-300: #fda4af;
-  --color-rose-400: #fb7185;
-  --color-sky-200: #7dd3fc;
-  --color-sky-300: #7dd3fc;
-  --color-sky-400: #38bdf8;
-  --color-emerald-900: #064e3b;
-  --color-emerald-950: #022c22;
-  --color-amber-950: #451a03;
-  --color-rose-950: #4c0519;
-  --color-sky-950: #082f49;
-
-  --color-m3-primary: #6cdbac;
-  --color-m3-on-primary: #003826;
-  --color-m3-primary-container: #00513a;
-  --color-m3-on-primary-container: #89f8c7;
-
-  --color-m3-secondary-container: #33473d;
-  --color-m3-on-secondary-container: #cfe9d9;
-  --color-m3-on-secondary: #003826;
-
-  --color-m3-error: #ffb4ab;
-  --color-m3-on-error: #690005;
-  --color-m3-error-container: #93000a;
-  --color-m3-on-error-container: #ffdad6;
-
-  --color-m3-tertiary: #a5cff0;
-  --color-m3-on-tertiary: #023543;
-  --color-m3-tertiary-container: #234b5c;
-  --color-m3-on-tertiary-container: #c1e8fb;
-
-  --color-m3-warn: #f2b23b;
-  --color-m3-on-warn: #452c00;
-  --color-m3-warn-container: #4a3300;
-  --color-m3-on-warn-container: #ffdea3;
-
-  --color-m3-bar-low: #10b981;
-  --color-m3-bar-mid: #f59e0b;
-  --color-m3-bar-high: #f43f5e;
-
-  --color-m3-surface: #0b0f19;
-  --color-m3-surface-lowest: #0b0f19;
-  --color-m3-surface-low: #0f172a;
-  --color-m3-sc: #16202f;
-  --color-m3-surface-high: #1e293b;
-  --color-m3-sc-highest: #293548;
-  --color-m3-on-surface: #f1f5f9;
-  --color-m3-on-surface-variant: #8b9bb0;
-  --color-m3-outline: #334155;
-  --color-m3-outline-variant: #475569;
-  --color-m3-inverse-surface: #e2e8f0;
-  --color-m3-on-inverse-surface: #1e293b;
-  --color-m3-inverse-primary: #006c4c;
+/* The RP2 reader still offers its legacy light switch; the rebuilt UI remains
+   dark-first and does not expose a theme toggle in its navigation. */
+html.light {
+  color-scheme: light;
+  --surface-bg: #f5fbf5;
+  --surface-1: #ffffff;
+  --surface-1-border: #bfc9c1;
+  --surface-2: #e4eae3;
+  --surface-2-border: #bfc9c1;
+  --surface-3: #e9efe9;
+  --text-primary: #171d1a;
+  --text-secondary: #404943;
+  --text-muted: #566058;
+  --rp2-slate-50: #ffffff;
+  --rp2-slate-100: #171d1a;
+  --rp2-slate-200: #212822;
+  --rp2-slate-300: #404943;
+  --rp2-slate-400: #4a5550;
+  --rp2-slate-500: #566058;
+  --rp2-slate-600: #566058;
+  --rp2-slate-700: #bfc9c1;
+  --rp2-slate-800: #e4eae3;
+  --rp2-slate-900: #ffffff;
+  --rp2-slate-950: #f5fbf5;
+  --rp2-emerald-400: #0d7d58;
+  --rp2-amber-100: #261900;
+  --rp2-amber-400: #8a6400;
+  --rp2-amber-500: #7c5800;
+  background: #f5fbf5;
+  color: #171d1a;
 }
 
-@layer base {
-  body {
-    background-color: #f5fbf5;
-    color: #171d1a;
-    font-family:
-      Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      "Helvetica Neue", Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  /* Lighthouse-CLS (0.40.1): Der Gutter für die vertikale Scrollbar wird
-     von Anfang an reserviert — ohne ihn taucht die Scrollbar in dem
-     Moment auf, in dem der Inhalt länger als der Viewport wird, der
-     Viewport wird schlagartig schmaler, und genau das zählte das
-     Lighthouse-Gate als Layout-Shift (Score ~0,95). Auf Mobilgeräten mit
-     Overlay-Scrollbars ändert sich nichts. */
-  html {
-    scrollbar-gutter: stable;
-  }
-}
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+body { min-width: 0; background: var(--surface-bg); color: var(--text-primary); }
+button, select { color: inherit; font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .55; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent-wait); outline-offset: 2px; }
+.data-font, .numeric { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 
-html.dark body {
-  background-color: #0b0f19;
-  color: #f1f5f9;
-}
+.app-shell { min-height: 100vh; }
+.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; display: flex; width: 220px; flex-direction: column; border-right: 1px solid var(--surface-1-border); background: var(--surface-1); padding: 20px 12px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 12px 24px; font-size: 17px; font-weight: 750; letter-spacing: .01em; }
+.brand-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 8px; color: #08180e; background: var(--accent-go); font-weight: 900; }
+.nav-list { display: grid; gap: 4px; }
+.nav-link { display: flex; width: 100%; min-height: 42px; align-items: center; gap: 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); padding: 0 12px; text-align: left; }
+.nav-link:hover, .nav-link.active { background: var(--surface-3); color: var(--text-primary); }
+.nav-link.active { box-shadow: inset 2px 0 var(--accent-go); }
+.nav-icon { display: inline-grid; width: 20px; place-items: center; font-size: 15px; }
+.sidebar-status { margin-top: auto; border-top: 1px solid var(--surface-1-border); padding: 16px 10px 4px; color: var(--text-secondary); font-size: 12px; }
+.status-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--accent-neutral); }
+.status-dot.online { background: var(--accent-go); }
+.status-dot.offline { background: var(--accent-risk); }
+.main-column { min-height: 100vh; margin-left: 220px; }
+.topbar { position: sticky; top: 0; z-index: 8; display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--surface-1-border); background: rgb(14 17 19 / 94%); padding: 5px 24px; backdrop-filter: blur(12px); }
+.topbar-controls, .topbar-meta { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.select-control, .icon-button { min-height: 34px; border: 1px solid var(--surface-2-border); border-radius: 8px; background: var(--surface-2); padding: 0 10px; }
+.select-control { max-width: 180px; }
+.icon-button { display: inline-grid; min-width: 34px; place-items: center; padding: 0 8px; }
+.age-chip { white-space: nowrap; border-radius: 999px; background: var(--accent-neutral-container); color: var(--accent-neutral); padding: 5px 9px; font-size: 12px; }
+.page-content { width: min(1440px, 100%); margin: 0 auto; padding: 24px; }
+.page-heading { margin: 0 0 18px; font-size: clamp(20px, 2vw, 26px); letter-spacing: -.02em; }
+.panel { border: 1px solid var(--surface-1-border); border-radius: 12px; background: var(--surface-1); padding: 16px; }
+.placeholder-panel { display: grid; min-height: 180px; place-items: center; color: var(--text-muted); text-align: center; }
+.mobile-nav { display: none; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; align-items: end; background: rgb(0 0 0 / 60%); }
+.sheet { width: min(100%, 520px); max-height: min(85vh, 720px); overflow: auto; margin: 0 auto; border: 1px solid var(--surface-2-border); border-bottom: 0; border-radius: 18px 18px 0 0; background: var(--surface-1); padding: 16px; box-shadow: 0 -12px 48px rgb(0 0 0 / 30%); }
+.sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sheet-title { margin: 0; font-size: 16px; }
+.sheet-close { border: 0; border-radius: 8px; background: var(--surface-3); padding: 8px 12px; }
+.mobile-brand { display: none; }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+@media (max-width: 1023px) {
+  .sidebar { display: none; }
+  .main-column { margin-left: 0; padding-bottom: 72px; }
+  .topbar { min-height: 56px; padding: 6px 12px; }
+  .topbar-controls { gap: 6px; }
+  .select-control { max-width: 145px; }
+  .page-content { padding: 18px 14px; }
+  .mobile-brand { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: 14px; font-weight: 750; }
+  .mobile-brand .brand-mark { width: 24px; height: 24px; }
+  .mobile-nav { position: fixed; inset: auto 0 0; z-index: 12; display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 64px; border-top: 1px solid var(--surface-1-border); background: rgb(21 25 28 / 96%); padding: 5px 8px max(5px, env(safe-area-inset-bottom)); backdrop-filter: blur(14px); }
+  .mobile-nav .nav-link { min-height: 50px; flex-direction: column; justify-content: center; gap: 2px; padding: 3px; font-size: 11px; }
+  .mobile-nav .nav-link.active { box-shadow: inset 0 2px var(--accent-go); }
+  .topbar-meta .profile-select { display: none; }
 }
-::-webkit-scrollbar-track {
-  background: #e4eae3;
+@media (max-width: 420px) {
+  .topbar { gap: 6px; padding-inline: 8px; }
+  .topbar-controls, .topbar-meta { gap: 5px; }
+  .select-control { max-width: 112px; min-width: 0; padding-inline: 7px; font-size: 12px; }
+  .age-chip { max-width: 74px; overflow: hidden; text-overflow: ellipsis; padding-inline: 7px; font-size: 10px; }
+  .page-content { padding: 14px 10px; }
 }
-::-webkit-scrollbar-thumb {
-  background: #b9c4bc;
-  border-radius: 4px;
+@media (max-width: 320px) {
+  html, body, #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+  .topbar { padding-inline: 6px; }
+  .mobile-brand { gap: 4px; font-size: 12px; }
+  .mobile-brand .brand-mark { width: 21px; height: 21px; }
+  .select-control { max-width: 89px; font-size: 11px; }
+  .topbar-meta .age-chip { display: none; }
+  .page-content { padding-inline: 8px; }
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #8a978f;
-}
-html.dark ::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-html.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
-}
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
-
-/*
- * Elevation der Urteils-Karte (UI-Neugestaltung 2026-09-26): Der Glow
- * bleibt die dunkle Variante — in der hellen M3-GUI trägt die
- * Entscheidungskarte ihre Container-Farbe ohne Schatten (Elevation 0,
- * die Farbe trägt die Hierarchie).
- */
-.glow-emerald {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
-}
-.glow-amber {
-  box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.25);
-}
-.glow-blue {
-  box-shadow: 0 0 25px -5px rgba(56, 189, 248, 0.25);
-}
-.glow-rose {
-  box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.28);
-}
-
-/* --------------------------------------------------------------------------
- * M3-Komponentenflächen des Tank-Guides.
- *
- * Eine Rolle, eine Klasse: Der Ton einer Aussage (grün/blau/grau/rot/neutral)
- * wechselt über dieselbe Klasse in beiden Themen. Keine Komponente trägt
- * deshalb eigene Farben. Geprüft von src/a11y.test.ts (Kontrast jedes
- * Paares, beide Themen).
- * ------------------------------------------------------------------------ */
-.m3-now {
-  background-color: var(--color-m3-primary-container);
-  color: var(--color-m3-on-primary-container);
-}
-.m3-wait {
-  background-color: var(--color-m3-error-container);
-  color: var(--color-m3-on-error-container);
-}
-.m3-relaxed {
-  background-color: var(--color-m3-tertiary-container);
-  color: var(--color-m3-on-tertiary-container);
-}
-/* Outlined Card (Stufe 2/„kein Zeitdruck“): neutrale Fläche, nur umrandet. */
-.m3-neutral {
-  background-color: var(--color-m3-surface-lowest);
-  color: var(--color-m3-on-surface);
-  border: 1px solid var(--color-m3-outline-variant);
-}
-.m3-on-now {
-  color: var(--color-m3-primary);
-}
-.m3-on-wait {
-  color: var(--color-m3-error);
-}
-.m3-on-relaxed {
-  color: var(--color-m3-tertiary);
-}
-.m3-chip-now {
-  background-color: var(--color-m3-primary);
-  color: var(--color-m3-on-primary);
-}
-.m3-chip-wait {
-  background-color: var(--color-m3-error);
-  color: var(--color-m3-on-error);
-}
-.m3-chip-relaxed {
-  background-color: var(--color-m3-tertiary);
-  color: var(--color-m3-on-tertiary);
-}
-.m3-chip-neutral {
-  background-color: var(--color-m3-surface-high);
-  color: var(--color-m3-on-surface);
-}
-.m3-btn-now {
-  background-color: var(--color-m3-primary);
-  color: var(--color-m3-on-primary);
-}
-.m3-btn-wait {
-  background-color: var(--color-m3-error);
-  color: var(--color-m3-on-error);
-}
-.m3-btn-relaxed {
-  background-color: var(--color-m3-tertiary);
-  color: var(--color-m3-on-tertiary);
-}
-.m3-btn-tonal {
-  background-color: var(--color-m3-surface-high);
-  color: var(--color-m3-on-surface);
-}
-.m3-banner-neutral {
-  background-color: var(--color-m3-tertiary-container);
-  color: var(--color-m3-on-tertiary-container);
-}
-.m3-banner-warn {
-  background-color: var(--color-m3-warn-container);
-  color: var(--color-m3-on-warn-container);
-}
-.m3-snackbar {
-  background-color: var(--color-m3-inverse-surface);
-  color: var(--color-m3-on-inverse-surface);
-}
-.m3-bar-low {
-  background-color: var(--color-m3-bar-low);
-}
-.m3-bar-mid {
-  background-color: var(--color-m3-bar-mid);
-}
-.m3-bar-high {
-  background-color: var(--color-m3-bar-high);
-}
-
-/* --------------------------------------------------------------------------
- * Formularelemente erben die Seitenschrift — aber als *Basis*, nicht als
- * letztes Wort (0.55.0).
- *
- * Diese Regel stand bis 0.54.0 ungeschichtet hier. Ungeschichtetes CSS
- * gewinnt in der Kaskade gegen **jede** `@layer` — also auch gegen Tailwinds
- * `utilities`. Die Kurzform `font:` setzt dabei `font-size` mit zurück, und
- * damit war auf `button`, `select` und `input` jede Größenklasse wirkungslos:
- * gemessen am Demo-Stand 122 Bedienelemente, die statt ihrer Klasse
- * (`text-xs`, `text-sm`, `text-[0.625rem]`, `text-[0.6875rem]`) die geerbten
- * 16 px zeigten. Sichtbar wurde das unten in der Leiste, wo „Stationen“ mit
- * 70 px in eine 64-px-Zelle sollte und als „Statio…“ abgeschnitten war.
- *
- * In `@layer base` verschoben, gilt weiter „erbt die Seitenschrift“, aber
- * eine Utility-Klasse sticht sie wieder. `font-family`/`font-feature-*`
- * einzeln statt `font:`, damit nur die Schriftart erbt und die Größe der
- * Klasse gehört. Geprüft von src/a11y.test.ts (U1) und e2e/mobile.spec.ts.
- * ------------------------------------------------------------------------ */
-@layer base {
-  button,
-  select,
-  input,
-  textarea {
-    font-family: inherit;
-    font-feature-settings: inherit;
-    font-variation-settings: inherit;
-    font-weight: inherit;
-    letter-spacing: inherit;
-    line-height: inherit;
-  }
-}
-button,
-a,
-select,
-input {
-  -webkit-tap-highlight-color: transparent;
-}
-button:not(:disabled),
-select {
-  cursor: pointer;
-}
-:focus-visible {
-  outline: 2px solid var(--color-m3-primary);
-  outline-offset: 4px;
-}
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-input[type="range"] {
-  accent-color: var(--color-m3-primary);
-}
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* --------------------------------------------------------------------------
- * C5 — Touch-Ziele ≥ 44 px (WCAG 2.5.5, Apple HIG).
- *
- * Die Regel greift nur bei grober Zeigerart: Handy, Tablet, Touchscreen. Am
- * Schreibtisch mit Maus bleibt jedes Element exakt so kompakt wie bisher —
- * dort wäre ein 44-px-Raster nur verschenkter Platz. Geprüft von
- * src/a11y.test.ts (Regel vorhanden + Mindestwerte).
- * -------------------------------------------------------------------------- */
-@media (pointer: coarse), (any-pointer: coarse) {
-  button,
-  [role="button"],
-  select,
-  input,
-  summary,
-  a.tap-44 {
-    min-height: 44px;
-  }
-  button,
-  [role="button"],
-  a.tap-44 {
-    min-width: 44px;
-  }
-
-  /* `summary` ist ein Tippziel wie ein Knopf — es klappt Inhalt auf und zu
-   * (0.55.1). Bis hierher stand es nicht in der Liste: Die drei Aufklapper
-   * („Annahmen“ in Jetzt, „Für Neugierige“ und „Selbst prüfen“ im Labor)
-   * kamen über ihre Polsterung nur auf 32–40 px. `min-height` allein
-   * zentriert den Text nicht, deshalb Flex — ohne `display` klebte er nach
-   * dem Wachsen oben am Rand. Das Aufklapp-Dreieck bleibt erhalten; wo die
-   * Komponente es ausblendet, tut sie das weiterhin selbst. */
-  summary {
-    display: flex;
-    align-items: center;
-  }
-
-  /* Tippfelder mindestens 16 px (0.55.0).
-   *
-   * Safari auf iOS zoomt beim Fokus automatisch in jedes Feld, dessen Schrift
-   * kleiner als 16 px ist — die Seite steht danach verschoben und muss von
-   * Hand zurückgezoomt werden. Bis 0.54.0 fiel das nicht auf, weil das
-   * ungeschichtete `font: inherit` (siehe oben) ohnehin alle Felder auf die
-   * geerbten 16 px zwang. Seit die Größenklassen wirken, wären es 12 px —
-   * deshalb hier ausdrücklich, statt es dem Zufall zu überlassen.
-   *
-   * Nur Eingaben, in die man tippt: `select` und Knöpfe lösen den Zoom nicht
-   * aus und bleiben kompakt, ebenso Schieberegler und Kästchen. */
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
-      [type="button"]
-    ):not([type="submit"]):not([type="reset"]):not([type="color"]):not(
-      [type="file"]
-    ),
-  textarea {
-    font-size: max(16px, 1rem);
-  }
-}
-
-/* --------------------------------------------------------------------------
- * C8 — Pull-to-Refresh dort aus, wo er mit Karten-/Slider-Gesten kollidiert.
- *
- * `overscroll-behavior` greift nur an Scroll-Containern; ein einfaches Panel
- * ist keiner. Der zuverlässige Weg ist deshalb die Wurzel — aber nur so lange,
- * wie wirklich ein Slider oder die Karte gezogen wird (Klasse `ptr-off`, vom
- * PtrGuard gesetzt). Überall sonst bleibt die gewohnte Browsergeste erhalten.
- * Zusätzlich für Touch-Geräte: die Karte zieht nicht die Seite mit.
- * -------------------------------------------------------------------------- */
-html.ptr-off,
-html.ptr-off body {
-  overscroll-behavior-y: none;
-}
-.no-ptr {
-  overscroll-behavior: contain;
-}
-.leaflet-container {
-  overscroll-behavior: none;
-}
-
-/* „Heute im Blick“: 19 Zellen (06–24, „24“ = Mitternacht), untereinander in
-   der Reihenfolge des Tages.
-
-   Die Spaltenzahl hängt an der Breite, die eine Zelle zum Lesen braucht:
-   Der Wert steht als „1,725“ in 0,625 rem Monospace — rund 30 px plus 6 px
-   Rand und Rahmen, also ~36 px je Zelle. Daraus ergeben sich drei Stufen:
-
-     < 640 px   5 Spalten  (4 Reihen) — Zelle ≥ 48 px, auch auf 320-px-Geräten
-     ≥ 640 px  10 Spalten  (2 Reihen) — Zelle ≥ 52 px
-     ≥ 1280 px 19 Spalten  (1 Reihe)  — Zelle ≥ 42 px
-
-   Die frühere Fassung lief ab 640 px mit 19 Spalten fest; dort war die Zelle
-   ~24 px schmal und die Zahlen liefen in die Nachbarzelle („Zahlenreihe ist
-   schief“). Zwischen 640 und 1280 px bleibt es deshalb bei zwei Reihen. */
-.daystrip-cells {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-@media (min-width: 640px) {
-  .daystrip-cells {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
-  }
-}
-@media (min-width: 1280px) {
-  .daystrip-cells {
-    grid-template-columns: repeat(19, minmax(0, 1fr));
-  }
-}
-
-/* Sheets are narrower than the viewport. Size cells against their available
-   width, not the desktop/landscape viewport breakpoints above. */
-dialog .daystrip-cells {
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
-}
-
-/* --------------------------------------------------------------------------
- * C8 — Querformat am Handy (z. B. 844 × 390).
- *
- * Hochkant ist eine Spalte richtig; quer bleibt davon nur ein schmaler
- * Streifen, durch den man endlos scrollt. Im Querformat stehen deshalb
- * Empfehlung/Vertrauen/Tanken nebeneinander; alles, was breit sein muss
- * (Tageskurve, Stationen, Umweg, Belege), läuft weiter über die volle Breite.
- * Die Tageskurve zeigt quer alle 19 Stunden in einer Reihe.
- * -------------------------------------------------------------------------- */
-@media (orientation: landscape) and (max-height: 620px) {
-  /* Kopfzeile und Einleitung fressen quer sonst die halbe Höhe. */
-  .app-header {
-    padding-top: 0.35rem;
-    padding-bottom: 0.35rem;
-  }
-  .app-tagline {
-    display: none;
-  }
-  .app-main {
-    padding-top: 0.75rem;
-  }
-  /* Die Tageskurve („Heute im Blick“ in Jetzt): quer ist Höhe knapp, also
-     zwei Reihen à zehn Zellen — und nur dort, wo die Breite für 19 Zellen
-     reicht (Zelle ≥ 36 px), eine einzige Reihe. */
-  .daystrip-cells {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
-    gap: 0.3rem;
-  }
-  .daystrip-cells > div {
-    padding: 0.35rem 0.25rem;
-  }
-}
-@media (orientation: landscape) and (max-height: 620px) and (min-width: 880px) {
-  .daystrip-cells {
-    grid-template-columns: repeat(19, minmax(0, 1fr));
-  }
-}
-
-/* C5: Leaflet-Zoomknöpfe und Karten-Pins bekommen auf Touch-Geräten die
-   Mindesttrefferfläche, ohne dass sich die Darstellung verschiebt: der Pin
-   wächst nur unsichtbar über sein ::before. */
-@media (pointer: coarse), (any-pointer: coarse) {
-  .leaflet-touch .leaflet-bar a,
-  .leaflet-bar a {
-    width: 44px;
-    height: 44px;
-    line-height: 44px;
-    font-size: 18px;
-  }
-}
-/* --------------------------------------------------------------------------
- * Karten-Pins: so breit wie ihr Text, mittig auf der Koordinate, 44 px Ziel.
- *
- * Bis 0.54.0 bekamen beide Pins eine feste Kachel (`iconSize` 60 × 26 bzw.
- * 26 × 26). Der Text passte da nicht hinein: „Referenz“ und „−12,34 €“
- * brauchen in 12-px-Monospace 57,8 px plus Polsterung — die Schrift lief über
- * die Pille hinaus aufs Kartenbild (gemessen 69 px Inhalt in 60 px Kasten).
- * `width: max-content` lässt die Pille stattdessen mit ihrem Inhalt wachsen,
- * auch wenn die Systemschrift größer steht (U1).
- *
- * `translate` (die eigenständige Eigenschaft, nicht `transform`) zentriert den
- * Pin über seinem Punkt: Leaflet schreibt die Position als `transform:
- * translate3d(...)` in das Style-Attribut, und ein `transform` in dieser Datei
- * würde davon überschrieben. `translate` wird zusätzlich angewendet und bezieht
- * seine Prozente auf die eigene Breite — genau das, was das feste `iconAnchor`
- * vorher von Hand tat.
- *
- * C5: Die 9 px Polsterung sind das Touch-Ziel (26 px Pille + 2 × 9 = 44 px).
- * Sie liegen im eigenen Kasten des Pins statt wie früher in einem `::before`
- * mit `inset: -9px`; ein solches Pseudo-Element ragt aus der eigenen Box und
- * war in der Mobil-Messung nicht von echtem Überlauf zu unterscheiden.
- * -------------------------------------------------------------------------- */
-.custom-net-pin,
-.custom-anchor-pin {
-  width: max-content;
-  padding: 9px;
-  translate: -50% -50%;
-}
+.badge { display: inline-flex; align-items: center; min-height: 22px; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 650; }
+.badge-go, .panel-go { color: var(--accent-go); background: var(--accent-go-container); }
+.badge-wait, .panel-wait { color: var(--accent-wait); background: var(--accent-wait-container); }
+.badge-risk, .panel-risk { color: var(--accent-risk); background: var(--accent-risk-container); }
+.badge-neutral, .panel-neutral { color: var(--accent-neutral); background: var(--accent-neutral-container); }
+.sparkline { display: block; width: 100%; overflow: visible; }
+.sparkline-empty { color: var(--text-muted); }
