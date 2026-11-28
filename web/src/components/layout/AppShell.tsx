@@ -3,6 +3,10 @@ import { api } from "../../api/client";
 import type { Station, StationsResponse } from "../../api/types";
 import { useAppContext } from "../../state/AppContext";
 import { OverviewPage } from "../../features/overview/OverviewPage";
+import { LabPage } from "../../features/lab/LabPage";
+import { SettingsPage } from "../../features/settings/SettingsPage";
+import { SystemPage } from "../../features/system/SystemPage";
+import { GlossaryPage } from "../../features/glossary/GlossaryPage";
 import { StationsPage } from "../../features/stations/StationsPage";
 import "../../features/overview/overview.css";
 import { BookOpen, FlaskConical, Home, MapPin, Menu, Server, Settings } from "lucide-react";
@@ -87,7 +91,7 @@ export function AppShell() {
       <main className="page-content">
         <h1 className="page-heading">{selected.label}</h1>
         {overview.error && tab !== "overview" && tab !== "stationen" && <div className="panel" role="status" style={{ marginBottom: 14, color: "var(--accent-neutral)" }}>{overview.error}</div>}
-        {tab === "overview" ? <OverviewPage data={overview} stations={stations} navigate={(next) => go(next)} /> : tab === "stationen" ? <StationsPage /> : <section className="panel placeholder-panel"><div><strong>{selected.label}</strong><p style={{ margin: "8px 0 0" }}>Ansicht wird im nächsten Umsetzungspaket aufgebaut.</p></div></section>}
+        {tab === "overview" ? <OverviewPage data={overview} stations={stations} navigate={(next) => go(next)} /> : tab === "stationen" ? <StationsPage /> : tab === "labor" ? <LabPage /> : tab === "system" ? <SystemPage health={overview.health} /> : tab === "einstellungen" ? <SettingsPage /> : <GlossaryPage />}
       </main>
       <nav className="mobile-nav" aria-label="Mobile Navigation">
         {mainNav.map(({ id, label, Icon }) => <NavButton key={id} id={id} label={label} Icon={Icon} active={tab === id} onClick={() => go(id)} />)}
