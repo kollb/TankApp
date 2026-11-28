@@ -35,17 +35,14 @@ eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 ## Offene Arbeit
 
-**Überlappende Zeitfenster:** Die publizierten Draws und die Zuordnung in
-`app/decide.py` verwenden weiterhin disjunkte 2-Stunden-Kalenderblöcke.
-Der Engine-Baustein `sliding_block_minima` berechnet vollständige überlappende
-Fenster mit 60 Minuten Schrittweite und unterscheidet die Herbst-Folds; er ist
-noch nicht an Veröffentlichung oder Entscheidung angeschlossen. Dafür sind
-zusätzliche Minima und eine andere Zuordnung für Restfenster und F3-Nachbarn
-nötig; die bestehenden
-Suffix- und Settlement-Verträge beweisen diese Umstellung noch nicht. Ein
-Preistal über 12 Uhr kann deshalb weiterhin geteilt werden. Vor einer
-Umstellung sind ein versionierter kompatibler Vertrag, ein Tal-Test und die
-vollständige Settlement-/P-Seiten-Abnahme nötig.
+**Überlappende Zeitfenster:** Neue Modellläufe veröffentlichen zusätzlich zum
+unveränderten Altformat vollständige 2-Stunden-Minima im 60-Minuten-Raster.
+Die Entscheidung verwendet diese Fenster und eine getrennte M7-Kohorte;
+Altbestände bleiben bei den disjunkten Blöcken. Angeschnittene Fenster haben
+mangels Suffix-/Prefix-Draws keine Verteilungs-P. Die Größe wird im produktiven
+Stationsdatei-Layout je Datei geprüft; ein neuer Gesamt-Monolith für elf
+Stationen würde das alte 8-MB-Budget überschreiten und wird nicht geschrieben.
+Eine neue statistische Gütefreigabe aus Betriebsdaten ist damit nicht belegt.
 
 **Regime-Gewichtung:** Ein aktueller Monitor-Alarm oder eine einzelne gesperrte
 Station begrenzt die Halbwertszeit neuer Live-Draws auf sieben Tage und

@@ -29,6 +29,7 @@ tests/test_o35_live_price_limits.py
 tests/test_o36_config_source.py
 tests/test_o39_read_token.py
 tests/test_o44_null_draws.py
+tests/test_o45_saving_basis.py
 tests/test_o4_picp_days.py
 tests/test_probabilities.py
 tests/test_regime_check.py

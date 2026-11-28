@@ -94,8 +94,12 @@ CONFIRMED_REGIME_STATUSES = ("detected", "in_force")
 _BERLIN = ZoneInfo("Europe/Berlin")
 
 
-def decision_contract_id() -> str:
-    """ID des Entscheidungs-/Ereignisvertrags — Version plus Kernfachlichkeit."""
+def decision_contract_id(forecast: Any = None) -> str:
+    """Separate hourly-overlap observations from historical disjoint windows."""
+    draws = forecast.get("draws_24h") if isinstance(forecast, dict) else None
+    sliding = draws.get("sliding") if isinstance(draws, dict) else None
+    if isinstance(sliding, dict) and sliding.get("version") == 1:
+        return f"decision-v{STATISTICAL_CONTRACT_VERSION}-sliding-60m"
     return f"decision-v{STATISTICAL_CONTRACT_VERSION}"
 
 
@@ -334,7 +338,7 @@ def statistical_gate_context(
             "fuel": str(fuel).strip().lower() if fuel else UNKNOWN,
             "model_contract": model_contract_id(forecast),
             "calibration_mode": mode,
-            "decision_contract": decision_contract_id(),
+            "decision_contract": decision_contract_id(forecast),
             "regime_ref": ref,
         }
     )

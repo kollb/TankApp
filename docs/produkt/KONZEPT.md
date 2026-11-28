@@ -77,7 +77,8 @@ Ohne zulässiges Paar fällt die Ziehung auf unabhängige Tage zurück.
 Die Engine liefert Pfade und Quantile für 24, 72 und 168 Stunden. Aussagen
 über ein Fensterminimum werden aus den Pfaden berechnet, nicht aus einer
 nachträglich erfundenen Normalverteilung um den Median. Die lokale
-2-Stunden-Kompression verwendet eine UTC-Blockidentität; dadurch bleiben
+2-Stunden-Kompression verwendet stündlich überlappende Fenster und eine
+UTC-Startidentität; alte Veröffentlichungen behalten disjunkte Blöcke. Dadurch bleiben
 Mitternacht, der 23-Stunden-Frühlingstag, der 25-Stunden-Herbsttag und beide
 Herbst-Folds chronologisch unterscheidbar. Ein Blockstart ist kein lokales
 naives Datum, sondern ein serialisierter UTC-Stempel.

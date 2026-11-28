@@ -523,7 +523,9 @@ def _records(frame) -> list[dict[str, Any]]:
     return records
 
 
-def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
+def _draws(
+    index, paths, cfg, shared: bool = False, *, sliding: bool = False
+) -> dict[str, Any]:
     """Kompakte Draw-Veröffentlichung für den Decision Layer (Konzept §4).
 
     Die vollen Pfade bleiben im Worker; veröffentlicht werden nur die
@@ -541,6 +543,7 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
         block_minima,
         block_starts,
         nowcast_draws,
+        sliding_block_minima,
     )
     import numpy as np
     import pandas as pd
@@ -610,11 +613,35 @@ def _draws(index, paths, cfg, shared: bool = False) -> dict[str, Any]:
             "missing": 65535,
             "minima_b64": base64.b64encode(deltas.tobytes()).decode("ascii"),
         }
+    sliding_payload = None
+    if sliding:
+        import zlib
+
+        starts_sliding, values = sliding_block_minima(
+            index, paths[:n], cfg.timezone, step_minutes=cfg.step_minutes
+        )
+        quantized = np.full(values.shape, -2147483648, dtype="<i4")
+        rounded = np.rint(values * 10000)
+        valid = np.isfinite(rounded) & (rounded > -2147483648) & (rounded <= 2147483647)
+        quantized[valid] = rounded[valid].astype("<i4")
+        sliding_payload = {
+            "version": 1,
+            "stride_minutes": 60,
+            "block_minutes": BLOCK_MINUTES,
+            "step_minutes": cfg.step_minutes,
+            "starts": [stamp.isoformat() for stamp in starts_sliding],
+            "rows": n,
+            "encoding": "zlib-int32-1e4",
+            "minima_b64": base64.b64encode(zlib.compress(quantized.tobytes())).decode(
+                "ascii"
+            ),
+        }
     return {
         "n": n,
         "block_minutes": BLOCK_MINUTES,
         "blocks": blocks,
         "minima": minima_rows,
+        **({"sliding": sliding_payload} if sliding else {}),
         "nowcast": nowcast_row,
         "suffix_minima": suffix,
         # A11: gemeinsame Ziehung über Stationen (Konzept §4.2). False =
@@ -688,7 +715,13 @@ def _run(task: tuple) -> dict[str, Any]:
         out.update(
             ok=True,
             points=_records(frame),
-            draws=_draws(frame.index, paths, cfg, shared=shared),
+            draws=_draws(
+                frame.index,
+                paths,
+                cfg,
+                shared=shared,
+                sliding=kind == "fit" or hours == 168,
+            ),
         )
         # Nur der 24-h-Fit wird publiziert. Wide-Aufgaben brauchen ihr Modell
         # lokal für predict(), der ~100-kB-Rücktransfer war aber tote Arbeit.
