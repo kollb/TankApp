@@ -1,6 +1,6 @@
 # Dokumentation
 
-> Stand: 28.11.2026 · App-Version **0.78.0**
+> Stand: 28.11.2026 · App-Version **0.79.0**
 > Dieser Index ist kein pauschaler Prüfvermerk für alle verlinkten Dokumente.
 > Technische Einzelreferenzen behalten ihren jeweiligen Prüfstand.
 

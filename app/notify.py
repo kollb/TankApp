@@ -57,6 +57,7 @@ import threading
 import urllib.error
 import urllib.request
 
+from .reason_codes import push_summary
 from .errors import public_detail, redact
 
 try:
@@ -405,6 +406,13 @@ def build_window_payload(
             )
         priority, tags = NTFY_PRIORITY_OK, ["hourglass_done"]
 
+    # P4: Begründung mit denselben Codes wie im Web („Warum & Rechenweg“).
+    # Die Sätze enthalten weder Preise noch Stationen und gelten daher in
+    # beiden Modi.
+    if kind in ("open", "changed"):
+        reason = push_summary(snapshot.get("reason_codes"))
+        if reason:
+            body = f"{body}\n{reason}"
     if version:
         body = f"{body}\n(TankApp {version})"
     return {"title": title, "message": body, "priority": priority, "tags": tags}

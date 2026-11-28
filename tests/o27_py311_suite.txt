@@ -18,6 +18,7 @@ tests/test_cli.py
 tests/test_data.py
 tests/test_gapfill.py
 tests/test_lifecycle_twins.py
+tests/test_market_drift.py
 tests/test_model_jobs.py
 tests/test_models.py
 tests/test_o21_score_parity.py
@@ -32,6 +33,7 @@ tests/test_o44_null_draws.py
 tests/test_o45_saving_basis.py
 tests/test_o4_picp_days.py
 tests/test_probabilities.py
+tests/test_reason_codes.py
 tests/test_regime_check.py
 tests/test_rp2_cache.py
 tests/test_rp2_fallback.py

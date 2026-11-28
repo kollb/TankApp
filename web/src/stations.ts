@@ -28,6 +28,7 @@ import {
   type DecideResult,
   type Point,
   type Station,
+  type StationStability,
 } from "./data";
 
 export type AtlasSort = "net" | "price" | "distance";
@@ -74,6 +75,10 @@ export type AtlasRow = {
   /** O14: road vs. transparently named estimate for the detour. */
   detourSource: string | null;
   distKm: number | null;
+  /** P3: Schließzeit reicht nicht für die Anfahrt (Server-Urteil). */
+  closingSoon: boolean;
+  /** P3: Preis-Stabilität aus der Historie, wenn die Quelle sie liefert. */
+  stability: StationStability | null;
 };
 
 export type AtlasInput = {
@@ -196,8 +201,28 @@ export function atlasRows(input: AtlasInput): AtlasRow[] {
       detourKm: netEur !== null ? (serverAlt?.detour_km_est ?? serverAlt?.detour_km ?? null) : null,
       detourSource: netEur !== null ? (serverAlt?.detour_km_source ?? null) : null,
       distKm: station.dist_km ?? null,
+      closingSoon: serverAlt?.closing_soon === true,
+      stability: serverAlt?.stability ?? null,
     };
   });
+}
+
+/** P3: Kurzer Hinweis „Schließt bald“ — nur bei Server-Urteil, sonst `null`. */
+export function closingBadgeLabel(row: Pick<AtlasRow, "closingSoon">): string | null {
+  return row.closingSoon ? "Schließt bald" : null;
+}
+
+/**
+ * P3: Eine dezente Zeile zur Preis-Stabilität (Stations-Details). `null`,
+ * wenn die Historie nicht reicht — dann wird nichts behauptet.
+ */
+export function stabilityLine(stability: StationStability | null | undefined): string | null {
+  if (!stability || stability.status !== "measured") return null;
+  if ((stability.flicker_share ?? 0) >= 0.5)
+    return "Der Preis springt oft kurzfristig — bei Lockvogel-Preisen lohnt sich ein zweiter Blick.";
+  if ((stability.held_share ?? 0) >= 0.5)
+    return "Tiefpreise halten meist mindestens eine halbe Stunde.";
+  return "Der Preis schwankt gemischt — kein klares Muster.";
 }
 
 /**

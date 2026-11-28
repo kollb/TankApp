@@ -31,6 +31,129 @@ SCHEMA_VERSION = 3
 JUMP_THRESHOLD_EUR = 0.01
 JUMP_AGE_CAP_HOURS = 168.0
 
+# P1 (Mehr-Tages-Marktdrift): robuster, gedämpfter Tagesdrift aus den Tages-
+# Medianen der letzten abgeschlossenen Kalendertage. Ein Tag gilt nur als
+# abgeschlossen, wenn er vor dem lokalen Kalendertag des Cutoffs liegt —
+# damit ist die Schätzung point-in-time (Backtests verwenden nur Daten vor
+# ihrem Entscheidungszeitpunkt).
+MARKET_DRIFT_WINDOW_DAYS = 5
+MARKET_DRIFT_MIN_DAYS = 3
+MARKET_DRIFT_CAP_EUR_PER_DAY = 0.03
+MARKET_DRIFT_DAMPING = 0.5
+# Plausibilitätsgrenze der Niveau-Lücke (Ausreißer-Schutz, kein Trend).
+MARKET_LEVEL_GAP_CAP_EUR = 0.10
+# Rauschschwelle: Steigungen/Lücken darunter (< 1 ct je Tag) sind Tagesrauschen
+# der Medianen und bleiben wirkungslos — kein Drift aus Zufall.
+MARKET_DRIFT_NOISE_FLOOR_EUR = 0.01
+
+
+def market_drift(price: pd.Series, origin: pd.Timestamp, cfg: Config) -> dict:
+    """Gedämpfter Mehr-Tages-Drift in €/L pro Tag (Theil-Sen über Tages-Mediane).
+
+    Theil-Sen (Median aller paarweisen Steigungen) ist gegen einzelne
+    Ausreißertage robust. Die Steigung wird auf ±``MARKET_DRIFT_CAP_EUR_PER_DAY``
+    gedeckelt und mit ``MARKET_DRIFT_DAMPING`` gedämpft, damit ein Tagessprung
+    nicht ungebremst in die Zukunft fortgeschrieben wird. Unter
+    ``MARKET_DRIFT_MIN_DAYS`` abgeschlossenen Tagen gilt null (ehrlich: keine
+    Trendaussage).
+    """
+    tz = cfg.timezone
+    origin_day = origin.tz_convert(tz).normalize()
+    observed = price.dropna()
+    if observed.empty:
+        return _drift_result(0.0, None, 0, "no_history")
+    local_days = observed.index.tz_convert(tz).normalize()
+    completed = local_days < origin_day
+    if not completed.any():
+        return _drift_result(0.0, None, 0, "no_completed_day")
+    daily = (
+        pd.Series(observed.to_numpy()[completed], index=local_days[completed])
+        .groupby(level=0)
+        .median()
+        .iloc[-MARKET_DRIFT_WINDOW_DAYS:]
+    )
+    n_days = int(len(daily))
+    if n_days < MARKET_DRIFT_MIN_DAYS:
+        return _drift_result(0.0, None, n_days, "insufficient_days")
+    x = np.arange(n_days, dtype=float)
+    y = daily.to_numpy(dtype=float)
+    slopes = [
+        (y[j] - y[i]) / (x[j] - x[i])
+        for i in range(n_days)
+        for j in range(i + 1, n_days)
+    ]
+    raw = float(np.median(slopes))
+    if abs(raw) < MARKET_DRIFT_NOISE_FLOOR_EUR:
+        return _drift_result(0.0, raw, n_days, "below_noise_floor")
+    return _drift_result(
+        MARKET_DRIFT_DAMPING
+        * float(
+            np.clip(raw, -MARKET_DRIFT_CAP_EUR_PER_DAY, MARKET_DRIFT_CAP_EUR_PER_DAY)
+        ),
+        raw,
+        n_days,
+        "theil_sen",
+    )
+
+
+def level_gap(
+    residual: np.ndarray, index: pd.DatetimeIndex, origin: pd.Timestamp, cfg: Config
+) -> dict:
+    """Niveau-Lücke: Median der In-Sample-Residuen des letzten abgeschlossenen Tages.
+
+    Die Struktur lernt den Mittelwert des Trainingsfensters. Liegt der letzte
+    vollständige Tag darüber oder darunter, bleibt die Prognose für Folgetage
+    um genau diese Differenz hinter dem Niveau zurück. Die Lücke wird wie der
+    Drift gedeckelt und gedämpft und nur für Segmente nach dem Cutoff addiert.
+    """
+    tz = cfg.timezone
+    origin_day = origin.tz_convert(tz).normalize()
+    days = index.tz_convert(tz).normalize()
+    mask = (days == origin_day - pd.Timedelta(days=1)) & np.isfinite(residual)
+    if not mask.any():
+        return {"eur": 0.0, "raw_eur": None, "n": 0}
+    raw = float(np.median(np.asarray(residual, dtype=float)[mask]))
+    if abs(raw) < MARKET_DRIFT_NOISE_FLOOR_EUR:
+        return {"eur": 0.0, "raw_eur": round(raw, 6), "n": int(mask.sum())}
+    return {
+        # Ungedämpft, nur gedeckelt: Die Lücke ist eine Messung des Niveaus
+        # (wo steht der Markt gestern), die Dämpfung gilt dem Trend (Drift).
+        "eur": round(
+            float(np.clip(raw, -MARKET_LEVEL_GAP_CAP_EUR, MARKET_LEVEL_GAP_CAP_EUR)), 6
+        ),
+        "raw_eur": round(raw, 6),
+        "n": int(mask.sum()),
+    }
+
+
+def _drift_result(eur_per_day: float, raw, n_days: int, method: str) -> dict:
+    return {
+        "eur_per_day": round(float(eur_per_day), 6),
+        "raw_eur_per_day": None if raw is None else round(float(raw), 6),
+        "n_days": int(n_days),
+        "method": method,
+        "cap_eur_per_day": MARKET_DRIFT_CAP_EUR_PER_DAY,
+        "damping": MARKET_DRIFT_DAMPING,
+        "window_days": MARKET_DRIFT_WINDOW_DAYS,
+    }
+
+
+def drift_steps(
+    index: pd.DatetimeIndex, origin: pd.Timestamp, cfg: Config
+) -> np.ndarray:
+    """Anzahl der Mittags-Segmente nach dem Cutoff (0 = Segment des Cutoffs).
+
+    Die 12-Uhr-Regel legt Preissprünge genau auf die Segmentgrenze. Der Drift
+    wirkt deshalb als konstanter Schritt je Segment: innerhalb eines Segments
+    bleibt der Verlauf nicht steigend, die Projektion bleibt gültig.
+    """
+    shift = pd.Timedelta(hours=cfg.decision_hour)
+    tz = cfg.timezone
+    seg = (index.tz_convert(tz).tz_localize(None) - shift).normalize()
+    origin_seg = (origin.tz_convert(tz).tz_localize(None) - shift).normalize()
+    return np.clip(np.asarray((seg - origin_seg).days, dtype=float), 0.0, None)
+
+
 # A21-B5.2 (#212): Missingness-Policy für NaN-Residuen im Tagesblock-Bootstrap.
 # Default bleibt die 0-Füllung (Struktur allein) — der 12-Uhr-Fix braucht
 # endliche Pfade. Ein Policy-Wechsel braucht robusten Ablations-Beweis
@@ -792,6 +915,7 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
     frame = series.frame.reindex(index)
     price = frame.price
     valid = price.notna().to_numpy()
+    drift = market_drift(price, origin, cfg)
     days = price.index[valid].tz_convert(cfg.timezone).normalize().nunique()
     if days < cfg.min_train_days or valid.sum() < cfg.min_train_days * 24:
         raise ValueError(
@@ -867,6 +991,12 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         profile_residual[-2:][::-1] if not profile_state_reset else np.zeros(2)
     )
     profile_blocks = _residual_blocks(index, profile_residual, cfg)
+    # P1: Niveau-Lücke des letzten abgeschlossenen Tages je Kern (PIT: nur Daten
+    # vor dem Cutoff, siehe level_gap).
+    drift["level_gap_eur"] = {
+        "harmonic_ar2": level_gap(residual, index, origin, cfg),
+        "profile_ar2": level_gap(profile_residual, index, origin, cfg),
+    }
     ensemble = ensemble_detail(
         adjusted,
         x @ beta,
@@ -930,6 +1060,8 @@ def fit(series: PriceSeries, origin, cfg: Config) -> dict:
         "model": "harmonic_ar2",
         **series.identity(),
         "config": cfg.to_dict(),
+        # P1: gedämpfter Mehr-Tages-Drift (optional; fehlt bei Altartefakten = 0).
+        "market_drift": drift,
         "origin": origin.isoformat(),
         "training_start": start.isoformat(),
         "training_end_exclusive": origin.isoformat(),
@@ -1689,6 +1821,19 @@ def predict(
         point = point_profile
     else:
         point = point_harmonic
+    # P1: Mehr-Tages-Drift wirkt nur auf Segmente nach dem Cutoff (h>0); das
+    # Segment des Cutoffs bleibt auf dem verankerten Preisniveau. Fehlt der
+    # Eintrag (Altartefakt), ist der Schritt exakt null.
+    drift_model = model.get("market_drift") or {}
+    drift_rate = float(drift_model.get("eur_per_day") or 0.0)
+    gap_map = drift_model.get("level_gap_eur") or {}
+    gap_key = "profile_ar2" if kind == "profile_ar2" else "harmonic_ar2"
+    if kind == "ensemble":
+        gap_key = "harmonic_ar2"
+    gap = float((gap_map.get(gap_key) or {}).get("eur") or 0.0)
+    if (drift_rate or gap) and np.isfinite(drift_rate) and np.isfinite(gap):
+        steps = drift_steps(index, origin, cfg)
+        point = point + drift_rate * steps + gap * (steps > 0)
     block = np.asarray(model["residual_blocks"], dtype=float)
     if kind == "profile_ar2":
         raw_blocks = model.get("profile_blocks")

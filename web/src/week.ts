@@ -259,3 +259,20 @@ export function weekEntryWhy(
     labHint: labHint("prognose"),
   };
 }
+
+/**
+ * P4: Feiertags- und Brückentag-Hinweise der nächsten 7 Tage (MICROCOPY:
+ * sachlich, ein Satz je Tag, Namen in „…“). Ohne Angabe keine Zeile.
+ */
+export function calendarHintLines(
+  hints: DecideResult["calendar_hints"] | null | undefined,
+  now = Date.now(),
+): string[] {
+  return (hints?.items ?? []).map((item) => {
+    const day = dayLabel(`${item.date}T12:00:00+01:00`, now);
+    return item.kind === "holiday"
+      ? `${day}: Feiertag „${item.name ?? "gesetzlich"}“. Das Preisbild weicht an solchen Tagen oft vom Werktag ab.`
+      : `${day}: Brückentag zu „${item.name ?? "dem Feiertag"}“. Viele sind unterwegs — das Preisbild kann vom Werktag abweichen.`;
+  });
+}
+

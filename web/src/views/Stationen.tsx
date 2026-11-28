@@ -71,6 +71,8 @@ import {
 } from "../data";
 import {
   atlasEur,
+  closingBadgeLabel,
+  stabilityLine,
   DEFAULT_ATLAS_SORT,
   atlasMatchesFilter,
   atlasRows,
@@ -585,6 +587,11 @@ export function StationenView(props: StationenViewProps) {
                                 Referenz
                               </span>
                             )}
+                            {closingBadgeLabel(row) && (
+                              <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-xs font-semibold text-amber-200">
+                                {closingBadgeLabel(row)}
+                              </span>
+                            )}
                           </span>
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
                             <span>{row.station.brand || "Freie Station"}</span>
@@ -760,6 +767,9 @@ export function StationenView(props: StationenViewProps) {
                     ))}
                     <li>{deltaLine}</li>
                   </ul>
+                  {selected && stabilityLine(selected.stability) && (
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{stabilityLine(selected.stability)}</p>
+                  )}
                 </div>
               </div>
               {/* Verlauf (eigener Poll, nur für die gewählte Station) —
