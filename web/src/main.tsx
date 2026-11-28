@@ -1,21 +1,15 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { Dashboard } from "./Dashboard";
+import { AppProvider } from "./state/AppContext";
+import { AppShell } from "./components/layout/AppShell";
 import { registerServiceWorker } from "./service-worker";
 import "./styles.css";
 
-// Eine Oberfläche: die Bereiche der App liegen hinter `?tab=…` (routing.ts),
-// ein zweiter Prototyp-Einstieg existiert nicht mehr (UI-Konsolidierung).
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <Dashboard />
-  </React.StrictMode>,
-);
+const root = document.getElementById("root");
+if (!root) throw new Error("App root (#root) fehlt");
 
-// Offline an der Säule: App-Shell + letzte API-Antworten (max. 30 Min.).
-// B10: Die Registrierung meldet zusätzlich einen **wartenden** Nachfolger —
-// die Ansicht zeigt dann „Neue Version verfügbar“ samt eigener Version.
-// webdriver = automatisierter Test: dort kein Cache zwischen App und Assertions.
+createRoot(root).render(<React.StrictMode><AppProvider><AppShell /></AppProvider></React.StrictMode>);
+
 if ("serviceWorker" in navigator && !import.meta.env.DEV && !navigator.webdriver) {
   window.addEventListener("load", () => registerServiceWorker());
 }
