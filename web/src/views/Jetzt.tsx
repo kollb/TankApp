@@ -100,7 +100,7 @@ export interface JetztViewProps {
  * M3-Rollen in styles.css (Container + On-Container): Primary-Container
  * für „jetzt“, Tertiary-Container für „warten“, Error-Container nur
  * fürs Tankrest-Risiko, die neutrale Karte ist eine Outlined Card —
- * exakt die Farbwelt der Vorlage (sample/good gui). „Rot bleibt dem
+ * exakt die Farbwelt der Vorlage (docs/produkt/GUI-VORLAGEN.md). „Rot bleibt dem
  * Tankrest“ gilt weiter (CHANGELOG): Warten ist hier blau.
  *
  * STRONG_TONE/SUB_TONE sind die Texttöne AUF diesen Flächen: die
@@ -203,12 +203,28 @@ export function JetztView(props: JetztViewProps) {
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
   const validity = nowValidity(answer, now);
   const best = nowBestNow(input);
-  const rows = atlasRows({
+  // Top-5 nach **effektivem Gesamtpreis** für die Tankmenge — dieselbe Zahl,
+  // gegen die Zeile 1 (Bestpreis) gemessen wird. Reine Regalpreise würden die
+  // Umwegkosten verschweigen (UI-Neuentwurf, Übersicht Ebene 3).
+  const allRows = atlasRows({
     stations, priceOf: priceOf ?? ((station) => currentPrice(station, online ?? true, 0)),
     selectedId, pinnedIds: [], liters: calculationLiters,
     serverReferenceId: decide?.primary?.station?.id ?? null,
     serverAlts: decide?.alternatives_nearby ?? [], worthThreshold: null, borderlineThreshold: null,
-  }).filter((row) => row.price !== null).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)).slice(0, 5);
+  });
+  const totalEur = (row: (typeof allRows)[number]) => {
+    const net = row.netEur !== null && row.serverPriceFresh !== false;
+    if (net) return row.netEur as number;
+    return row.price === null ? null : row.price * calculationLiters;
+  };
+  const sortedRows = allRows
+    .filter((row) => row.price !== null)
+    .sort(
+      (a, b) =>
+        (totalEur(a) ?? Infinity) - (totalEur(b) ?? Infinity) ||
+        (a.price ?? Infinity) - (b.price ?? Infinity),
+    );
+  const rows = sortedRows.slice(0, 5);
 
   const week = weekRanking({ windows: decide?.windows_week, notice: decide?.regime_notice, decide, referencePrice: best.price, liters: calculationLiters, now });
   const historyPoints = (series7d?.data?.points ?? [])
@@ -436,7 +452,17 @@ export function JetztView(props: JetztViewProps) {
               return <tr key={row.station.station_id}><td className="break-words py-3 pr-2">{row.station.name}</td><td className="py-3 pr-2 tabular-nums">{euroPerLiter(row.price)}<br /><span className="text-slate-500">{difference !== null ? centPerLiter(difference) : "—"}</span></td><td className="py-3 pr-2 tabular-nums">{net && row.detourKm !== null ? kilometersLabel(row.detourKm, 1) : "—"}<br />{net ? `${euro(row.netEur!)} €` : "—"}</td><td className="py-3">{row.station.maps_url ? <a href={row.station.maps_url} target="_blank" rel="noopener noreferrer" aria-label={`Route zu ${row.station.name}`} className="underline">Route</a> : "—"}</td></tr>;
             })}</tbody>
           </table>
-          <details className="mt-2 text-xs text-slate-400"><summary className="cursor-pointer">Warum &amp; Rechenweg</summary><p>Preisunterschied zum aktuellen Bestpreis. Netto und Umweg stammen aus dem Vergleich des Servers mit der gewählten Referenzstation; ohne passende frische Angaben bleiben sie leer.</p></details>
+          <details className="mt-2 text-xs text-slate-400"><summary className="cursor-pointer">Warum &amp; Rechenweg</summary><p>Sortiert nach dem, was die Tankmenge real kostet: Regalpreis mal Liter plus Umwegkosten. Die Spalte „Diff.“ misst jede Zeile am Bestpreis der ersten Zeile; Netto und Umweg stammen aus dem Vergleich des Servers mit der gewählten Referenzstation — ohne passende frische Angaben bleiben sie leer.</p></details>
+          <button
+            type="button"
+            onClick={() => onNavigate("stations")}
+            className="tap-44 mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+          >
+            {sortedRows.length === 0
+              ? "Alle Stationen & Karte anzeigen"
+              : `Alle ${sortedRows.length} Stationen & Karte anzeigen`}
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
         </section>
       )}
 

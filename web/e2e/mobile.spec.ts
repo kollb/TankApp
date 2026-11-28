@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openReceipts } from "./nav";
 
 // Mobil-Robustheit (Nutzer-Feedback 16.09.2026: „TankApp an sich ist nicht
 // mobilrobust. Da sind verschiedene Dinge die scrollen müssen oder aus dem
@@ -15,8 +16,9 @@ import { test, expect, type Page } from "@playwright/test";
 //      bei `overflow: visible`) — genau das ließ die Zahlenreihe „schief“
 //      aussehen, als „1,725“ breiter war als seine Zelle.
 //
-// Gemessen wird nicht nur der Einstieg: alle sechs aktuellen Bereiche, die vier
-// Einstellungs-Unterseiten, die sechs Labor-Abschnitte und jeder Dialog
+// Gemessen wird nicht nur der Einstieg: alle sechs aktuellen Bereiche, die
+// Einstellungs-Unterseiten samt „Belege und Bilanz“, die sechs Labor-Abschnitte
+// und jeder Dialog
 // (`aria-haspopup="dialog"`) eines Bereichs. Die Belege werden vorher über die
 // echte API angelegt (kein `page.route`) — sonst bliebe genau die Liste
 // ungemessen, die auf dem Handy am längsten war.
@@ -227,7 +229,9 @@ const AREAS = [
   { id: "glossar", label: "Glossar", heading: "Glossar" },
 ] as const;
 
-const SETTINGS_TABS = ["Fahrzeug", "Belege", "Bilanz", "App"];
+// 0.78.0: Zwei dauerhafte Unterseiten; „Belege und Bilanz“ ist ein
+// eingeklapptes `<details>` darunter und wird im Test ausdrücklich geöffnet.
+const SETTINGS_TABS = ["Fahrzeug", "App"];
 const LAB_SECTIONS = [
   "sicherheit",
   "prognose",
@@ -584,7 +588,7 @@ test.describe("Mobil: kein Querlauf", () => {
     }
   });
 
-  test("Einstellungen: alle vier Unterseiten mit Belegen tragen ohne Querlauf", async ({
+  test("Einstellungen: Unterseiten und Belege tragen ohne Querlauf", async ({
     page,
   }) => {
     const stationName = await seedReceipts(page);
@@ -594,19 +598,23 @@ test.describe("Mobil: kein Querlauf", () => {
     for (const tab of SETTINGS_TABS) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       await settled(page);
-      // Die Belegliste ist der Prüfgegenstand — sie muss stehen. Der
-      // Stationsname steckt auch in der (verdeckten) Auswahlliste des
-      // Fahrzeug-Reiters, deshalb ausdrücklich auf Sichtbares eingrenzen.
-      if (tab === "Belege") {
-        await expect(
-          page
-            .getByText(stationName, { exact: false })
-            .filter({ visible: true })
-            .first(),
-        ).toBeVisible();
-      }
       await check(page, `Einstellungen → ${tab}`);
     }
+    // Die Buchhaltung ist kein Tab mehr, sondern ein `<details>`. Sie wird
+    // ausdrücklich geöffnet und mit den echten Belegen gemessen — genau die
+    // Liste war auf dem Handy am längsten.
+    await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
+    await openReceipts(page);
+    await settled(page);
+    // Der Stationsname steckt auch in der (verdeckten) Auswahlliste des
+    // Fahrzeug-Reiters, deshalb ausdrücklich auf Sichtbares eingrenzen.
+    await expect(
+      page
+        .getByText(stationName, { exact: false })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await check(page, "Einstellungen → Belege und Bilanz");
   });
 
   test("Labor: alle Abschnitte tragen ohne Querlauf", async ({ page }) => {

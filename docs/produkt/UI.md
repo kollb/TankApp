@@ -1,12 +1,12 @@
 # Oberfläche und Interaktion
 
-> Stand: 28.11.2026 · App-Version 0.77.0
+> Stand: 28.11.2026 · App-Version 0.78.0
 > Beschreibt die implementierte Navigation, die Atlas-Referenz und die drei Labor-Blöcke.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
 > Neu in 0.70.2: der Tank-Guide — eine Frage, eine Antwort, drei Fallback-Stufen
 > ([Release 0.70.2](../releases/CHANGELOG.md#0702--2026-09-27)).
-> Neu in 0.71.0: GUI v2 — helles Material-You-Design nach `sample/good gui`
+> Neu in 0.71.0: GUI v2 — helles Material-You-Design nach der M3-Vorlage
 > als Standard; der bisherige dunkle Stand bleibt als Thema „Dunkel“
 > ([Release 0.71.0](../releases/CHANGELOG.md#0710--2026-09-27)).
 > Neu in 0.73.0: „Jetzt“ und „Woche“ antworten statt zu berichten — eine
@@ -18,6 +18,10 @@
 > Neu in 0.77.0: Labor zweistufig — Beweise (Wochen-Heatmap,
 > Trefferquote/Kalibrierung, Stations-Pool) oben, Tagebuch, Prognose und
 > Rechenweg hinter „Warum & Rechenweg“ ([Release 0.77.0](../releases/CHANGELOG.md#0770--2026-11-28)).
+> Neu in 0.78.0: „Ich“ ist in „Einstellungen“ aufgegangen (Belege und Bilanz
+> als eingeklapptes Blatt, kein vierter Untertab), der Konzept-Einstieg ist
+> entfernt, und die Übersicht endet mit „Alle X Stationen & Karte anzeigen“
+> ([Release 0.78.0](../releases/CHANGELOG.md#0780--2026-11-28)).
 
 ## Inhaltsverzeichnis
 
@@ -98,14 +102,18 @@ steht im ersten Viewport und Hinweise bleiben sichtbar.
 |---|---|---|
 | Übersicht | **Eine** Antwort („soll ich jetzt tanken?“), ein Euro-Betrag, eine Handlung und der heutige Verlauf | Keine drei Fakten, keine separate Woche-Ansicht, kein Was-wäre-wenn-Formular und keine zweite Stationsliste |
 | Stationen | Karte, Liste, frische Referenz, Preisvergleich und A-gegen-B | Server-Netto nur bei passender Referenz-ID und bestätigtem frischem Referenzpreis; sonst reiner Preisvergleich |
-| Einstellungen | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)**, Belege, Bilanz und App-Kontext | Bestätigungs-Intent ist kein Beleg |
+| Einstellungen | Fahrzeug, Profile, **Tankstand (einziger Ort der Pflege)** und App-Kontext; „Belege und Bilanz“ als eingeklapptes Blatt (Verlauf und Bilanz laden erst beim Öffnen) | Bestätigungs-Intent ist kein Beleg; die Buchhaltung ist kein eigener Tab mehr |
 | Labor | Drei Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet die App? | Beweise statt Sammelakte; Rohdaten und CSV gehören dem Betreiber in „System“ |
 | System | Konfiguration, Jobs, Archiv, Collector, Alarme, Outbox, **Rohdaten, CSV-Exporte und API-Explorer** | Interne Pfade und Betriebsbegriffe bleiben hier, nicht in Alltagskarten |
 | Glossar | Begriffe mit verständlicher Kurz- und Langform | Fachwörter erst erklären, dann vertiefen |
 
 Die Übersicht hält den Auftrag **eine Frage, eine Antwort — der Rest ein Tipp
-entfernt**: Antwortkarte plus Tageszeile (Mini-Kurve + Tief). Der eigene
-Wochen-Bereich ist entfallen; alte Woche-Links landen hier. Der Stationen-Atlas
+entfernt**: Urteilskarte mit **einer** großen Zahl, ein gemeinsamer
+Zeitraum-Rahmen („3 Tage zurück“ | „Heute“ | „Woche“) und die Top-5-Tabelle
+nach effektivem Gesamtpreis — jede Zeile am Bestpreis der ersten gemessen.
+Darunter steht „Alle X Stationen & Karte anzeigen“; Herleitung und Quellen
+liegen im eingeklappten „Warum & Rechenweg“. Der eigene Wochen-Bereich ist
+entfallen; alte Woche-Links landen hier. Der Stationen-Atlas
 wählt seine Referenz aus frischen Preisen und zeigt Server-Netto nur, wenn
 Server und UI dieselbe frische Referenz bestätigen.
 
@@ -206,7 +214,7 @@ Was 0.73.0 gestrichen hat und **nicht** zurückkehrt (§7):
 | Entfällt | Warum | Wohin stattdessen |
 |---|---|---|
 | Was-wäre-wenn-Annahmen (Tankmenge, Zeitwert, Spätestens) | die App rechnet mit der Menge, die der Server nutzt (`used_liters`) | „Einstellungen“ → Fahrzeug |
-| Feedback-Intents („Ich warte“), Fällig-Prompt | eine Bestätigung ist kein Beleg; Belege werden gepflegt, nicht bestätigt (Entscheidung 04.10.2026) | „Einstellungen“ → Belege |
+| Feedback-Intents („Ich warte“), Fällig-Prompt | eine Bestätigung ist kein Beleg; Belege werden gepflegt, nicht bestätigt (Entscheidung 04.10.2026) | „Einstellungen“ → Belege und Bilanz |
 | „Nächste Schritte“, drei Fakten, Benefit-Block | die Antwort steht oben; darunter stand dreimal dieselbe Zahl | „Warum?“ (≤ 5 Zeilen), Labor |
 | „Heute im Blick“ mit 19 Zellen und Stundenbalken | die Entscheidung braucht kein Raster | Tageszeile, ein Tipp entfernt |
 | Konfidenz-Balken, Prozentwerte | eine Prozentzahl ist keine Handlung | Sicherheit als **ein Wort** (`ziemlich sicher` · `eher sicher` · `unsicher` · `noch nicht messbar`) |
@@ -421,12 +429,3 @@ Die **historische** Abnahme von „Jetzt“ und „Woche“ seit 0.73.0 bleibt a
 - **Microcopy-Ratchet** (`web/src/microcopy.test.ts`): genau fünf
   Antwort-Chips, Frische aus einem Baustein, keine abgelaufene
   Urteils-Headline.
-
-## Interaktives Design-Lab (0.72.0)
-
-`/?konzept=1` öffnet den M3-Prototyp aus `sample/good gui`: Smartphone links,
-UX-Panel rechts. Mobil schaltet „Konzept & Steuerung“ die Ansicht um. Der
-Desktop-Link „Neue GUI“ sitzt in der Live-Kopfzeile. Die Live-App bleibt unter
-`/` und den bisherigen Tab-URLs; deren Funktionen werden nicht durch Demo-Daten
-ersetzt. Karte/Alarme im Prototyp sind ausdrücklich Demo-Interaktionen. Bedienung und
-Funktionsabdeckung stehen in [GUI-VORLAGEN](GUI-VORLAGEN.md).

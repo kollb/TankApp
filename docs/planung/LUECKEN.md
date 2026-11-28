@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 28.11.2026 · App-Version 0.77.0
+> Stand: 28.11.2026 · App-Version 0.78.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -166,12 +166,12 @@ Das schließt weder die Regime-Implementierung noch deren Backtest-Abnahme ab.
 
 ## Bewusste Grenzen
 
-**M3-Prototyp (0.72.0):** `/?konzept=1` ist das bedienbare Design-Lab,
-keine neue Live-Datenoberfläche. Die bisherigen Funktionen bleiben unter `/`
-erhalten und werden aus dem Prototyp verlinkt. Die Übertragung der echten
-API-Zustände, Profil-/Belegmutationen und Freigabegates in das Smartphone-Layout
-ist noch nicht erfolgt. Beispiel-MAE, Gradient Boosting, Treffsicherheit und
-Sparbeträge sind keine Aussagen über die produktive Engine.
+**Eine Oberfläche (0.78.0):** Der M3-Prototyp (`/?konzept=1`,
+`web/src/concept/`, `sample/good gui`) ist mit der UI-Konsolidierung entfernt.
+Die übernommenen Leitplanken stehen in [GUI-Vorlagen](../produkt/GUI-VORLAGEN.md),
+der ausführbare Stand ist die Live-App unter `/` mit den Bereichen aus
+[UI](../produkt/UI.md). Eine zweite, parallel gepflegte Konzept-Ansicht kehrt
+nicht zurück.
 
 | Thema | Entscheidung |
 |---|---|
@@ -188,7 +188,7 @@ Sparbeträge sind keine Aussagen über die produktive Engine.
 | Stationslebenszyklus | Ranking darf tote Stationen ausblenden; Polling-Tausch bleibt bestätigt |
 | Archivierte Stichtagsberichte | Die datierten Berichte unter `docs/archiv/` (`BEFUND-…`, `ANALYSE-…`, `GUTACHTEN-…`, `PRUEFSTAND-…`, `TIEFENANALYSE-…`, `UMSETZUNG-…`, `GUI-UX-BEFUND`, `RP2-…`) sowie `planung/UI-NEUGESTALTUNG-2026-09-26.md` und `sample/good statistic gui` liegen in **keinem** Commit dieses Repositories. Ihre Verweise sind am 27.09.2026 entfernt (D1 in [TODO](TODO.md)): Ein Prüfbericht lässt sich nicht rekonstruieren, und ein nachträglich geschriebener wäre erfundene Evidenz (§1). Das Archiv-Verzeichnis führt ihre Titel als Text, nicht als Verweis |
 | UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0) | Historische Abnahme: **Jetzt** und **Woche** (§3/§4), Labor in drei Blöcken (§5), Stationen/Ich verdichtet (§6/§7), Rohdaten als Betreiber-Sicht in „System“ und kompakte globale Kopfzeile (C13/§13). Die gestrichenen Annahmen, Raster und Feedback-Elemente bleiben gestrichen. Für diese Batches blieb der Serververtrag unverändert; Release 0.76.0 ergänzt separat Alternativenlimit und Frischefelder und migriert die Navigation auf Übersicht/Stationen + Mehr. C13 bleibt abgenommen: bei 320 × 720 endet die Antwort-Überschrift im ersten Viewport; unter 1280 px liegen Profil und Aktionen im Kopfzeilen-Blatt |
-| ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt jetzt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der Vorlage `sample/good gui`. Die namentlich vorbereiteten `GUIDE_TONE_CLASS`-Sätze in `views/guide.ts` bleiben bestehen; sie sind mit den styles.css-Klassen deckungsgleich |
+| ~~M3-Kartenflächen der Entscheidung~~ | **Erledigt 27.09.2026 (GUI v2):** Die Entscheidungskarte trägt `CARD_TONE` auf M3-Basis (`m3-now`/`m3-relaxed`/`m3-wait`/`m3-neutral` in styles.css), Buttons/Chips sind M3-Pills, die Shell (Kopf, Navigation) folgt der M3-Vorlage. Die Vorlage selbst ist mit 0.78.0 entfernt; die Token bleiben in `styles.css` (siehe [GUI-Vorlagen](../produkt/GUI-VORLAGEN.md)) |
 
 Betriebsentscheidungen (flüchtiger Cache, Speicher, Backup), zurückgestellte
 UI-/Laufzeitoptimierungen und Modellfreigabe sind in den

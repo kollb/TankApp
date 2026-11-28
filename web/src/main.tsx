@@ -1,22 +1,14 @@
-import React, { lazy, Suspense } from "react";
+import React from "react";
 import { createRoot } from "react-dom/client";
 import { Dashboard } from "./Dashboard";
 import { registerServiceWorker } from "./service-worker";
 import "./styles.css";
 
-const ConceptApp = lazy(() => import("./concept/App"));
-const isConcept =
-  new URLSearchParams(window.location.search).get("konzept") === "1";
-
+// Eine Oberfläche: die Bereiche der App liegen hinter `?tab=…` (routing.ts),
+// ein zweiter Prototyp-Einstieg existiert nicht mehr (UI-Konsolidierung).
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {isConcept ? (
-      <Suspense fallback={<p className="p-8">Konzept wird geladen …</p>}>
-        <ConceptApp />
-      </Suspense>
-    ) : (
-      <Dashboard />
-    )}
+    <Dashboard />
   </React.StrictMode>,
 );
 
@@ -24,11 +16,6 @@ createRoot(document.getElementById("root")!).render(
 // B10: Die Registrierung meldet zusätzlich einen **wartenden** Nachfolger —
 // die Ansicht zeigt dann „Neue Version verfügbar“ samt eigener Version.
 // webdriver = automatisierter Test: dort kein Cache zwischen App und Assertions.
-if (
-  !isConcept &&
-  "serviceWorker" in navigator &&
-  !import.meta.env.DEV &&
-  !navigator.webdriver
-) {
+if ("serviceWorker" in navigator && !import.meta.env.DEV && !navigator.webdriver) {
   window.addEventListener("load", () => registerServiceWorker());
 }

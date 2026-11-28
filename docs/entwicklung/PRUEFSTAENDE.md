@@ -1,6 +1,6 @@
 # Prüfstände der technischen Referenzen
 
-> Stand: 28.11.2026 · App-Version 0.77.0
+> Stand: 28.11.2026 · App-Version 0.78.0
 
 ## Inhaltsverzeichnis
 

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openReceipts } from "./nav";
 
 // Alltagsnavigation: Die Übersicht zeigt den Entscheidungsfluss —
 // „decide → intent → fill → due“ bleibt als API-/Ledger-Vertrag erhalten.
@@ -189,12 +190,12 @@ test("Jetzt: eine Antwort, eine Handlung — kein Intent-Kanal mehr", async ({
 // mit Klartext.
 //
 // Der Weg dorthin war bis 0.72.2 der Fällig-Prompt („Ja, wie empfohlen“).
-// Er ist ersatzlos gestrichen; Belege entstehen in „Einstellungen → Belege →
-// Tanken erfassen“. Die Legacy-URL `?tab=ich` führt dorthin. Die Outbox-Zusage
+// Er ist ersatzlos gestrichen; Belege entstehen in „Einstellungen → Belege und
+// Bilanz → Tanken erfassen“. Die Legacy-URL `?tab=ich` führt dorthin. Die Outbox-Zusage
 // (B10) bleibt und wird hier am neuen Ort geprüft.
 async function openReceiptForm(page: Page) {
   await page.goto("/?tab=ich");
-  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  await openReceipts(page);
   const form = page.getByRole("region", { name: "Tanken erfassen" });
   await form.getByRole("textbox").nth(0).fill("37.5");
   await form.getByRole("textbox").nth(1).fill("1.777");

@@ -71,6 +71,11 @@ ausschließlich über die Formatter in `web/src/data.ts` (€/L für Niveaus,
 ct/L für Differenzen, Uhrzeiten Europe/Berlin). Neue Muster gehören in das
 Regelwerk, nicht nur in das Panel.
 
-## GUI-Basis bewahren
+## GUI-Basis: eine Oberfläche
 
-`sample/good gui` und `sample/good statistic gui` sind ausdrücklich die gestalterische und technische Basis der neuen Homepage. Nicht beim Aufräumen von Demo-Daten löschen. Die Übernahmeregeln stehen in `docs/produkt/GUI-VORLAGEN.md`.
+`sample/good gui` und `sample/good statistic gui` sind entfernt: Der
+M3-Prototyp (`sample/`, `web/src/concept/`, `/?konzept=1`) war ein paralleles
+Design-Lab und ist mit der UI-Konsolidierung (0.78.0) gelöscht. Die
+übernommenen gestalterischen Regeln stehen in `docs/produkt/GUI-VORLAGEN.md`,
+der ausführbare Stand ist die Live-App in `web/src/`. Eine zweite
+Konzept-Ansicht kehrt nicht zurück.

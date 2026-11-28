@@ -1,6 +1,6 @@
 # TankApp Betrieb — systemd, Backup, Alarme, Fehlersuche
 
-> Stand: 28.11.2026 · App-Version 0.77.0 — alles, was nach der Ersteinrichtung
+> Stand: 28.11.2026 · App-Version 0.78.0 — alles, was nach der Ersteinrichtung
 > wiederkehrt. Ersteinrichtung selbst: [INSTALL.md](INSTALL.md).
 > Neu seit 0.76.0: Modell-Refresh und Netzwerk-Prewarm warten vor dem ersten
 > Preis-Read bis zu 30 Sekunden auf InfluxDB `/health` (ohne Token); die

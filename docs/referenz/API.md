@@ -1,6 +1,6 @@
 # TankApp API — Endpunkte & Spezifikation
 
-> Stand: 28.11.2026 · App-Version **0.77.0** — neu seit 0.77.0: jede Veröffentlichung trägt `bootstrap_mode` (`default`|`regime_short`), der als `+bootstrap=…` in `model_contract` eingeht. Neu seit 0.76.0: `/decide` liefert höchstens fünf Alternativen, mit `price_fresh` und `ref_price_fresh`; `station_id` setzt den Bezugsanker. InfluxDB-Readiness ist eine interne Betriebswartefunktion, kein API-Endpunkt. Neu seit 0.70.0 (A70): Vertrags-/Regime-Gates, Health-Verfügbarkeit. Neu seit 0.68.1: Modell-Parameter
+> Stand: 28.11.2026 · App-Version **0.78.0** — neu seit 0.77.0: jede Veröffentlichung trägt `bootstrap_mode` (`default`|`regime_short`), der als `+bootstrap=…` in `model_contract` eingeht. Neu seit 0.76.0: `/decide` liefert höchstens fünf Alternativen, mit `price_fresh` und `ref_price_fresh`; `station_id` setzt den Bezugsanker. InfluxDB-Readiness ist eine interne Betriebswartefunktion, kein API-Endpunkt. Neu seit 0.70.0 (A70): Vertrags-/Regime-Gates, Health-Verfügbarkeit. Neu seit 0.68.1: Modell-Parameter
 > im Forecast-Payload (`beta`, `ar_phi` u. a.). Neu seit 0.68.0 (A21-B5):
 > Vertragskohorten-Gate (`gate_context`), Vertrags-Pooling in stats/summary und Schicht-B-Provenienz. Neu seit 0.67.0 (A21-B4):
 > DST-sichere lokale Forecast-Blöcke mit UTC-Identität, echte Restfenster bis

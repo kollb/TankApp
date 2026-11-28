@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { clickArea } from "./nav";
+import { clickArea, openReceipts } from "./nav";
 
 // Real NAS and Pi handlers. The Python controller only cuts/restores their
 // transport. No page.route, API response stubs, browser online event or remount.
@@ -100,7 +100,7 @@ test("NAS-Tab überlebt Ausfall mit Beleg-Outbox und ungesendetem Entwurf", asyn
   await expect(page.locator("#jetzt-headline")).toBeVisible();
   const timeOrigin = await page.evaluate(() => performance.timeOrigin);
   await clickArea(page, "Einstellungen");
-  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  await openReceipts(page);
   const form = page.getByRole("region", { name: "Tanken erfassen" });
   await link("offline");
   await page.getByRole("button", { name: "Daten aktualisieren" }).click();

@@ -1,5 +1,7 @@
-// Layout/visual foundation: sample/good gui/TankAppDashboard + DecisionCockpit.
-// Workshop composition and charts: sample/good statistic gui/DecisionLab.
+// Layout und Komposition der Oberfläche: die Vorlagen aus
+// `docs/produkt/GUI-VORLAGEN.md` (Material-You-Raster, Entscheidungskarte,
+// ruhige Zahlenreihen). Die Views selbst entscheiden nichts (D1) — sie
+// rendern den Zustand aus `state/overview.tsx`.
 // No demo engine, seeds, simulated decisions or PostgreSQL are imported.
 //
 // U8: Die Root ist Zusammensetzung. Der geteilte Zustand (Preise, Polls,
@@ -39,9 +41,9 @@ import { OverviewProvider, useOverview } from "./state/overview";
 // Layout-Verschiebungen (Lighthouse-Gate `cumulative-layout-shift`).
 const jetztModule = import("./views/Jetzt");
 const stationenModule = import("./views/Stationen");
-const ichModule = import("./views/Ich");
 const laborModule = import("./views/Labor");
 const systemModule = import("./views/System");
+const settingsModule = import("./views/Settings");
 const glossaryModule = import("./views/Glossary");
 const JetztView = lazy(() =>
   jetztModule.then((m) => ({ default: m.JetztView })),
@@ -49,14 +51,14 @@ const JetztView = lazy(() =>
 const StationenView = lazy(() =>
   stationenModule.then((m) => ({ default: m.StationenView })),
 );
-const IchView = lazy(() =>
-  ichModule.then((m) => ({ default: m.IchView })),
-);
 const LaborView = lazy(() =>
   laborModule.then((m) => ({ default: m.LaborView })),
 );
 const SystemView = lazy(() =>
   systemModule.then((m) => ({ default: m.SystemView })),
+);
+const SettingsView = lazy(() =>
+  settingsModule.then((m) => ({ default: m.SettingsView })),
 );
 const GlossaryView = lazy(() =>
   glossaryModule.then((m) => ({ default: m.GlossaryView })),
@@ -79,7 +81,8 @@ function DashboardShell() {
     setLaborFocus,
     openLabor,
     handleNowNavigate,
-    settingsSection,
+    settingsFillsOpen,
+    setSettingsFillsOpen,
     searchFocusSignal,
     fuel,
     setFuel,
@@ -299,11 +302,8 @@ function DashboardShell() {
   // oder Fehler). Wichtig: `useResource` startet mit `pending: false` — erst
   // der Effekt schaltet auf laden. Nur auf `pending` zu prüfen würde das Gate
   // im allerersten Render sofort öffnen.
-  const settled = (res: {
-    pending: boolean;
-    data: unknown;
-    error: boolean;
-  }) => !res.pending && (res.data !== null || res.error);
+  const settled = (res: { pending: boolean; data: unknown; error: boolean }) =>
+    !res.pending && (res.data !== null || res.error);
   const shellSettled =
     settled(ov.prices) && settled(ov.health) && settled(ov.profilesRes);
   const primarySettled =
@@ -319,8 +319,10 @@ function DashboardShell() {
           settled(ov.selection) &&
           (!ov.identity || settled(ov.forecast))
         : tab === "settings"
-          ? /* Die Nutzerseite lädt ihren Verlauf und ihre Bilanz separat. */
-            settled(ov.fillsRes) && settled(ov.fillsSummary)
+          ? /* Nur das offene Belege-und-Bilanz-Blatt hat eigene Polls — es
+               wartet auf deren ersten Stand, die Einstellungen selbst nicht. */
+            !ov.settingsFillsOpen ||
+            (settled(ov.fillsRes) && settled(ov.fillsSummary))
           : true;
   // Das View-Modul des aktiven Bereichs muss ebenfalls da sein, bevor das
   // Gate öffnet: Sonst zeigt Suspense kurz das Skeleton und tauscht es gegen
@@ -333,7 +335,7 @@ function DashboardShell() {
       : tab === "stations"
         ? stationenModule
         : tab === "settings"
-          ? ichModule
+          ? settingsModule
           : tab === "labor"
             ? laborModule
             : tab === "system"
@@ -367,248 +369,260 @@ function DashboardShell() {
       <div className="mx-auto flex max-w-7xl items-start gap-6 px-4 sm:px-6 lg:px-8">
         <SideNav tab={tab} onSelect={gotoTab} />
         <main className="app-main min-w-0 flex-1 pt-6 pb-24 lg:pb-12">
-        {gateReady ? (
-          <>
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            {online && fresh.length ? (
-              <Wifi size={13} className="text-emerald-400" />
-            ) : (
-              <WifiOff size={13} className="text-amber-400" />
-            )}
-            <span>
-              {online && fresh.length
-                ? `${freshCountLabel(fresh.length)} · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
-                : prices.pending
-                  ? "Daten werden geladen …"
-                  : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
-            </span>
-          </div>
-        </div>
+          {gateReady ? (
+            <>
+              <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  {online && fresh.length ? (
+                    <Wifi size={13} className="text-emerald-400" />
+                  ) : (
+                    <WifiOff size={13} className="text-amber-400" />
+                  )}
+                  <span>
+                    {online && fresh.length
+                      ? `${freshCountLabel(fresh.length)} · ${activeCity} · Stand ${clockLabel(data?.generated_at)}`
+                      : prices.pending
+                        ? "Daten werden geladen …"
+                        : `Kein bestätigter Live-Preis${data ? ` · Stand ${clockLabel(data.generated_at)}` : ""}`}
+                  </span>
+                </div>
+              </div>
 
-        {/* V3: Die gebündelte Meldung — genau ein Block. Unter „Einstellungen“ zeigt die
+              {/* V3: Die gebündelte Meldung — genau ein Block. Unter „Einstellungen“ zeigt die
             View ihre eigene Rückmeldung (FeedbackBanner im Belege-Abschnitt),
             deshalb fällt der Aktions-Kanal dort aus dem Register. */}
-        <NoticesView
-          result={reduceNotices(
-            notices.filter((item) => item.id !== "action" || tab !== "settings"),
-          )}
-        />
+              <NoticesView
+                result={reduceNotices(
+                  notices.filter(
+                    (item) => item.id !== "action" || tab !== "settings",
+                  ),
+                )}
+              />
 
-        {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
-        <InstallHint onNote={(message) => feedback("ok", message)} />
+              {/* C8: Installationshinweis — nach „Nicht jetzt“ 30 Tage still. */}
+              <InstallHint onNote={(message) => feedback("ok", message)} />
 
-        {/* B10: „Neue Version verfügbar“ — nur wenn ein Service Worker wartet. */}
-        <UpdateBanner />
+              {/* B10: „Neue Version verfügbar“ — nur wenn ein Service Worker wartet. */}
+              <UpdateBanner />
 
-        {/* ============================================================ */}
-        {/* Bereich-Inhalt (U7: die Views laden als eigene Chunks —       */}
-        {/* Suspense zeigt derweil ein Skeleton statt einer weißen Fläche) */}
-        {/* ============================================================ */}
-        <Suspense
-          fallback={
-            <div className="space-y-6" aria-busy="true" aria-live="polite">
-              <SkeletonPanel />
-              <SkeletonPanel />
-            </div>
-          }
-        >
-        {tab === "jetzt" && (
-          <JetztView
-            activeCity={activeCity}
-            fuel={fuel}
-            liters={effLiters}
-            decideRes={decideRes}
-            stations={stations}
-            priceOf={price}
-            selectedId={selectedId}
-            stripCells={stripCells}
-            series7d={series7d}
-            pricesAt={nowPricesAt}
-            forecastAt={nowForecastAt}
-            onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section)}
-            onRetry={refreshNow}
-            /* Verbindung des Geräts (navigator.onLine): ohne Netz trägt die
+              {/* ============================================================ */}
+              {/* Bereich-Inhalt (U7: die Views laden als eigene Chunks —       */}
+              {/* Suspense zeigt derweil ein Skeleton statt einer weißen Fläche) */}
+              {/* ============================================================ */}
+              <Suspense
+                fallback={
+                  <div
+                    className="space-y-6"
+                    aria-busy="true"
+                    aria-live="polite"
+                  >
+                    <SkeletonPanel />
+                    <SkeletonPanel />
+                  </div>
+                }
+              >
+                {tab === "jetzt" && (
+                  <JetztView
+                    activeCity={activeCity}
+                    fuel={fuel}
+                    liters={effLiters}
+                    decideRes={decideRes}
+                    stations={stations}
+                    priceOf={price}
+                    selectedId={selectedId}
+                    stripCells={stripCells}
+                    series7d={series7d}
+                    pricesAt={nowPricesAt}
+                    forecastAt={nowForecastAt}
+                    onNavigate={handleNowNavigate}
+                    onDeepen={(section) => openLabor(section)}
+                    onRetry={refreshNow}
+                    /* Verbindung des Geräts (navigator.onLine): ohne Netz trägt die
                Karte den letzten Stand — offline schlägt alles (§3). */
-            online={browserOnline}
-          />
-        )}
+                    online={browserOnline}
+                  />
+                )}
 
-        {/* ============================================================ */}
-        {/* TAB STATIONEN (Preis-Atlas)                      */}
-        {/* ============================================================ */}
-        {tab === "stations" && (
-          <StationenView
-            activeCity={activeCity}
-            data={data}
-            stations={stations}
-            price={price}
-            elapsed={elapsed}
-            online={online}
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            pinnedIds={pinnedIds}
-            togglePin={togglePin}
-            pinNote={pinNote}
-            decideRes={decideRes}
-            selectionRes={selection}
-            stripCells={stripCells}
-            series7d={series7d}
-            seriesSpan={stationsSpanHours}
-            onSeriesSpan={setStationsSpanHours}
-            liters={effLiters}
-            timeValue={effTimeValue}
-            timeValueUsed={timeValueUsed}
-            autoZ={autoZ}
-            onTimeValue={(value) =>
-              setAssumptions((current) => ({ ...current, timeValue: value }))
-            }
-            pricesAt={nowPricesAt}
-            onRetry={refreshNow}
-            onNavigate={handleNowNavigate}
-            onDeepen={(section) => openLabor(section)}
-            searchFocusSignal={searchFocusSignal}
-          />
-        )}
+                {/* ============================================================ */}
+                {/* TAB STATIONEN (Preis-Atlas)                      */}
+                {/* ============================================================ */}
+                {tab === "stations" && (
+                  <StationenView
+                    activeCity={activeCity}
+                    data={data}
+                    stations={stations}
+                    price={price}
+                    elapsed={elapsed}
+                    online={online}
+                    selectedId={selectedId}
+                    setSelectedId={setSelectedId}
+                    pinnedIds={pinnedIds}
+                    togglePin={togglePin}
+                    pinNote={pinNote}
+                    decideRes={decideRes}
+                    selectionRes={selection}
+                    stripCells={stripCells}
+                    series7d={series7d}
+                    seriesSpan={stationsSpanHours}
+                    onSeriesSpan={setStationsSpanHours}
+                    liters={effLiters}
+                    timeValue={effTimeValue}
+                    timeValueUsed={timeValueUsed}
+                    autoZ={autoZ}
+                    onTimeValue={(value) =>
+                      setAssumptions((current) => ({
+                        ...current,
+                        timeValue: value,
+                      }))
+                    }
+                    pricesAt={nowPricesAt}
+                    onRetry={refreshNow}
+                    onNavigate={handleNowNavigate}
+                    onDeepen={(section) => openLabor(section)}
+                    searchFocusSignal={searchFocusSignal}
+                  />
+                )}
 
-        {/* ============================================================ */}
-        {/* EINSTELLUNGEN — Fahrzeug, Belege, Bilanz, App-Einstellungen  */}
-        {/* ============================================================ */}
-        {tab === "settings" && (
-          <IchView
-            initialSection={settingsSection}
-            vehicle={{
-              liters,
-              setLiters,
-              consumption,
-              setConsumption,
-              tankCapacity,
-              setTankCapacity,
-              tankPercent,
-              setTankPercent,
-              activeProfileName: activeProfile?.name ?? null,
-              speed,
-              setSpeed,
-              timeValue,
-              setTimeValue,
-              timeValueUsed,
-              autoZ,
-              detourMode,
-              setDetourMode,
-              profilesRes,
-              activeProfileId,
-              onActivateProfile: handleActivateProfile,
-              profilesBusy,
-              onOpenProfileManager: () => setProfileManagerOpen(true),
-            }}
-            settings={{
-              data,
-              activeCity,
-              setCity,
-              fuel,
-              setFuel,
-              statsSummaryRes,
-              refreshNow,
-              theme,
-              setTheme,
-              pinnedStations: pinnedFirstStations
-                .filter((row) => pinnedIds.includes(row.station_id))
-                .map((station) => ({ station })),
-              togglePin,
-              version: h?.version ?? null,
-              onOpenGlossary: () => gotoTab("glossary"),
-            }}
-            pinnedFirstStations={pinnedFirstStations}
-            quickStationId={quickStationId}
-            setQuickStationId={setQuickStationId}
-            quickLitersStr={quickLitersStr}
-            setQuickLitersStr={setQuickLitersStr}
-            quickPriceStr={quickPriceStr}
-            setQuickPriceStr={setQuickPriceStr}
-            quickDraft={quickDraft}
-            priceOf={price}
-            freshPrices={freshPrices}
-            fillSubmitting={fillSubmitting}
-            onQuickFill={handleQuickFill}
-            actionFeedback={actionFeedback}
-            fillList={fillList}
-            visibleFills={visibleFills}
-            voidedCount={voidedCount}
-            showVoidedFills={showVoidedFills}
-            setShowVoidedFills={setShowVoidedFills}
-            voidNote={voidNote}
-            voidBusy={voidBusy}
-            onVoidFill={handleVoidFill}
-            fillsSummary={fillsSummary}
-            onRetry={refreshNow}
-          />
-        )}
+                {/* ============================================================ */}
+                {/* EINSTELLUNGEN — Fahrzeug, Belege/Bilanz (eingeklappt), App     */}
+                {/* ============================================================ */}
+                {tab === "settings" && (
+                  <SettingsView
+                    vehicle={{
+                      liters,
+                      setLiters,
+                      consumption,
+                      setConsumption,
+                      tankCapacity,
+                      setTankCapacity,
+                      tankPercent,
+                      setTankPercent,
+                      activeProfileName: activeProfile?.name ?? null,
+                      speed,
+                      setSpeed,
+                      timeValue,
+                      setTimeValue,
+                      timeValueUsed,
+                      autoZ,
+                      detourMode,
+                      setDetourMode,
+                      profilesRes,
+                      activeProfileId,
+                      onActivateProfile: handleActivateProfile,
+                      profilesBusy,
+                      onOpenProfileManager: () => setProfileManagerOpen(true),
+                    }}
+                    settings={{
+                      data,
+                      activeCity,
+                      setCity,
+                      fuel,
+                      setFuel,
+                      statsSummaryRes,
+                      refreshNow,
+                      theme,
+                      setTheme,
+                      pinnedStations: pinnedFirstStations
+                        .filter((row) => pinnedIds.includes(row.station_id))
+                        .map((station) => ({ station })),
+                      togglePin,
+                      version: h?.version ?? null,
+                      onOpenGlossary: () => gotoTab("glossary"),
+                    }}
+                    fills={{
+                      pinnedFirstStations,
+                      quickStationId,
+                      setQuickStationId,
+                      quickLitersStr,
+                      setQuickLitersStr,
+                      quickPriceStr,
+                      setQuickPriceStr,
+                      quickDraft,
+                      priceOf: price,
+                      fillSubmitting,
+                      onQuickFill: handleQuickFill,
+                      actionFeedback,
+                      fillList,
+                      visibleFills,
+                      voidedCount,
+                      showVoidedFills,
+                      setShowVoidedFills,
+                      voidNote,
+                      voidBusy,
+                      onVoidFill: handleVoidFill,
+                    }}
+                    balance={{ fillsSummary, onRetry: refreshNow }}
+                    fillsOpen={settingsFillsOpen}
+                    onFillsOpenChange={setSettingsFillsOpen}
+                  />
+                )}
 
-        {/* ============================================================ */}
-        {/* TAB LABOR — holt sich Daten und Modell aus dem Context (U8)   */}
-        {/* ============================================================ */}
-        {tab === "labor" && (
-          <LaborView
-            focusSection={laborFocus}
-            onFocusHandled={() => setLaborFocus(null)}
-            onNavigate={handleNowNavigate}
-            onOpenGlossary={() => gotoTab("glossary")}
-          />
-        )}
+                {/* ============================================================ */}
+                {/* TAB LABOR — holt sich Daten und Modell aus dem Context (U8)   */}
+                {/* ============================================================ */}
+                {tab === "labor" && (
+                  <LaborView
+                    focusSection={laborFocus}
+                    onFocusHandled={() => setLaborFocus(null)}
+                    onNavigate={handleNowNavigate}
+                    onOpenGlossary={() => gotoTab("glossary")}
+                  />
+                )}
 
-        {/* ============================================================ */}
-        {/* TAB SYSTEM — Terminal-Zustand besitzt die View selbst (U8)   */}
-        {/* ============================================================ */}
-        {tab === "system" && (
-          <SystemView onDeepen={(section) => openLabor(section)} />
-        )}
+                {/* ============================================================ */}
+                {/* TAB SYSTEM — Terminal-Zustand besitzt die View selbst (U8)   */}
+                {/* ============================================================ */}
+                {tab === "system" && (
+                  <SystemView onDeepen={(section) => openLabor(section)} />
+                )}
 
-        {/* ============================================================ */}
-        {/* TAB GLOSSAR — C7 „Was heißt das?“                             */}
-        {/* ============================================================ */}
-        {tab === "glossary" && <GlossaryView />}
-        </Suspense>
+                {/* ============================================================ */}
+                {/* TAB GLOSSAR — C7 „Was heißt das?“                             */}
+                {/* ============================================================ */}
+                {tab === "glossary" && <GlossaryView />}
+              </Suspense>
 
-        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-xs text-slate-600">
-          <span>
-            Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K) über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens alle 5 Minuten · Polling-Fenster 06–24 Uhr (Europe/Berlin)
-            {h?.version ? (
-              <>
-                {" "}
-                · TankApp {h.version}
-                {h?.commit ? (
-                  <span className="font-mono"> ({h.commit})</span>
-                ) : null}
-              </>
-            ) : null}{" "}
-            ·{" "}
-            <button
-              onClick={() => gotoTab("glossary")}
-              className="underline underline-offset-2 hover:text-slate-400"
-            >
-              Glossar
-            </button>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck size={12} />
-            Keine Demo-Preise. Keine erfundene Sicherheit.
-          </span>
-        </footer>
-          </>
-        ) : (
-          /* Erst-Paint-Gate zu: noch kein fertiges Layout zeigen, das sich
+              <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 pt-5 text-xs text-slate-600">
+                <span>
+                  Datenquelle: Markttransparenzstelle für Kraftstoffe (MTS-K)
+                  über tankerkoenig.de — Lizenz CC BY 4.0 · Abfrage höchstens
+                  alle 5 Minuten · Polling-Fenster 06–24 Uhr (Europe/Berlin)
+                  {h?.version ? (
+                    <>
+                      {" "}
+                      · TankApp {h.version}
+                      {h?.commit ? (
+                        <span className="font-mono"> ({h.commit})</span>
+                      ) : null}
+                    </>
+                  ) : null}{" "}
+                  ·{" "}
+                  <button
+                    onClick={() => gotoTab("glossary")}
+                    className="underline underline-offset-2 hover:text-slate-400"
+                  >
+                    Glossar
+                  </button>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck size={12} />
+                  Keine Demo-Preise. Keine erfundene Sicherheit.
+                </span>
+              </footer>
+            </>
+          ) : (
+            /* Erst-Paint-Gate zu: noch kein fertiges Layout zeigen, das sich
              gleich verschiebt — ein ruhender Ladeblock hält den Platz. */
-          <div
-            className="min-h-[70vh] space-y-6"
-            aria-busy="true"
-            aria-live="polite"
-          >
-            <SkeletonPanel lines={4} title label="Ansicht wird geladen" />
-            <SkeletonPanel lines={6} title label="Inhalt wird geladen" />
-          </div>
-        )}
-      </main>
+            <div
+              className="min-h-[70vh] space-y-6"
+              aria-busy="true"
+              aria-live="polite"
+            >
+              <SkeletonPanel lines={4} title label="Ansicht wird geladen" />
+              <SkeletonPanel lines={6} title label="Inhalt wird geladen" />
+            </div>
+          )}
+        </main>
       </div>
 
       {/* U3 (§13) mobil: Bottom-Navigation als letztes Element der Hülle,

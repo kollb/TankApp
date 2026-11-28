@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { clickArea } from "./nav";
+import { clickArea, openReceipts } from "./nav";
 
 // Alltagsnavigation: Übersicht und Stationen sind die Haupteinstiege;
 // Einstellungen, Labor, System und Glossar liegen im Studio. Alte Woche- und
@@ -320,8 +320,9 @@ test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", 
   // Overview-Antwort, die nur für Übersicht/Stationen bereitgestellt wird.
   // Der Legacy-Link `?tab=ich` zeigte deshalb „Noch keine Belege“, selbst wenn
   // der Ledger gefüllt war — der geteilte Link führte auf
-  // eine leere Liste. Der Verlauf holt seinen Stand jetzt selbst über
-  // `GET /api/v1/fills`; die Attrappe hält genau diese Route fest.
+  // eine leere Liste. Seit 0.78.0 holt „Belege und Bilanz“ seinen Stand selbst
+  // über `GET /api/v1/fills` — aber erst, wenn das Blatt offen ist; die
+  // Attrappe hält genau diese Route fest.
   await page.route("**/api/v1/fills", async (route) => {
     await route.fulfill({
       status: 200,
@@ -351,7 +352,7 @@ test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", 
     });
   });
   await page.goto("/?tab=ich");
-  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  await openReceipts(page);
   // Karte (mobil) und Tabelle (ab `sm`) tragen denselben Namen — die
   // verdeckte Fassung darf den Treffer nicht bestimmen.
   await expect(
