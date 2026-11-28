@@ -35,4 +35,5 @@ tests/test_regime_check.py
 tests/test_rp2_cache.py
 tests/test_rp2_fallback.py
 tests/test_selection.py
+tests/test_sliding_primitive.py
 tests/test_station_comparison.py

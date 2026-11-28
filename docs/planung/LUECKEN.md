@@ -37,8 +37,11 @@ eine neue Güteabnahme behauptet wird; sie ist kein unabhängiger Ausbauauftrag.
 
 **Überlappende Zeitfenster:** Die publizierten Draws und die Zuordnung in
 `app/decide.py` verwenden weiterhin disjunkte 2-Stunden-Kalenderblöcke.
-Stündlich überlappende Fenster würden zusätzliche Minima und eine andere
-Zuordnung für Restfenster, DST und F3-Nachbarn benötigen; die bestehenden
+Der Engine-Baustein `sliding_block_minima` berechnet vollständige überlappende
+Fenster mit 60 Minuten Schrittweite und unterscheidet die Herbst-Folds; er ist
+noch nicht an Veröffentlichung oder Entscheidung angeschlossen. Dafür sind
+zusätzliche Minima und eine andere Zuordnung für Restfenster und F3-Nachbarn
+nötig; die bestehenden
 Suffix- und Settlement-Verträge beweisen diese Umstellung noch nicht. Ein
 Preistal über 12 Uhr kann deshalb weiterhin geteilt werden. Vor einer
 Umstellung sind ein versionierter kompatibler Vertrag, ein Tal-Test und die
