@@ -2,17 +2,22 @@
 // Batch 2 / 0.74.0). Frage des Bereichs: „Stimmt, was die App sagt — und
 // kann ich ihr vertrauen?“
 //
-// Das Labor ist seit Batch 2 **ein** Blatt mit drei Blöcken, sonst nichts:
-//   1 · Kann ich vertrauen?        — ein Satz Zählung + Tagebuch (filterbar)
-//   2 · Wie gut ist die Prognose?  — eine Kurve (erwartet vs. echt) + ein Satz
-//   3 · Wie rechnet die App?       — drei Schritte + „Details für Neugierige“
+// Aufbau (0.77.0, docs/produkt/UI.md#labor-drei-fragen):
 //
-// Gestrichen bzw. verlagert (§5, §7): vier Sub-Tabs, acht offene
-// Parameterkarten, Güte-Panel (PICP, MASE, CUSUM, Brier, Reliability),
-// Heatmap-Schalter, Spielplatz, Experimente, Tankprofil-Rechner,
-// Einflüsse-Balken und das eingebettete Glossar. Rohdaten, CSV-Exporte und
-// der API-Explorer wohnen als Betreiber-Sicht in „System“; die Heatmap
-// bleibt als einzige Grafik in den Details (Entscheidung 05.10.2026).
+//   Oben — Beweise in drei Karten:
+//     Wochen-Heatmap · Trefferquote und Kalibrierung (Zählung als Satz,
+//     Kennzahlen, Reliability-Balken) · Stations-Pool
+//   Darunter hinter „Warum & Rechenweg“ — die drei Fragen:
+//     1 · Kann ich vertrauen?        — Zähler + Tagebuch (filterbar)
+//     2 · Wie gut ist die Prognose?  — eine Kurve (erwartet vs. echt) + ein Satz
+//     3 · Wie rechnet die App?       — drei Schritte + „Details für Neugierige“
+//
+// Gestrichen bleibt: Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
+// Einflüsse-Balken, der Heatmap-Schalter und das eingebettete Glossar.
+// Rohdaten, CSV-Exporte und der API-Explorer wohnen als Betreiber-Sicht in
+// „System“. Die Kennzahlen oben sind bewusst die Ausnahme von der früheren
+// Streichliste: Sie beantworten die erste Frage direkt, statt sie hinter
+// einen Tipp zu legen (docs/produkt/MICROCOPY.md §4d).
 //
 // Die View rendert, sie entscheidet nichts (D1): Zählung, Kurve, Sätze und
 // Fachwerte kommen aus `laborModel.ts`, `guide.ts`, `lab.ts` und sind dort
@@ -290,9 +295,9 @@ export function LaborView(props: LaborViewProps) {
             blockRefs.current.sicherheit = node;
           }}
         >
-          <p className="text-sm leading-relaxed text-slate-200">
-            {accuracySentence(hits, total)}
-          </p>
+          {/* Die Zählung steht genau einmal im Labor — oben in der Karte
+              „Trefferquote und Kalibrierung“. Hier bleibt der aufgeschlüsselte
+              Zähler plus Tagebuch; der Satz wäre sonst ein zweites Mal da. */}
           {counts && (
             <p className="mt-1 text-xs leading-relaxed text-slate-400">
               {counts}

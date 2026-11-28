@@ -118,6 +118,10 @@ def _evidence_row(**overrides):
         "model_kind": "profile_ar2",
         "day_pair": True,
         "shared_draws": True,
+        # A21-B5.1: Ohne ausgewiesenen Bootstrap-Modus ist der Vertrag nicht
+        # belegt — ein regimeverkürzter Lauf trägt eine andere
+        # Pfadverteilung als der Standardlauf.
+        "bootstrap_mode": "default",
         "draws_24h": {
             "n": 4,
             "block_minutes": 120,
@@ -241,7 +245,7 @@ def test_decide_keeps_productive_contract_unblocked_by_new_reasons(settings):
 def test_m7_archive_appends_and_reads_with_cohort_and_exclusions(settings):
     context = {
         "fuel": "e10",
-        "model_contract": "profile_ar2+day_pair=1+shared=1",
+        "model_contract": "profile_ar2+day_pair=1+shared=1+bootstrap=default",
         "calibration_mode": "raw",
         "decision_contract": "decision-v1",
         "regime_ref": "2026-07-01T00:00",

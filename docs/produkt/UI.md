@@ -1,6 +1,6 @@
 # Oberfläche und Interaktion
 
-> Stand: 27.11.2026 · App-Version 0.76.0
+> Stand: 28.11.2026 · App-Version 0.77.0
 > Beschreibt die implementierte Navigation, die Atlas-Referenz und die drei Labor-Blöcke.
 > Neu in 0.60.0: Outbox-Karte in „System“ → Diagnose und Header-Banner für
 > wartende Einträge (I1, [Release 0.60.0](../releases/CHANGELOG.md#0600--2026-09-20)).
@@ -15,6 +15,9 @@
 > Aktionen liegen in einem zugänglichen Blatt ([Release 0.75.0](../releases/CHANGELOG.md#0750--2026-10-05)).
 > Neu in 0.76.0: Übersicht + Stationen als Alltagsnavigation, Atlas-Referenz
 > nur mit frischem Preis und bis zu fünf Server-Alternativen ([Release 0.76.0](../releases/CHANGELOG.md#0760--2026-11-27)).
+> Neu in 0.77.0: Labor zweistufig — Beweise (Wochen-Heatmap,
+> Trefferquote/Kalibrierung, Stations-Pool) oben, Tagebuch, Prognose und
+> Rechenweg hinter „Warum & Rechenweg“ ([Release 0.77.0](../releases/CHANGELOG.md#0770--2026-11-28)).
 
 ## Inhaltsverzeichnis
 
@@ -244,21 +247,39 @@ Alternativen zusätzlich zur Referenz, absteigend nach `net_eur`.
 
 ## Labor: drei Fragen
 
-Das Labor hat seit 0.74.0 **drei Blöcke, sonst nichts** (`views/Labor.tsx`,
-Vokabular in `lab.ts`). Die Fragen stehen genau einmal in `LAB_BLOCKS`:
+Seit 0.77.0 ist das Labor **zweistufig** (`views/Labor.tsx`, Vokabular in
+`lab.ts`): oben die Beweise ohne Klick, darunter die Erklärungen hinter einem
+Tipp. Die drei Fragen selbst stehen unverändert genau einmal in `LAB_BLOCKS`.
+
+**Oben — drei Karten, direkt sichtbar:**
+
+| Karte | Inhalt |
+|---|---|
+| Wochen-Heatmap | Der Wochenrhythmus der Stadt; dieselbe Grafik wie im Betreiber-Block, hier als Beweis für die Alltagsfrage |
+| Trefferquote und Kalibrierung | **Ein** Satz als Zählung („An 26 von 30 Tagen lag die Empfehlung richtig.“); daneben Trefferquote, Brier-Score und Zahl der bewerteten Empfehlungen, darunter die Reliability-Balken je Bin. Fehlende Kennzahlen stehen als `—`, nie als Null |
+| Stations-Pool | Zahl der Stationen in der Auswahl und die fünf größten Preis-Abstände in ct/L |
+
+**Darunter — „Warum & Rechenweg“ (zugeklappt), die drei Fragen:**
 
 | Block | Frage | Inhalt |
 |---|---|---|
-| 1 · `#labor-sicherheit` | Kann ich vertrauen? | **Ein** Satz als Zählung („An 26 von 30 Tagen lag die Empfehlung richtig.“), kein Prozent; darunter das filterbare Prognose-Tagebuch (Alle/Richtig/Daneben/Unentschieden/Nicht bewertbar) |
+| 1 · `#labor-sicherheit` | Kann ich vertrauen? | Der aufgeschlüsselte Zähler (richtig · daneben · unentschieden · nicht bewertbar) und das filterbare Prognose-Tagebuch (Alle/Richtig/Daneben/Unentschieden/Nicht bewertbar) |
 | 2 · `#labor-prognose` | Wie gut ist die Prognose? | **Eine** Kurve (erwartet vs. echt, Blickweite 24 h/3 Tage/7 Tage) und **ein** Satz: „Im Schnitt 1,8 ct/L daneben.“ |
-| 3 · `#labor-rechenweg` | Wie rechnet die App? | Drei Schritte in Alltagssprache (Tagesmuster der Stadt, aktuelle Lage, 12-Uhr-Regel); darunter „Details für Neugierige“ mit acht Bausteinen, Fachwerten und der Heatmap als einziger Grafik |
+| 3 · `#labor-rechenweg` | Wie rechnet die App? | Drei Schritte in Alltagssprache (Tagesmuster der Stadt, aktuelle Lage, 12-Uhr-Regel); darunter „Details für Neugierige“ mit acht Bausteinen, Fachwerten und dem Wochenrhythmus |
+
+Die Zählung steht **genau einmal** — oben in der Karte. Block 1 wiederholt sie
+nicht, sondern schlüsselt sie auf. Ein `?section=…`-Sprung öffnet den Rahmen
+automatisch und scrollt auf den zugehörigen Block.
 
 Gestrichen und nicht wiederkehrend (§7): Sub-Tabs, Spielplatz-Regler,
-Experimente, Tankprofil-Rechner, Einflüsse-Balken, Güte-Panel (PICP, Brier,
-CUSUM, zwei MASE-Werte), eingebettetes Glossar, Heatmap-Schalter und der
-Rohdatenraum. Rohdaten, die vier CSV-Exporte und der API-Explorer stehen als
-Betreiber-Sicht in „System“ (Abschnitt „Datenreichweite & Herkunft“ und
-`#rohdaten-section`); das Labor verweist nur dorthin.
+Experimente, Tankprofil-Rechner, Einflüsse-Balken, CUSUM, die beiden
+MASE-Werte, eingebettetes Glossar, Heatmap-Schalter und der Rohdatenraum.
+Trefferquote, Brier-Score und Reliability-Balken sind **keine** Rückkehr des
+alten Güte-Panels: Sie beantworten die erste Frage direkt, statt sie hinter
+einen Tipp zu legen (`MICROCOPY.md` §4d). Rohdaten, die vier CSV-Exporte und
+der API-Explorer stehen als Betreiber-Sicht in „System“ (Abschnitt
+„Datenreichweite & Herkunft“ und `#rohdaten-section`); das Labor verweist nur
+dorthin.
 
 Adressen: `?tab=labor&section=sicherheit|prognose|stationen|lernen|glossar`
 springt auf den zugehörigen Block; die alten Sub-Tab-Links

@@ -51,6 +51,42 @@ PRODUCTIVE_MODEL_KIND = "profile_ar2"
 PRODUCTIVE_SHARED_DRAWS = True
 PRODUCTIVE_DAY_PAIR = True
 
+# Die Bootstrap-Halbwertszeit ist verteilungsrelevant (Issue 46): Sie
+# verändert die Ziehgewichte der Tagesblöcke und damit die Abdeckung der
+# Pfade, nicht nur den Punktwert. Ein frischer Regime-Monitoralarm oder eine
+# gesperrte Einzelstation verkürzt sie in der Live-Prognose auf sieben Tage
+# (``app/config.py::regime_adjusted_half_life``) — ein anderer statistischer
+# Vertrag als der unverkürzte Lauf. Deshalb trägt jede Veröffentlichung ihren
+# wirksamen Modus und die Vertrags-ID trennt beide Kohorten, statt zwei
+# verschiedene Ziehverteilungen in derselben M7-Statistik zu mischen
+# (A21-B5.1, Issue 211).
+BOOTSTRAP_MODE_DEFAULT = "default"
+BOOTSTRAP_MODE_REGIME_SHORT = "regime_short"
+BOOTSTRAP_MODES = (BOOTSTRAP_MODE_DEFAULT, BOOTSTRAP_MODE_REGIME_SHORT)
+
+
+def bootstrap_mode(half_life_days: Any, base_half_life_days: Any = None) -> str:
+    """Wirksamer Bootstrap-Modus einer Veröffentlichung (``default``/``regime_short``).
+
+    Die Regime-Verkürzung ist die einzige Stelle, an der der produktive Lauf
+    von der konfigurierten Halbwertszeit abweicht (``min(Wert, 7)``). Der
+    Vergleich gegen die Basis-Halbwertszeit der Config ist deshalb der
+    belastbare Zeuge: Ein kürzerer wirksamer Wert heißt verkürzte Ziehung,
+    nicht „Betreiber hat die Config geändert“. Altbestände ohne Feld tragen
+    keinen Modus und gelten im Gate als ``unknown``.
+    """
+    if half_life_days is None:
+        return BOOTSTRAP_MODE_DEFAULT
+    try:
+        effective = float(half_life_days)
+        base = float(base_half_life_days) if base_half_life_days is not None else None
+    except (TypeError, ValueError):
+        return BOOTSTRAP_MODE_DEFAULT
+    if base is not None and effective < base:
+        return BOOTSTRAP_MODE_REGIME_SHORT
+    return BOOTSTRAP_MODE_DEFAULT
+
+
 # Kalibrierungsmodi je Horizont (M2): Nur 24-h-Pfade sind PIT-kalibriert.
 # 72-/168-h-Pfade sind unkalibrierte Szenarioprognosen und erhalten nie
 # dieselbe Vertrauenssprache wie 24-h-Fenster.
@@ -182,13 +218,26 @@ def contract_from_forecast(forecast: Any) -> dict[str, Any]:
     sie wie „unbekannt“, nicht wie den produktiven Vertrag.
     """
     if not isinstance(forecast, dict):
-        return {"model_kind": None, "shared_draws": None, "day_pair": None}
+        return {
+            "model_kind": None,
+            "shared_draws": None,
+            "day_pair": None,
+            "bootstrap_mode": None,
+        }
     draws = forecast.get("draws_24h")
     shared = draws.get("shared") if isinstance(draws, dict) else None
+    mode = forecast.get("bootstrap_mode")
+    # Nur das veröffentlichte Feld zählt: Die Halbwertszeit selbst ist eine
+    # Fit-Config und würde jeden stündlichen Refresh zur neuen Kohorte machen
+    # (Issue 211). ``regime_short`` ist die einzige Abweichung, die als Modus
+    # in den Vertrag gehört.
+    if mode not in BOOTSTRAP_MODES:
+        mode = None
     return {
         "model_kind": forecast.get("model_kind"),
         "shared_draws": forecast.get("shared_draws", shared),
         "day_pair": forecast.get("day_pair"),
+        "bootstrap_mode": mode,
     }
 
 
@@ -202,6 +251,14 @@ def is_forecast_released(forecast: Any) -> bool:
     fields = contract_from_forecast(forecast)
     if fields["model_kind"] is None:
         return False
+    # Der Bootstrap-Modus entscheidet **nicht** über die Freigabe, sondern
+    # über die Kohorte: ``unknown`` (Alt-Artefakt) bildet im Gate-Kontext eine
+    # eigene, nie öffnende Kohorte, und ein verkürzter Regime-Lauf
+    # (``regime_short``) trifft die vorher gemessene Evidenz nicht
+    # (``app/gate_context.py::model_contract_id``). Hier bleibt es deshalb bei
+    # der bisherigen Sperre für Kern und Ziehungsmodus — sonst fiele eine
+    # funktionierende Empfehlung aus einem älteren, aber gültigen Artefakt
+    # ohne Vertragsgrund aus.
     return is_productive_contract(
         fields["model_kind"],
         shared_draws=fields["shared_draws"],
@@ -216,6 +273,7 @@ def describe() -> dict[str, Any]:
             "model_kind": PRODUCTIVE_MODEL_KIND,
             "shared_draws": PRODUCTIVE_SHARED_DRAWS,
             "day_pair": PRODUCTIVE_DAY_PAIR,
+            "bootstrap_modes": list(BOOTSTRAP_MODES),
         },
         "calibration_by_horizon": dict(CALIBRATION_BY_HORIZON),
         "contracts": {key: dict(value) for key, value in MODEL_CONTRACTS.items()},

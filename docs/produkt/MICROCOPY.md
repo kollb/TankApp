@@ -1,6 +1,6 @@
 # MICROCOPY — Regelwerk für alle Texte in der App
 
-> Stand: 27.11.2026 · App-Version **0.76.0** · gilt für `web/src/**`,
+> Stand: 28.11.2026 · App-Version **0.77.0** · gilt für `web/src/**`,
 > `web/rp2/**`, `rp2/fallback_gui.py`, Fehlertexte in `app/**` und die
 > Push-Texte in `app/notify.py`. Neu mit 0.74.0 (UX-NEUENTWURF Batch 2):
 > die Labor-Methodik hat drei Blöcke, Rohdaten und CSV wohnen in „System“, Stationen
@@ -8,6 +8,10 @@
 > App-Aktionen liegen auf schmalen Displays gebündelt im Kopfzeilen-Blatt.
 > Neu mit 0.76.0: Übersicht + Stationen sind die Alltagsnavigation; alte
 > Woche- und Ich-Links leiten auf Übersicht bzw. Einstellungen um.
+> Neu mit 0.77.0: Das Labor zeigt die Beweise oben (Wochen-Heatmap,
+> Trefferquote/Kalibrierung, Stations-Pool) und legt Tagebuch, Prognosekurve
+> und Rechenweg hinter „Warum & Rechenweg“ — die Zählung bleibt **ein** Satz
+> und steht nur einmal (in der Karte, nicht noch einmal in Block 1).
 > **Entfallen:** Sub-Tabs, Spielplatz, Experimente, Tankprofil-Rechner,
 > Einflüsse-Balken, eingebettetes Glossar, Heatmap-Schalter,
 > Fachjargon im Alltag.

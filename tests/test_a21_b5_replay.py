@@ -178,7 +178,7 @@ def test_legacy_history_opens_old_gate_but_not_cohort_gate(tmp_path):
     assert advice["calibrated"] is False
     fresh = {
         "fuel": "e10",
-        "model_contract": "profile_ar2+day_pair=1+shared=1",
+        "model_contract": "profile_ar2+day_pair=1+shared=1+bootstrap=default",
         "calibration_mode": "raw",
         "decision_contract": "decision-v1",
         "regime_ref": None,

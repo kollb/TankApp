@@ -46,8 +46,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .backtest_cache import BACKTEST_FRAME_COLUMNS
+from .model_contracts import bootstrap_mode
 
 _STATE: dict[str, Any] = {}
+# Basis der Regime-Verkürzung: dieselbe Zahl, gegen die
+# ``app/config.py::regime_adjusted_half_life`` kürzt. Der Modus wird durch
+# ``min(Wert, 7)` gegen diese Basis erkannt — nicht gegen die aktuelle
+# Betriebs-Config, die der Betreiber selbst verstellt haben könnte.
+DEFAULT_EW_HALF_LIFE_DAYS = 14.0
 MAX_AUTO_WORKERS = 8
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 PROC_CGROUP = Path("/proc/self/cgroup")
@@ -109,6 +115,15 @@ def model_parameter_fields(model: dict[str, Any]) -> dict[str, Any]:
     config = model.get("config")
     if isinstance(config, dict) and "bootstrap_samples" in config:
         fields["bootstrap_samples"] = int(config["bootstrap_samples"])
+    # A21-B5.1: Die wirksame Bootstrap-Halbwertszeit ist verteilungsrelevant
+    # und wird als *Modus* veröffentlicht, nicht als Fit-Parameter — siehe
+    # ``app/model_contracts.py::bootstrap_mode``. Ohne die Basis aus derselben
+    # Config wäre eine verkürzte Halbwertszeit nicht von einer geänderten
+    # Betriebs-Config zu unterscheiden.
+    if isinstance(config, dict):
+        fields["bootstrap_mode"] = bootstrap_mode(
+            config.get("bootstrap_ew_half_life_days"), DEFAULT_EW_HALF_LIFE_DAYS
+        )
     return fields
 
 
@@ -728,6 +743,14 @@ def _run(task: tuple) -> dict[str, Any]:
         if kind == "fit":
             out["model"] = model
             out["pava_pool_stats"] = (diagnostics or {}).get("pava_pool_stats")
+            # A21-B5.1: Der wirksame Bootstrap-Modus gehört zur
+            # Veröffentlichung — er entscheidet über die M7-Kohorte. Ohne ihn
+            # wäre ein regimeverkürzter Lauf nicht von einem Standardlauf zu
+            # unterscheiden, obwohl beide eine andere Pfadverteilung tragen.
+            out["bootstrap_mode"] = bootstrap_mode(
+                (model.get("config") or {}).get("bootstrap_ew_half_life_days"),
+                DEFAULT_EW_HALF_LIFE_DAYS,
+            )
         return out
     except ValueError as exc:
         # Gleiche Meldung wie im seriellen Pfad (Engine-Text, keine Interna).

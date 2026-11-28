@@ -4,6 +4,43 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.77.0] – 2026-11-28
+
+**Labor zeigt die Beweise zuerst, Regime-Verkürzung wird eine eigene Kohorte**
+
+- **Labor zweistufig.** Wochen-Heatmap, „Trefferquote und Kalibrierung“
+  (Zählung als Satz, Trefferquote, Brier-Score, Zahl der bewerteten
+  Empfehlungen, Reliability-Balken) und der Stations-Pool stehen oben und
+  ohne Klick. Das Prognose-Tagebuch, die Prognosekurve und der Rechenweg
+  liegen hinter „Warum & Rechenweg“; die Zählung erscheint dort nicht
+  erneut, Block 1 schlüsselt sie nur auf. `?section=…` öffnet den Rahmen
+  automatisch. Damit fallen die frühere „Heatmap nur hinter dem Tipp“-Regel
+  und der Ratchet gegen „Reliability“ weg — beides war seit 0.76.0 nicht mehr
+  wahr.
+- **Regime-Verkürzung als eigene M7-Kohorte (A21-B5.1).** Jede
+  Veröffentlichung trägt ihren wirksamen `bootstrap_mode` (`default` |
+  `regime_short`). Die Vertrags-ID lautet jetzt
+  `{kind}+day_pair=…+shared=…+bootstrap=…`. Zuvor landete ein mit sieben
+  Tagen gezogener Regime-Lauf in derselben M7-Statistik wie der
+  Standardlauf, obwohl seine Pfadverteilung eine andere ist. Altbestände
+  ohne Feld bilden `unknown` und öffnen nichts rückwirkend. Der Bootstrap-
+  Modus ist eine **Kohortengrenze**, kein Freigabegrund: Ein älteres, aber
+  gültiges Artefakt bleibt freigabefähig.
+- **Replay weist den gemessenen Modus aus.** Der Fold-Vertrag kommt aus der
+  tatsächlichen Veröffentlichung des Laufs; gemischte Modi im selben Fold
+  werden als Fehler markiert statt gemittelt.
+- **Doku-Korrekturen.** `engine/probabilities.py` behauptet nicht mehr, die
+  gleitenden Fenster seien unveröffentlicht; `engine/models.py` nennt
+  `profile_ar2` als produktiven Default und `harmonic_ar2` als
+  experimentellen Vergleich. `UI.md` beschreibt den zweistufigen Laboraufbau
+  statt der alten Drei-Block-Regel. `ENGINE.md`, `API.md`, `LUECKEN.md` und
+  `MICROCOPY.md` führen den Bootstrap-Modus.
+- **Regressionen.** Neue Unit-Tests für die Kohortentrennung
+  (`test_regime_bootstrap_is_its_own_gate_cohort`), den Modus-Vergleich
+  (`test_bootstrap_mode_reads_the_effective_half_life_against_the_base`) und
+  die Labor-Anordnung (Beweise offen, drei Fragen zugeklappt, Zählung genau
+  einmal, fehlende Kennzahl als `—`).
+
 ## [0.76.0] – 2026-11-27
 
 **Frischer Preis-Atlas, aufgeräumte Navigation und InfluxDB-Readiness**

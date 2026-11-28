@@ -48,7 +48,7 @@ NOW = dt.datetime(2026, 9, 10, 14, 0, tzinfo=dt.timezone.utc)  # 16:00 Berlin
 # Der Vertragskontext der Skill-Historie dieser Datei (vollständig belegt).
 CONTEXT = {
     "fuel": "e10",
-    "model_contract": "profile_ar2+day_pair=1+shared=1",
+    "model_contract": "profile_ar2+day_pair=1+shared=1+bootstrap=default",
     "calibration_mode": "raw",
     "decision_contract": decision_contract_id(),
     "regime_ref": None,
@@ -106,6 +106,7 @@ def test_model_contract_id_ignores_fit_refresh_fields():
     fresh = {
         "model_kind": "profile_ar2",
         "day_pair": True,
+        "bootstrap_mode": "default",
         "draws_24h": {"shared": True},
         "origin": "2026-09-10T12:00:00+00:00",
         "n_points": 8064,
@@ -125,6 +126,7 @@ def test_model_contract_id_switches_on_kernel_and_draw_mode():
             {
                 "model_kind": "harmonic_ar2",
                 "day_pair": True,
+                "bootstrap_mode": "default",
                 "draws_24h": {"shared": True},
             }
         )
@@ -135,6 +137,7 @@ def test_model_contract_id_switches_on_kernel_and_draw_mode():
             {
                 "model_kind": "profile_ar2",
                 "day_pair": False,
+                "bootstrap_mode": "default",
                 "draws_24h": {"shared": True},
             }
         )
@@ -145,6 +148,7 @@ def test_model_contract_id_switches_on_kernel_and_draw_mode():
             {
                 "model_kind": "profile_ar2",
                 "day_pair": True,
+                "bootstrap_mode": "default",
                 "draws_24h": {"shared": False},
             }
         )
@@ -409,6 +413,7 @@ def _evidence_row(**overrides):
         "points": POINTS,
         "model_kind": "profile_ar2",
         "day_pair": True,
+        "bootstrap_mode": "default",
         "draws_24h": {
             "n": 4,
             "block_minutes": 120,

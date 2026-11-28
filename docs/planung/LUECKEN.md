@@ -1,6 +1,6 @@
 # Projektstand und Grenzen
 
-> Stand: 27.11.2026 · App-Version 0.76.0
+> Stand: 28.11.2026 · App-Version 0.77.0
 > Abgleich von Produktkonzept, Konfiguration und Release-Stand.
 > Kein Nachweis eines neuen Hardwaretests oder einer neuen Live-Daten-Messung.
 
@@ -20,7 +20,7 @@
 | NAS | Archiv-Nachholung, Modell- und Selektionsjobs, Fortschritt, Alarme, Backup; `/health`-Readiness vor Modell-Refresh und Hintergrund-Prewarm mit maximal 30 s Wartezeit | [Betrieb](../betrieb/BETRIEB.md) |
 | Oberfläche | Seit 0.76.0: Übersicht + Stationen als Alltagsnavigation, dahinter Labor/System/Einstellungen/Glossar; alte Woche- und Ich-Links werden weitergeleitet. Die Übersicht beantwortet eine Frage; der Atlas nutzt ausgewählte → angeheftete → nächste frische Referenz. Server-Netto erfordert dieselbe Referenz-ID und `ref_price_fresh=true`; veraltete Alternativpreise sind markiert. Historische Umsetzung der drei UX-Batches (0.73–0.75) und mobile Kopfzeile siehe Release-Historie | [UI](../produkt/UI.md) |
 | Labor | Wochen-Heatmap, Trefferquote/Kalibrierung und Stations-Pool oben; Tagebuch, Prognose und Rechenweg liegen hinter „Warum & Rechenweg“ | [UI](../produkt/UI.md#labor-drei-fragen) |
-| Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; bei frischem Regime-Monitoralarm verkürzte Bootstrap-Halbwertszeit nur in der Live-Prognose, ohne alte PIT-Kalibrierung | [Engine](../referenz/ENGINE.md) |
+| Modell | Default `profile_ar2`, gemeinsame Ziehung, Day-Pair; bei frischem Regime-Monitoralarm verkürzte Bootstrap-Halbwertszeit nur in der Live-Prognose, ohne alte PIT-Kalibrierung. Die Verkürzung ist als `bootstrap_mode` veröffentlicht und bildet eine **eigene M7-Kohorte** (`…+bootstrap=regime_short`), damit zwei verschiedene Ziehverteilungen nicht in einer Statistik landen | [Engine](../referenz/ENGINE.md) |
 | Kalibrierung | PIT-Kandidaten-/Aktivierungspfad vorhanden; 24-h-Horizontfilter und Herkunftsprüfung noch fehlerhaft, siehe NAS-/Pi-Befund M1/M6 (Bericht nicht im Bestand) | [Offene Arbeit](#offene-arbeit) |
 | Produktfreigabe | M7-Ledger-Gate getrennt vom technischen `calibrated`; kein automatisches Nachregeln der Prozent-Gates; `decision_ready=false` seit 0.70.0 dokumentierter Produkt-Blocker (Preisvergleich trägt die Übersicht, M7-Archiv `runtime/m7/archive.jsonl`, Verfügbarkeit in `/v1/health`) | [Konzept](../produkt/KONZEPT.md#ehrlichkeits-regel) |
 | Entscheidung | `latest_by`, DST-sichere UTC-Blockidentität, exakt geschnittene Restfenster und getrennte €-Semantik; `/decide` liefert maximal fünf Alternativen plus `price_fresh`/`ref_price_fresh` | [API](../referenz/API.md) |
@@ -46,10 +46,16 @@ Eine neue statistische Gütefreigabe aus Betriebsdaten ist damit nicht belegt.
 
 **Regime-Gewichtung:** Ein aktueller Monitor-Alarm oder eine einzelne gesperrte
 Station begrenzt die Halbwertszeit neuer Live-Draws auf sieben Tage und
-verwendet keine alte PIT-Kurve. Die historischen Backtest-Folds behalten ihren
-bisherigen Pfad; eine zeitgetrennte Gegenmessung der veränderten Live-Prognose
-und der Nachweis auf Betriebsdaten stehen aus. Ein Monitoralarm kann auch ein
-Datenproblem bedeuten und ist kein Beweis eines Marktsprungs.
+verwendet keine alte PIT-Kurve. Seit 0.77.0 trägt jede Veröffentlichung ihren
+wirksamen `bootstrap_mode`; die Vertrags-ID trennt `default` und
+`regime_short`, damit die 500-Draw-Verteilung des verkürzten Laufs nicht in
+derselben M7-Statistik wie der Standardlauf landet (A21-B5.1). Altbestände ohne
+Feld bilden die Kohorte `unknown` und öffnen nichts rückwirkend. Die
+historischen Backtest-Folds behalten ihren bisherigen Pfad; eine zeitgetrennte
+Gegenmessung der veränderten Live-Prognose und der Nachweis auf Betriebsdaten
+stehen aus — die Kohortentrennung macht die beiden Verteilungen vergleichbar,
+sie belegt keine Güte. Ein Monitoralarm kann auch ein Datenproblem bedeuten und
+ist kein Beweis eines Marktsprungs.
 
 **UX-Neuentwurf, Batches 1–3 (0.73.0–0.75.0).** Jetzt und Woche, Labor,
 Stationen und Ich sind verdichtet; Rohdaten sind Betreiber-Sicht in „System“.

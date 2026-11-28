@@ -638,6 +638,9 @@ def refresh(settings: Settings, now=None, progress=None):
                 )
                 wide = horizons_by_station.get(identity, {})
                 draws_wide = draws_by_station.get(identity, {})
+                # Einmal lesen: Die Parameterfelder tragen auch den wirksamen
+                # Bootstrap-Modus (Regime-Verkürzung, A21-B5.1).
+                parameter_fields = model_parameter_fields(model)
                 forecasts.append(
                     {
                         **item.identity(),
@@ -681,10 +684,18 @@ def refresh(settings: Settings, now=None, progress=None):
                         # Felder kommen über ``model_parameter_fields`` in
                         # die Veröffentlichung — die Labor-Karten lesen sie
                         # aus dem Payload, nicht aus dem Modell-Artefakt.
-                        **model_parameter_fields(model),
+                        **parameter_fields,
                         "model_kind": getattr(settings, "model_kind", "profile_ar2"),
                         "day_pair": bool(getattr(settings, "day_pair", True)),
                         "shared_draws": bool(getattr(settings, "shared_draws", True)),
+                        # A21-B5.1: Der wirksame Bootstrap-Modus kommt aus dem
+                        # Fit (``model_parameter_fields`` → Config nach einer
+                        # Regime-Verkürzung), nicht aus der Settings-Datei —
+                        # sonst behauptete die Zeile den Standardlauf, während
+                        # die Pfade mit sieben Tagen gezogen wurden.
+                        "bootstrap_mode": parameter_fields.get(
+                            "bootstrap_mode", "default"
+                        ),
                         # B2: angewandte Kurve (falls eine frühere Abnahme
                         # sie freigegeben hat) und der neue Kandidat für den
                         # nächsten Lauf bleiben getrennt sichtbar.

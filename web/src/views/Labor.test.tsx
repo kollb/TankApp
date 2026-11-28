@@ -320,6 +320,62 @@ describe("Labor: Details für Neugierige (Block 3)", () => {
   });
 });
 
+describe("Labor: Beweise oben (0.77.0)", () => {
+  it("zeigt Wochen-Heatmap, Trefferquote/Kalibrierung und Stations-Pool ohne Klick", () => {
+    const host = mount();
+    const text = host.textContent ?? "";
+    for (const heading of [
+      "Wochen-Heatmap",
+      "Trefferquote und Kalibrierung",
+      "Stations-Pool",
+    ]) {
+      expect(text).toContain(heading);
+    }
+    // Oben heißt: nicht im zugeklappten „Warum & Rechenweg“.
+    const details = host.querySelector("details");
+    expect(details?.hasAttribute("open")).toBe(false);
+    for (const heading of ["Wochen-Heatmap", "Trefferquote und Kalibrierung"]) {
+      expect(details?.textContent ?? "").not.toContain(heading);
+    }
+  });
+
+  it("legt Tagebuch, Prognosekurve und Rechenweg hinter „Warum & Rechenweg“", () => {
+    const host = mount();
+    const details = host.querySelector("details");
+    expect(details).toBeTruthy();
+    const summary = details?.querySelector("summary");
+    expect(summary?.textContent).toContain("Warum & Rechenweg");
+    // Die drei Fragen wohnen im zugeklappten Teil, nicht darüber.
+    const above = (host.textContent ?? "").split("Warum & Rechenweg")[0] ?? "";
+    for (const block of LAB_BLOCKS) {
+      expect(above).not.toContain(block.question);
+    }
+    for (const block of LAB_BLOCKS) {
+      expect(details?.textContent ?? "").toContain(block.question);
+    }
+  });
+
+  it("zeigt fehlende Kennzahlen als Gedankenstrich, nie als Null", () => {
+    const html = render();
+    // Ohne Messung: Trefferquote/Brier/Bewertet stehen als „—“.
+    expect(html).toContain("—");
+    expect(html).not.toMatch(/>0<|>0 %</);
+  });
+
+  it("nennt die Zählung genau einmal — nicht in der Karte und nochmal im Block", () => {
+    const html = render(
+      {},
+      {
+        statsSummaryRes: res({
+          live_advice: { wins: 26, losses: 3, ties: 1, n: 30, reliability: [] },
+        } as any),
+      },
+    );
+    const sentences = html.match(/An 26 von 30 Tagen lag die Empfehlung richtig\./g) ?? [];
+    expect(sentences.length).toBe(1);
+  });
+});
+
 describe("Labor: Ratchets der Streichliste (§5/§7)", () => {
   it("zeigt keinen der gestrichenen Blöcke", () => {
     const html = render();
@@ -328,7 +384,6 @@ describe("Labor: Ratchets der Streichliste (§5/§7)", () => {
       "Experimente",
       "Tankprofil",
       "Einflüsse",
-      "Reliability",
       "CUSUM",
       "Versprochen gegen eingetroffen",
       "Vertrauens-Konto",
