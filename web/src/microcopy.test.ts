@@ -59,7 +59,6 @@ const FILES = [
   "views/Jetzt.tsx",
   "views/Stationen.tsx",
   "views/Woche.tsx",
-  "views/Ich.tsx",
   "lab.ts",
   // Tank-Guide (Screen A): Texte der Entscheidungskarte, des Fallback-Banners
   // und des Spar-Rechners — dieselben Regeln wie in jeder View.
@@ -186,8 +185,7 @@ describe("F3: Microcopy-Regelwerk (docs/produkt/MICROCOPY.md)", () => {
     "views/Jetzt.tsx",
     "views/Stationen.tsx",
     "views/Woche.tsx",
-    "views/Ich.tsx",
-  ];
+    ];
 
   it.each(EVERYDAY_FILES)("%s: sagt „Set“ nicht zum Nutzer", (relativePath) => {
     // Nur das Wort als solches — `new Set()`, `setState`, `Settings` und

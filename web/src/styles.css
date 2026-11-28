@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 /*
- * Neue GUI („Tankklar“, sample/good gui) — Material Design 3, helle Basis.
+ * Neue GUI („Tankklar“) — Material Design 3, helle Basis; die Vorlage
+ * steht in `docs/produkt/GUI-VORLAGEN.md`.
  *
  * Die Design-Basis ist jetzt das helle Material-You-Schema des Konzepts
  * (Primary #006c4c, Error #ba1a1a, Tertiary #3d6373, Warnung #7c5800,
@@ -65,7 +66,7 @@
 }
 
 /*
- * Elevation der M3-Ebene (sample/good gui/index.css): Level 1 für Karten
+ * Elevation der M3-Ebene (`docs/produkt/GUI-VORLAGEN.md`): Level 1 für Karten
  * über der Fläche, Level 3 für FAB und Snackbar.
  */
 .elev-1 {
@@ -139,7 +140,7 @@
 
   /*
    * M3-Farbrollen (Material You) — Leitfarben exakt nach Konzept
-   * (UX-Konzept v2, sample/good gui):
+   * (UX-Konzept v2, `docs/produkt/GUI-VORLAGEN.md`):
    * Primary #006c4c / Container #89f8c7 · Error #ba1a1a / #ffdad6 ·
    * Tertiary #3d6373 / #c1e8fb · Warnung #7c5800 / #ffdea3.
    *

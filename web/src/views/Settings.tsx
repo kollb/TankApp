@@ -1,11 +1,22 @@
-// Einstellungen — Fahrzeug, Belege, Bilanz und App-Kontext (UI.md).
-// `VehiclePanel` liefert die Unterseite „Fahrzeug“; `SettingsPanel` die
-// Unterseite „App“ mit Kontext, read-only Schwellen, Darstellung und Daten.
+// Einstellungen — Fahrzeug, Belege, Bilanz und App-Kontext an einem Ort
+// (docs/produkt/UI.md, Bereiche). Der frühere Bereich „Ich“ ist vollständig
+// hier aufgegangen (UI-Konsolidierung 0.78.0): **eine** Ansicht, **eine**
+// Segment-Steuerung, kein zweiter Navigationsbaum und kein eigener Poll für
+// eine parallele Ansicht.
+//
+// Aufbau:
+//   ① Fahrzeug (VehiclePanel) — Tankmenge, Verbrauch, Tankstand, Profile
+//   ② Belege und Bilanz — eingeklappt (`<details>`): das Formular und der
+//      Verlauf entstehen erst auf Wunsch; die Polls laufen nur, solange der
+//      Bereich offen ist (state/overview.tsx: `settingsWantsFills`).
+//   ③ App (SettingsPanel) — Kontext, read-only Schwellen, Darstellung, Daten
 //
 // Die Entscheidungsschwellen bleiben read-only aus /api/v1/stats/summary —
-// die Engine rechnet, die GUI zeigt und ändert nichts. Der Zustand bleibt
-// in Dashboard.tsx und wandert per typisierten Props herein (D1-Muster).
+// die Engine rechnet, die GUI zeigt und ändert nichts. Der Zustand bleibt in
+// Dashboard.tsx / state/overview.tsx und wandert per typisierten Props herein
+// (D1-Muster).
 
+import { useState } from "react";
 import {
   Car,
   Clock,
@@ -19,6 +30,10 @@ import {
   Star,
   Sun,
 } from "lucide-react";
+import {
+  FeedbackBanner,
+  type ActionFeedback,
+} from "../components/FeedbackBanner";
 import { PrecisionSlider } from "../components/PrecisionSlider";
 import { TANK_QUICK } from "../now";
 import { LoadError } from "../components/LoadError";
@@ -26,18 +41,30 @@ import { SkeletonPanel } from "../components/Skeleton";
 import { Empty, panel } from "../components/ui";
 import {
   APP_THEMES,
+  centPerLiter,
   clockLabel,
+  commaToDot,
+  countLabel,
   deTrimmed,
+  euro,
   euroPerHour,
+  fillLimitHint,
   kilometersPerHourSpeech,
+  monthBalanceLabel,
   PROFILE_BOUNDS,
   THRESHOLD_ROWS,
   thresholdHysteresisLine,
   thresholdSampleLine,
   thresholdStatusLine,
   thresholdValueLabel,
+  timeLabel,
+  yearBalanceLabel,
   type AppTheme,
+  type BalanceRow,
   type DetourMode,
+  type Fill,
+  type FillDraftCheck,
+  type FillsSummary,
   type Fuel,
   type Profiles,
   type ResourceState,
@@ -45,6 +72,7 @@ import {
   type Station,
   type Stations,
 } from "../data";
+import { fillPriceHint, fillRows } from "../fills";
 
 export interface VehiclePanelProps {
   // Fahrzeug & Tankmenge (Profil-Felder — gelten haushaltsweit, wenn ein
@@ -148,7 +176,11 @@ export function VehiclePanel(props: VehiclePanelProps) {
           )}
         </div>
         {/* Profile: [Ich] [Partner] [+ Neu] — Segment-Steuerung, kein Menü. */}
-        <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Fahrzeug-Profile">
+        <div
+          className="mb-5 flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Fahrzeug-Profile"
+        >
           <button
             onClick={() => onActivateProfile(null)}
             disabled={profilesBusy}
@@ -203,8 +235,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
             valueSpeech={`${liters} Liter`}
             hint={
               <span className="mt-1 block text-xs text-slate-500">
-                Nur zur Berechnung. Kein Beleg, keine erfundene
-                Ersparnis.
+                Nur zur Berechnung. Kein Beleg, keine erfundene Ersparnis.
               </span>
             }
           />
@@ -365,8 +396,7 @@ export function VehiclePanel(props: VehiclePanelProps) {
                   </>
                 ) : (
                   <>
-                    Automatik nach Uhrzeit: gerade{" "}
-                    {deTrimmed(autoZ.z, 1)} €/h (
+                    Automatik nach Uhrzeit: gerade {deTrimmed(autoZ.z, 1)} €/h (
                     {autoZ.isPeak ? "Stoßzeit" : "Nebenzeit"}).
                   </>
                 )}
@@ -407,10 +437,10 @@ export function VehiclePanel(props: VehiclePanelProps) {
             </select>
             {detourMode === "dedicated" && (
               <span className="mt-1 block text-xs leading-snug text-rose-300">
-                Bei {deTrimmed(timeValue > 0 ? timeValue : timeValueUsed, 1)} €/h
-                Zeitwert ist eine Extrafahrt von zuhause praktisch nie
-                wirtschaftlich — sie lohnt nur, wenn die Station ohnehin auf
-                dem Weg liegt.
+                Bei {deTrimmed(timeValue > 0 ? timeValue : timeValueUsed, 1)}{" "}
+                €/h Zeitwert ist eine Extrafahrt von zuhause praktisch nie
+                wirtschaftlich — sie lohnt nur, wenn die Station ohnehin auf dem
+                Weg liegt.
               </span>
             )}
           </label>
@@ -424,6 +454,675 @@ export function VehiclePanel(props: VehiclePanelProps) {
         )}
       </section>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------------- *
+ * Belege und Bilanz — eingeklappt am Wirkungsort.
+ *
+ * Bis 0.77.0 war das der eigene Bereich „Ich“ mit drei Unter-Tabs (Belege,
+ * Bilanz, App). Die Ansicht ist in „Einstellungen“ aufgegangen: Fahrzeug,
+ * Belege/Bilanz und App-Kontext stehen in **einer** Ansicht, die Buchhaltung
+ * liegt hinter einem `<details>` statt hinter einem Tab. Der Beleg-Poll läuft
+ * nur, solange das Blatt offen ist (`onFillsOpenChange` → Root).
+ *
+ * Bilanz-Ehrlichkeit: Der Server liefert einen Vergleichsmaßstab — „immer
+ * sofort getankt“. Der zweite Maßstab des Konzepts (Stadt-Median) ist mit
+ * den heutigen Daten nicht belegbar und steht deshalb ehrlich als „noch
+ * nicht messbar“ da, statt mit einer Zahl verkleidet.
+ * ------------------------------------------------------------------------- */
+
+/** Zustand, der nur die Buchhaltung betrifft (Belege, Bilanz, Rückmeldung). */
+export interface FillsPanelProps {
+  // Belege: Schnellerfassung (Station vorausgefüllt, Liter + Preis)
+  pinnedFirstStations: Station[];
+  quickStationId: string;
+  setQuickStationId: (v: string) => void;
+  quickLitersStr: string;
+  setQuickLitersStr: (v: string) => void;
+  quickPriceStr: string;
+  setQuickPriceStr: (v: string) => void;
+  quickDraft: FillDraftCheck;
+  priceOf: (row: Station) => number | null;
+  fillSubmitting: boolean;
+  onQuickFill: () => void;
+  actionFeedback: ActionFeedback | null;
+  // Belege: Verlauf mit Storno
+  fillList: Fill[];
+  visibleFills: Fill[];
+  voidedCount: number;
+  showVoidedFills: boolean;
+  setShowVoidedFills: (v: boolean | ((prev: boolean) => boolean)) => void;
+  voidNote: string | null;
+  voidBusy: boolean;
+  onVoidFill: (fillId: string) => void;
+  /** Nur für Tests; sonst Date.now(). */
+  now?: number;
+}
+
+export interface BalancePanelProps {
+  fillsSummary: ResourceState<FillsSummary>;
+  onRetry: () => void;
+}
+
+/**
+ * Zweiter Maßstab (Konzept-Entscheidung 4: „Median als Standard,
+ * meistgenutzte Station darunter“): die Station mit den meisten
+ * (nicht stornierten) Belegen. Erst ab zwei Belegen an derselben
+ * Station ist „meistgenutzt“ mehr als eine Einzelbeobachtung — sonst
+ * steht nichts (keine Erfindung).
+ */
+export function mostUsedStation(
+  fills: Fill[],
+): { name: string; count: number } | null {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const fill of fills) {
+    if (fill.voided) continue;
+    const entry = counts.get(fill.station_id) ?? {
+      name: fill.station_name || fill.station_id,
+      count: 0,
+    };
+    entry.count += 1;
+    counts.set(fill.station_id, entry);
+  }
+  let best: { name: string; count: number } | null = null;
+  for (const entry of counts.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  return best !== null && best.count >= 2 ? best : null;
+}
+
+/** Belege: Schnellerfassung oben, Verlauf mit Storno darunter. */
+function FillsSection(props: FillsPanelProps) {
+  const {
+    actionFeedback,
+    fillList,
+    fillSubmitting,
+    onQuickFill,
+    onVoidFill,
+    priceOf,
+    pinnedFirstStations,
+    quickDraft,
+    quickLitersStr,
+    quickPriceStr,
+    quickStationId,
+    setQuickLitersStr,
+    setQuickPriceStr,
+    setQuickStationId,
+    setShowVoidedFills,
+    showVoidedFills,
+    voidBusy,
+    voidNote,
+    visibleFills,
+    voidedCount,
+  } = props;
+
+  // Zweiter Maßstab unter dem Median (Konzept-Entscheidung 4) — null,
+  // solange „meistgenutzt“ keine Mehrbeobachtung wäre.
+  const mostUsed = mostUsedStation(fillList);
+
+  // O32: Was neben dem Preisfeld steht — Live-Preis der gewählten Station
+  // mit Alter, und die Abweichung der Eingabe, sobald sie über der Schwelle
+  // liegt. Ohne frischen Preis bleibt die Zeile leer statt zu raten.
+  const quickStation =
+    pinnedFirstStations.find((row) => row.station_id === quickStationId) ??
+    null;
+  const priceHint = fillPriceHint({
+    station: quickStation,
+    livePrice: quickStation ? priceOf(quickStation) : null,
+    typed: quickPriceStr,
+    now: props.now,
+  });
+
+  return (
+    <div>
+      {/* T2: derselbe Kanal wie im Kopf — Fehler in rose, nicht in grün. */}
+      <FeedbackBanner feedback={props.actionFeedback} className="mb-4" />
+
+      {/* Schnellerfassung — Station vorausgefüllt, Details optional */}
+      <section
+        className={`${panel} mb-4 p-5 sm:p-6`}
+        aria-labelledby="ich-fills-quick-heading"
+      >
+        <h3
+          id="ich-fills-quick-heading"
+          className="flex items-center gap-2 text-sm font-semibold text-slate-100"
+        >
+          <FuelIcon size={16} className="text-emerald-400" />
+          Tanken erfassen
+        </h3>
+        <p className="mt-1 text-xs leading-relaxed text-slate-400">
+          Station, Liter, Preis — in unter 15 Sekunden steht der Beleg in deiner
+          Bilanz.
+        </p>
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onQuickFill();
+          }}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="text-xs text-slate-400 sm:col-span-1">
+              Station
+              <select
+                aria-label="Station des Belegs"
+                value={quickStationId}
+                onChange={(e) => setQuickStationId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
+              >
+                {pinnedFirstStations.length ? (
+                  pinnedFirstStations.map((row) => (
+                    <option key={row.station_id} value={row.station_id}>
+                      {row.name}
+                      {priceOf(row) !== null
+                        ? ` — ${euro(priceOf(row), 3)} €/L`
+                        : " — Preis unbekannt"}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Noch keine Station eingerichtet</option>
+                )}
+              </select>
+            </label>
+            <label className="text-xs text-slate-400">
+              Liter
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={quickLitersStr}
+                onChange={(e) => setQuickLitersStr(commaToDot(e.target.value))}
+                aria-invalid={quickDraft.litersError != null}
+                title={fillLimitHint("liters") + " — wie auf dem Kassenbon"}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                {fillLimitHint("liters")} · z. B. 45,5.
+              </span>
+              {quickDraft.litersError && (
+                <span className="mt-1 block text-xs leading-snug text-rose-300">
+                  {quickDraft.litersError}
+                </span>
+              )}
+            </label>
+            <label className="text-xs text-slate-400">
+              Gezahlter Preis (€/L)
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={quickPriceStr}
+                onChange={(e) => setQuickPriceStr(commaToDot(e.target.value))}
+                aria-invalid={quickDraft.priceError != null}
+                title={fillLimitHint("price") + " — wie an der Säule"}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-500"
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                {fillLimitHint("price")} · Vorschlag: frischer Preis der
+                Station.
+              </span>
+              {/* O32: Live-Preis mit Alter — der Vergleich, den man sonst in
+                  der Stationsliste suchen müsste. */}
+              {priceHint && (
+                <span className="mt-1 block text-xs leading-snug text-slate-400">
+                  {priceHint.text}
+                </span>
+              )}
+              {priceHint?.driftText && (
+                <span className="mt-1 block text-xs leading-snug text-amber-300">
+                  {priceHint.driftText}
+                </span>
+              )}
+              {quickDraft.priceError && (
+                <span className="mt-1 block text-xs leading-snug text-rose-300">
+                  {quickDraft.priceError}
+                </span>
+              )}
+            </label>
+          </div>
+          <button
+            type="submit"
+            disabled={!quickDraft.ok || fillSubmitting}
+            title={
+              fillSubmitting
+                ? "Beleg wird verbucht"
+                : quickDraft.stationMissing
+                  ? "Erst Station wählen"
+                  : quickDraft.litersError || quickDraft.priceError
+                    ? "Eingabe korrigieren"
+                    : "Beleg buchen"
+            }
+            className="m3-btn-now mt-4 w-full rounded-full px-4 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
+          >
+            {fillSubmitting ? "Wird verbucht …" : "Beleg buchen"}
+          </button>
+        </form>
+      </section>
+
+      {/* Verlauf mit Storno (void statt löschen — A3) */}
+      <section
+        className={`${panel} overflow-hidden`}
+        aria-labelledby="ich-fills-list-heading"
+      >
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
+          <h3
+            id="ich-fills-list-heading"
+            className="flex items-center gap-2 text-sm font-semibold"
+          >
+            <FuelIcon size={16} className="text-emerald-400" />
+            Deine Belege
+          </h3>
+          {voidedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowVoidedFills((value) => !value)}
+              aria-pressed={showVoidedFills}
+              title="Stornierte Belege anzeigen"
+              className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
+            >
+              {showVoidedFills
+                ? "Stornierte ausblenden"
+                : `Stornierte anzeigen (${voidedCount})`}
+            </button>
+          )}
+        </div>
+        <p className="mb-3 px-5 text-xs text-slate-500">
+          Ein falsch gebuchter Beleg lässt sich stornieren — er bleibt als
+          Storno in der Spur, zählt aber nicht mehr in deine Bilanz.
+        </p>
+        {voidNote && (
+          <p
+            role="status"
+            className={`mb-3 mx-5 rounded-lg p-2.5 text-xs ${
+              voidNote.startsWith("Storno fehlgeschlagen")
+                ? "bg-rose-500/10 text-rose-300"
+                : "bg-emerald-500/10 text-emerald-300"
+            }`}
+          >
+            {voidNote}
+          </p>
+        )}
+        {visibleFills.length ? (
+          <>
+            {/* Mobil: Beleg als Karte — die siebenspaltige Tabelle brauchte
+                560 px Mindestbreite und musste seitlich geschoben werden
+                („verschiedene Dinge die scrollen müssen“). Beide Fassungen
+                lesen dieselben Werte aus `fillRows()` (src/fills.ts). */}
+            <ul className="divide-y divide-slate-800/60 sm:hidden">
+              {fillRows(visibleFills).map((row) => (
+                <li
+                  key={row.id}
+                  className={`flex items-start justify-between gap-3 px-5 py-3 ${
+                    row.voided ? "opacity-60" : ""
+                  }`}
+                >
+                  <div className="min-w-0 text-xs">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-mono text-slate-300">
+                        {row.time}
+                      </span>
+                      <span
+                        className={
+                          row.voided
+                            ? "font-semibold text-rose-300"
+                            : "text-slate-400"
+                        }
+                      >
+                        {row.status}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 break-words text-slate-200">
+                      {row.station}
+                    </p>
+                    <p className="mt-1 font-mono text-slate-300">
+                      {row.volume}
+                    </p>
+                    {row.priceNote && (
+                      <p className="mt-0.5 text-amber-300/90">
+                        {row.priceNote}
+                      </p>
+                    )}
+                    <p
+                      className={`mt-0.5 font-mono ${
+                        row.savingsTone === "good"
+                          ? "text-emerald-300"
+                          : row.savingsTone === "bad"
+                            ? "text-rose-300"
+                            : "text-slate-500"
+                      }`}
+                    >
+                      {row.savings}
+                    </p>
+                    {row.timing && (
+                      <p className="mt-0.5 text-slate-400">{row.timing}</p>
+                    )}
+                    {row.elsewhereNet && (
+                      <p className="mt-0.5 font-mono text-sky-200">
+                        {row.elsewhereNet}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {!row.voided && (
+                      <button
+                        type="button"
+                        onClick={() => onVoidFill(row.id)}
+                        disabled={voidBusy}
+                        title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
+                        className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {voidBusy ? "Storniere …" : "Stornieren"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* Ab `sm`: die Tabelle, unverändert in Spalten und Ausrichtung. */}
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-500">
+                    <th className="px-5 py-2 pr-3">Getankt</th>
+                    <th className="px-3 py-2">Station</th>
+                    <th className="px-3 py-2 text-right">Liter</th>
+                    <th className="px-3 py-2 text-right">€/L</th>
+                    <th className="px-3 py-2 text-right">Ersparnis</th>
+                    <th className="px-3 py-2 text-right">Status</th>
+                    <th className="px-5 py-2" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {fillRows(visibleFills).map((row) => (
+                    <tr
+                      key={row.id}
+                      className={row.voided ? "opacity-60" : undefined}
+                    >
+                      <td className="px-5 py-2 pr-3 font-mono text-slate-300">
+                        {row.time}
+                      </td>
+                      <td className="px-3 py-2 text-slate-200">
+                        {row.station}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-300">
+                        {row.liters}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-300">
+                        {row.pricePerLiter}
+                        {row.priceNote && (
+                          <span className="block text-amber-300/90">
+                            {row.priceNote}
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono ${
+                          row.savingsTone === "good"
+                            ? "text-emerald-300"
+                            : row.savingsTone === "bad"
+                              ? "text-rose-300"
+                              : "text-slate-500"
+                        }`}
+                      >
+                        {row.savings}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {row.voided ? (
+                          <span className="font-semibold text-rose-300">
+                            {row.status}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">
+                            {row.status}
+                            {row.timing && (
+                              <span className="block text-xs text-slate-500">
+                                {row.timing}
+                              </span>
+                            )}
+                            {row.elsewhereNet && (
+                              <span className="block font-mono text-xs text-sky-300">
+                                {row.elsewhereNet}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-2 text-right">
+                        {!row.voided && (
+                          <button
+                            type="button"
+                            onClick={() => onVoidFill(row.id)}
+                            disabled={voidBusy}
+                            title="Beleg stornieren (wird als Storno markiert, nicht gelöscht)"
+                            className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-400 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {voidBusy ? "Storniere …" : "Stornieren"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {mostUsed && (
+              <p className="mt-3 px-5 pb-1 text-xs leading-relaxed text-slate-500">
+                Maßstab: der Median deines Sets (Standard) · deine meistgenutzte
+                Station: {mostUsed.name} ({countLabel(mostUsed.count)} Belege).
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="px-5 pb-5">
+            <Empty>
+              Noch keine Belege — oben erfassen, dann erscheint der Beleg hier
+              und in der Bilanz.
+            </Empty>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Bilanz: Monat/Jahr, zwei ehrliche Maßstäbe, Verlauf. */
+function BalanceSection(props: BalancePanelProps) {
+  const { fillsSummary, onRetry } = props;
+  const [period, setPeriod] = useState<"month" | "year">("month");
+  const data = fillsSummary.data;
+
+  const rows: BalanceRow[] =
+    period === "month" ? (data?.months ?? []) : (data?.years ?? []);
+  const latest = rows[0] ?? null;
+
+  const bars = (data?.months ?? []).slice(0, 12);
+  const maxTotal = Math.max(0, ...bars.map((row) => row.total_eur));
+
+  return (
+    <section
+      className="mt-4 px-4 pb-2 sm:px-5"
+      aria-labelledby="ich-balance-heading"
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3
+          id="ich-balance-heading"
+          className="flex items-center gap-2 text-sm font-semibold"
+        >
+          <Scale size={16} className="text-emerald-400" />
+          Bilanz
+        </h3>
+        <div
+          role="group"
+          aria-label="Zeitraum der Bilanz"
+          className="flex rounded-lg border border-slate-800 bg-slate-950 p-1 text-xs font-bold"
+        >
+          {(["month", "year"] as const).map((value) => (
+            <button
+              key={value}
+              onClick={() => setPeriod(value)}
+              aria-pressed={period === value}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                period === value
+                  ? "bg-slate-800 text-emerald-300"
+                  : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              {value === "month" ? "Monat" : "Jahr"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {fillsSummary.error ? (
+        <LoadError
+          errorCode={data?.error_code || fillsSummary.errorCode}
+          fallback="Die Bilanz konnte nicht geladen werden."
+          onRetry={onRetry}
+          retryLabel="Bilanz neu laden"
+        />
+      ) : fillsSummary.pending && !data ? (
+        <SkeletonPanel lines={4} label="Bilanz wird geladen" />
+      ) : !latest ? (
+        <Empty>
+          Noch keine Belege — die Bilanz füllt sich mit jedem erfassten Beleg.
+        </Empty>
+      ) : (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {period === "month"
+              ? monthBalanceLabel(latest.key)
+              : yearBalanceLabel(latest.key)}
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Getankt
+              </p>
+              <p className="mt-1 text-xl font-bold text-slate-100 tabular-nums">
+                {euro(latest.total_eur)} €
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {latest.fills} Beleg{latest.fills === 1 ? "" : "e"} ·{" "}
+                {latest.avg_eur_per_liter != null
+                  ? `Ø ${euro(latest.avg_eur_per_liter, 3)} €/L`
+                  : "Ø —"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Gegenüber „immer sofort getankt“ · brutto
+              </p>
+              <p
+                className={`mt-1 text-xl font-bold tabular-nums ${
+                  latest.saved_eur >= 0 ? "text-emerald-300" : "text-rose-300"
+                }`}
+              >
+                {latest.saved_eur >= 0 ? "+" : "−"}
+                {euro(Math.abs(latest.saved_eur))} €
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Maßstab: die Liter zu dem Preis, der an deiner Station zum
+                Zeitpunkt der Tankung stand (Server).
+              </p>
+              {/* O30: Die Entscheidung rechnete netto (Umwegkosten), die
+                  Bilanz wies brutto aus — beide Zeilen, benannt. */}
+              {(latest.n_detour_fills ?? 0) > 0 ? (
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Nach Umweg:{" "}
+                  <span className="font-semibold tabular-nums">
+                    {(latest.saved_net_eur ?? latest.saved_eur) >= 0
+                      ? "+"
+                      : "−"}
+                    {euro(Math.abs(latest.saved_net_eur ?? latest.saved_eur))} €
+                  </span>{" "}
+                  — Umwegkosten {euro(latest.detour_cost_eur ?? 0)} € bei{" "}
+                  {latest.n_detour_fills}{" "}
+                  {latest.n_detour_fills === 1 ? "Beleg" : "Belegen"}
+                  {(latest.n_detour_estimated ?? 0) > 0
+                    ? `, davon ${latest.n_detour_estimated} mit geschätzter Strecke`
+                    : ""}
+                  .
+                </p>
+              ) : (
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.
+                </p>
+              )}
+              {(latest.n_prognosis_price ?? 0) > 0 && (
+                <p className="mt-1 text-xs leading-relaxed text-amber-300/90">
+                  Ohne Prognosepreis:{" "}
+                  {latest.saved_verified_eur >= 0 ? "+" : "−"}
+                  {euro(Math.abs(latest.saved_verified_eur))} € (
+                  {latest.n_prognosis_price}{" "}
+                  {latest.n_prognosis_price === 1
+                    ? "Beleg zählt nicht mit"
+                    : "Belege zählen nicht mit"}
+                  ).
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Gegenüber Stadt-Median
+              </p>
+              <p className="mt-1 text-xl font-bold text-slate-500">—</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Noch nicht messbar: der Median deiner Stadt fehlt in den
+                heutigen Daten — die Zahl kommt, wenn die Engine ihn liefert.
+              </p>
+            </div>
+          </div>
+
+          {bars.length > 0 && (
+            <div className="mt-5">
+              <p className="mb-2 text-xs uppercase tracking-wider text-slate-500">
+                Verlauf (Balken je Monat, 12)
+              </p>
+              <div
+                className="flex items-end gap-1.5"
+                role="img"
+                aria-label="Monatsausgaben der letzten 12 Monate"
+              >
+                {bars.map((row) => (
+                  <div
+                    key={row.key}
+                    className="flex h-24 flex-1 flex-col items-center justify-end gap-1"
+                    title={monthBalanceLabel(row.key) + ": " + euro(row.total_eur) + " €"}
+                  >
+                    <div
+                      className="w-full rounded-t bg-emerald-500/60"
+                      style={{
+                        height: `${maxTotal > 0 ? Math.max(4, (row.total_eur / maxTotal) * 80) : 4}px`,
+                      }}
+                    />
+                    <span className="text-xs font-semibold text-slate-600">
+                      {row.key.slice(5)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {data?.overall && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Gesamt: {euro(data.overall.total_eur)} € ·{" "}
+                  {data.overall.fills} Belege ·{" "}
+                  {euro(Math.abs(data.overall.saved_eur))} €{" "}
+                  {data.overall.saved_eur >= 0 ? "günstiger" : "teurer"}{" "}
+                  gegenüber „immer sofort getankt“
+                  {(data.overall.n_prognosis_price ?? 0) > 0
+                    ? ` · verifiziert ${data.overall.saved_verified_eur >= 0 ? "+" : "−"}${euro(Math.abs(data.overall.saved_verified_eur))} € (ohne Prognosepreis-Belege)`
+                    : ""}
+                  {data.overall.n_without_date > 0
+                    ? ` · ${data.overall.n_without_date} ohne Datum (nicht im Verlauf)`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -441,7 +1140,7 @@ export interface SettingsPanelProps {
   theme: AppTheme;
   setTheme: (t: AppTheme) => void;
   // Daten (am Wirkungsort: angepinnte Stationen, Beleg-Export)
-  pinnedStations: Array<{ station: Station; }>;
+  pinnedStations: Array<{ station: Station }>;
   togglePin: (stationId: string) => void;
   /** /health → version (Über). */
   version: string | null;
@@ -510,9 +1209,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-200"
             >
               {data?.cities.length ? (
-                data.cities.map((label) => (
-                  <option key={label}>{label}</option>
-                ))
+                data.cities.map((label) => <option key={label}>{label}</option>)
               ) : (
                 <option value="">Keine Stadt eingerichtet</option>
               )}
@@ -583,7 +1280,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
             retryLabel="Schwellen neu laden"
           />
         ) : statsSummaryRes.pending && !summary ? (
-          <SkeletonPanel lines={5} title={false} label="Schwellen werden geladen" />
+          <SkeletonPanel
+            lines={5}
+            title={false}
+            label="Schwellen werden geladen"
+          />
         ) : thresholds ? (
           <>
             <p className="mb-3 text-xs leading-relaxed text-slate-400">
@@ -603,13 +1304,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </caption>
                 <thead>
                   <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
-                    <th scope="col" className="px-2 py-2.5 font-semibold sm:px-4">
+                    <th
+                      scope="col"
+                      className="px-2 py-2.5 font-semibold sm:px-4"
+                    >
                       Aktion
                     </th>
-                    <th scope="col" className="px-2 py-2.5 font-semibold sm:px-4">
+                    <th
+                      scope="col"
+                      className="px-2 py-2.5 font-semibold sm:px-4"
+                    >
                       Bedingung
                     </th>
-                    <th scope="col" className="px-2 py-2.5 text-right font-semibold sm:px-4">
+                    <th
+                      scope="col"
+                      className="px-2 py-2.5 text-right font-semibold sm:px-4"
+                    >
                       Wert
                     </th>
                   </tr>
@@ -655,15 +1365,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </div>
             )}
             <p className="mt-3 text-xs leading-relaxed text-slate-500">
-              Die Schwellen legt die Engine fest (Startwerte, Nachzug mit
-              M7). Die App zeigt sie nur an und rechnet damit — ändern kann
-              sie sie nicht.
+              Die Schwellen legt die Engine fest (Startwerte, Nachzug mit M7).
+              Die App zeigt sie nur an und rechnet damit — ändern kann sie sie
+              nicht.
             </p>
           </>
         ) : (
           <Empty>
-            Noch kein Engine-Lauf ausgewertet — die Schwellen-Tabelle
-            erscheint mit dem nächsten Lauf der Engine.
+            Noch kein Engine-Lauf ausgewertet — die Schwellen-Tabelle erscheint
+            mit dem nächsten Lauf der Engine.
           </Empty>
         )}
       </section>
@@ -680,9 +1390,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <SlidersHorizontal size={16} className="text-emerald-400" />
             Darstellung
           </h3>
-          <span className="font-mono text-xs text-slate-500">
-            gerätelokal
-          </span>
+          <span className="font-mono text-xs text-slate-500">gerätelokal</span>
         </div>
         <div
           role="group"
@@ -710,10 +1418,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
           ))}
         </div>
         <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          Hell (Material You) ist die Design-Basis und der Default — das
-          Konzept der neuen GUI. Dunkel ist eine dunkle Variante derselben
-          Skala: dieselben Klassen, andere Token-Werte. Die Wahl gilt nur
-          auf diesem Gerät.
+          Hell (Material You) ist die Design-Basis und der Default — das Konzept
+          der neuen GUI. Dunkel ist eine dunkle Variante derselben Skala:
+          dieselben Klassen, andere Token-Werte. Die Wahl gilt nur auf diesem
+          Gerät.
         </p>
       </section>
 
@@ -739,8 +1447,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
               Belege exportieren (CSV)
             </p>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Alle Belege inklusive Storno — für die Steuer oder den
-              eigenen Notizzettel.
+              Alle Belege inklusive Storno — für die Steuer oder den eigenen
+              Notizzettel.
             </p>
             <a
               href="/api/v1/fills.csv"
@@ -767,7 +1475,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     className="flex items-center justify-between gap-2 text-xs text-slate-300"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <Star size={11} className="shrink-0 text-amber-300" aria-hidden="true" />
+                      <Star
+                        size={11}
+                        className="shrink-0 text-amber-300"
+                        aria-hidden="true"
+                      />
                       <span className="truncate">{station.name}</span>
                     </span>
                     <button
@@ -831,5 +1543,113 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </dl>
       </section>
     </div>
+  );
+}
+
+export interface SettingsViewProps {
+  /** Fahrzeug-Schnitt (VehiclePanel). */
+  vehicle: VehiclePanelProps;
+  /** App-Kontext (SettingsPanel). */
+  settings: SettingsPanelProps;
+  /** Belege / Bilanz — nur gelesen, wenn der Bereich offen ist. */
+  fills: FillsPanelProps;
+  balance: BalancePanelProps;
+  /** Ob „Belege und Bilanz“ offen ist — der Zustand liegt in der Root, weil
+   *  erst das offene Blatt die Polls startet und zwei Einstiege es öffnen. */
+  fillsOpen: boolean;
+  onFillsOpenChange: (open: boolean) => void;
+  /** Einstieg in die Segment-Steuerung; ohne Angabe „Fahrzeug“. */
+  initialSection?: "vehicle" | "app";
+  /** Nur für Tests; sonst Date.now(). */
+  now?: number;
+}
+
+/**
+ * Einstellungen: Fahrzeug, Belege/Bilanz (eingeklappt) und App-Kontext.
+ * Eine Segment-Steuerung für die beiden dauerhaften Teile, ein `<details>`
+ * für die Buchhaltung — kein eigener Bereich „Ich“ mehr.
+ */
+export function SettingsView(props: SettingsViewProps) {
+  const [section, setSection] = useState<"vehicle" | "app">(
+    props.initialSection ?? "vehicle",
+  );
+  const fillsOpen = props.fillsOpen;
+
+  return (
+    <section aria-labelledby="settings-title">
+      <h1
+        id="settings-title"
+        className="text-2xl font-bold tracking-tight text-slate-100"
+      >
+        Einstellungen
+      </h1>
+      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+        Fahrzeug, Belege und App-Kontext an einem Ort.
+      </p>
+
+      {/* Segment-Steuerung: zwei dauerhafte Teile, die Buchhaltung darunter. */}
+      <div
+        role="tablist"
+        aria-label="Einstellungen — Bereiche"
+        className="mt-4 flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1"
+      >
+        {[
+          { id: "vehicle" as const, label: "Fahrzeug" },
+          { id: "app" as const, label: "App" },
+        ].map((item) => (
+          <button
+            key={item.id}
+            role="tab"
+            aria-selected={section === item.id}
+            onClick={() => setSection(item.id)}
+            className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
+              section === item.id
+                ? "bg-secondary-container text-on-secondary-container"
+                : "text-on-surface-variant hover:text-on-surface"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4">
+        {section === "vehicle" && (
+          <div>
+            <VehiclePanel {...props.vehicle} />
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
+              Was es bringt, rechnet die Übersicht in Euro — mit dieser Menge:
+              mehr Liter, mehr Betrag. Kraftstoff und Stadt liegen unter „App“ —
+              sie gelten für alle Ansichten, nicht nur für das Fahrzeug.
+              {props.settings.version
+                ? ` · TankApp ${props.settings.version}`
+                : ""}
+            </p>
+          </div>
+        )}
+        {section === "app" && <SettingsPanel {...props.settings} />}
+      </div>
+
+      {/* ② Buchhaltung — ein Blatt, kein Tab, keine Polls im Hintergrund. */}
+      <details
+        className={`${panel} mt-4 p-4`}
+        open={fillsOpen}
+        onToggle={(event) => props.onFillsOpenChange(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer text-sm font-semibold text-slate-200">
+          Belege und Bilanz
+        </summary>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          Tankungen erfassen und die Monatsbilanz nachsehen. Der Verlauf lädt
+          erst, wenn dieser Abschnitt offen ist.
+        </p>
+        {fillsOpen && (
+          <div className="mt-3">
+            <FillsSection {...props.fills} />
+            <BalanceSection {...props.balance} />
+          </div>
+        )}
+      </details>
+    </section>
   );
 }

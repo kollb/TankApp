@@ -83,7 +83,9 @@ Das vorhandene Archiv wird nicht nochmals in lebende Dokumente kopiert.
 Prüfberichte mit „V2/V3“ im Dateinamen sind Nachweise verschiedener Prüfungen,
 nicht allein deshalb identische Duplikate. Ihre Messbelege bleiben erhalten.
 Ein Hashvergleich hat keine bytegleichen Markdown-Duplikate ergeben.
-Auch `sample/good gui` und `sample/good statistic gui` bleiben unverändert.
+`sample/good gui` und `sample/good statistic gui` sind mit der
+UI-Konsolidierung (0.78.0) entfernt; die übernommenen Regeln stehen in
+[GUI-Vorlagen](../produkt/GUI-VORLAGEN.md).
 
 **Optionale Löschkandidaten, in dieser Änderung nicht gelöscht:**
 `RP2-ANLEITUNG-ALT.md`, `RP2-README-ALT.md`, `RP2-MOCKUP-VERGLEICH.md` und die

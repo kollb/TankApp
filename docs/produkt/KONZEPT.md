@@ -235,8 +235,9 @@ Zeitanteil bleiben unterscheidbar. Der eingesetzte Zeitwert wird ausgewiesen.
 ## Oberfläche und Betrieb
 
 Die aktuelle Navigation und Zustände stehen in [UI](UI.md), alle Textregeln in
-[Microcopy](MICROCOPY.md). Die beiden Prototypen in `sample/` bleiben Design-
-Basis, nicht Datenquelle; maßgeblich sind die [Übernahmeregeln](GUI-VORLAGEN.md).
+[Microcopy](MICROCOPY.md). Die früheren Prototypen in `sample/` sind entfernt;
+die übernommenen Gestaltungsregeln stehen in den
+[GUI-Vorlagen](GUI-VORLAGEN.md).
 
 Pi sammelt und puffert unabhängig vom NAS. Das NAS rechnet, persistiert und
 liefert API/Web-GUI. Der optionale RP2-Zugang proxyt das NAS und bleibt bei

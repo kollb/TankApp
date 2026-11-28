@@ -96,7 +96,7 @@ function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
 }
 
 describe("C5: Kontrast AA der gedämpften Texttöne", () => {
-  // Seit der neuen GUI (Material You, sample/good gui) ist hell der
+  // Seit der neuen GUI (Material You, docs/produkt/GUI-VORLAGEN.md) ist hell der
   // Default (`:root`) und dunkel die Variante (`html.dark`) — die Blöcke
   // stehen deshalb getauscht gegenüber dem ursprünglichen Ratchet.
   const light = colorTokens(block(":root {"));

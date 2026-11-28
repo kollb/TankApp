@@ -4527,7 +4527,7 @@ export function yearBalanceLabel(key: string): string {
 /**
  * C4: Dark/Light-Umschaltung der NAS-GUI.
  *
- * Hell (Material You, sample/good gui) ist seit der neuen GUI die
+ * Hell (Material You, docs/produkt/GUI-VORLAGEN.md) ist seit der neuen GUI die
  * Design-Basis und der Default — die `:root`-Werte in styles.css.
  * „Dunkel“ ist eine dunkle Variante derselben Skala: dieselben
  * Tailwind-Klassen, andere Token-Werte unter `html.dark` in styles.css.

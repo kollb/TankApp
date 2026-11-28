@@ -1,6 +1,6 @@
 # Qualitäts-Gates (Lighthouse + Last)
 
-> Stand: 28.11.2026 · App-Version **0.77.0** · Zuständig: `.github/workflows/quality.yml`
+> Stand: 28.11.2026 · App-Version **0.78.0** · Zuständig: `.github/workflows/quality.yml`
 
 Zwei Dinge, die kein Unit-Test sieht, entscheiden im Alltag über „fühlt sich
 gut an“ oder „hängt“: **wie schnell das GUI wirklich lädt** (M4-Kriterium
@@ -81,7 +81,7 @@ Die zweite Suite tut dasselbe ohne Mocks, gegen den echten Demo-Stack:
 | Config | `web/playwright.demo.config.ts` — eigenes `webServer`-Kommando mit `ops/quality/demo_server.py --rebuild`, Port **1357**, Desktop 1440 px + Mobil 390 px + schmal 320 px |
 | Aufruf | `npm --prefix web run test:e2e:demo` |
 | Läuft in | `.github/workflows/tests.yml` (web-Job) **nach** der gemockten Suite — nicht in `quality.yml`, weil sie Sekunden braucht und zum CI-Spiegel gehört |
-| Zusagen | Übersicht mit der Antwortkarte (fünf Ausgänge, Berliner Zeit), Tageszeile (Kurve mit Textalternative), Stationenliste und Navigation „Übersicht · Stationen · Mehr“ im RP2-Lesemodus; `If-None-Match` → 304 beim Aktualisieren, keine `role="alert"`; der Beleg aus „Einstellungen → Belege“ trägt den eingetragenen Preis (`price_source: manuell`), nie eine Prognose; dazu Server-Vertrag ohne Browser in `tests/test_e2e_demo.py` |
+| Zusagen | Übersicht mit der Antwortkarte (fünf Ausgänge, Berliner Zeit), Tageszeile (Kurve mit Textalternative), Stationenliste und Navigation „Übersicht · Stationen · Mehr“ im RP2-Lesemodus; `If-None-Match` → 304 beim Aktualisieren, keine `role="alert"`; der Beleg aus „Einstellungen → Belege und Bilanz“ trägt den eingetragenen Preis (`price_source: manuell`), nie eine Prognose; dazu Server-Vertrag ohne Browser in `tests/test_e2e_demo.py` |
 | Ratchet | `tests/test_quality_gates.py::test_e2e_demo_suite_ist_keine_mock_suite` — prüft, dass die Suite mockfrei bleibt und Config, Skript und CI-Schritt zusammenpassen |
 | Laufzeit | 6 Tests (3 Fälle × Desktop/Mobil) in **13,3 s** im ersten grünen CI-Lauf (Demo-Aufbau inklusive) |
 

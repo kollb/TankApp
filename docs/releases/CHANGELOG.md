@@ -4,6 +4,50 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.78.0] – 2026-11-28
+
+**Eine Oberfläche, zwei Ansichten weniger — und ein Startbildschirm, der sich
+auf das Urteil beschränkt**
+
+- **Der Konzept-Einstieg ist entfernt.** `/?konzept=1`, `web/src/concept/`
+  samt Tests und die Vorlagen-Demo sind gelöscht; `web/src/main.tsx` mountet
+  nur noch `<Dashboard />`. Es gibt genau **eine** Oberfläche. `AGENTS.md`
+  beschreibt das als Regel („eine Oberfläche“); `docs/produkt/GUI-VORLAGEN.md`
+  führt die übernommenen Leitplanken.
+- **„Ich“ ist in „Einstellungen“ aufgegangen.** Fahrzeug, Belege und
+  Bilanz sowie App-Kontext stehen in **einer** Ansicht; die Buchhaltung
+  liegt hinter „Belege und Bilanz“ (ein `<details>`, kein eigener Tab). Die
+  Belegliste und die Bilanz werden erst geladen, wenn der Bereich offen ist
+  — kein Poll für eine Fläche, die niemand sieht. Die Einstiege
+  „Stationen → Buchen“ und „Übersicht ohne Live-Preis“ öffnen das Blatt.
+  `?tab=ich` bleibt als Alias gültig und landet auf „Einstellungen“
+  („Einstellungen → Belege und Bilanz → Tanken erfassen“).
+- **Startseite nach Ebenen.** Die Übersicht zeigt oben die Urteilskarte mit
+  **einer** großen Zahl, darunter den gemeinsamen Chart-Rahmen
+  („3 Tage zurück“ | „Heute“ | „Woche“) und die Top-5-Tabelle — sortiert
+  nach dem, was die Tankmenge real kostet (Regalpreis plus Umwegkosten),
+  jede Zeile am Bestpreis der ersten gemessen. Ein Knopf
+  „Alle X Stationen & Karte anzeigen“ führt in die Stationen; Herleitung
+  und Quellen stehen im eingeklappten „Warum & Rechenweg“.
+- **Stationen und Labor trennen Karte von Methode.** Die Modell-Interna
+  (AGW-Erklärungen, Quellsätze) stehen in `<details>` bzw. im
+  Erklär-Sheet; im Labor stehen Wochen-Heatmap, Trefferquote/Kalibrierung
+  und Stations-Pool als eigene Karten mit höchstens drei großen Zahlen
+  oben, die Methodik liegt hinter „Warum & Rechenweg“.
+- **Engine: überlappende Zwei-Stunden-Fenster.** Die Startzeiten laufen im
+  Stundenraster (Schritt 60, Fenster 120). Eine Delle zwischen 11:30 und
+  12:30 wird damit nicht mehr an der Stundengrenze zerschnitten; das
+  JSON-Schema (`block_starts`, `minima (B, n_blocks)`) und die Verträge von
+  pside, Settlement, Backtest-Cache und `model_contracts` bleiben
+  unverändert.
+- **Regime-Verkürzung deckelt die Halbwertszeit.** Bei aktivem
+  `regime_notice` begrenzt der Live-Pfad `exp_block_weights` auf
+  `min(halbwertszeit, 7,0)` Tage — die Verkürzung verändert keine
+  Fensterliste, nur das Gewicht der Beobachtung.
+- **Abhängigkeiten.** pandas ≥ 3.1,< 4 · numpy ≥ 2.5.4,< 3 · ruff ≥ 0.17.2
+  · holidays ≥ 0.107 · tzdata ≥ 2026.5 · framer-motion ^14 (ungenutzt im
+  Code). Dependabot-Vorschläge #249–#263 sind damit eingearbeitet.
+
 ## [0.77.0] – 2026-11-28
 
 **Labor zeigt die Beweise zuerst, Regime-Verkürzung wird eine eigene Kohorte**

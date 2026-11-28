@@ -1227,6 +1227,42 @@ def test_scheduler_manual_bypasses_debounce_but_never_runs_twice(tmp_path):
     assert scheduler.manual("models")["status"] == "queued"
 
 
+def test_scheduler_fresh_boot_still_queues_manual_start(tmp_path):
+    """Ein frisch gebooteter Rechner darf den Knopf nicht stumm abweisen.
+
+    ``time.monotonic()`` zählt ab Systemstart, nicht ab Prozessstart. Mit dem
+    Sentinel ``0.0`` für „nie gelaufen“ war auf einer Maschine mit weniger als
+    ``MANUAL_MIN_GAP_S`` Uptime jeder noch nie gestartete Job „gerade eben
+    gelaufen“ — der Push-Lauf von 0.78.0 fiel genau daran (Befund 28.11.2026),
+    während derselbe Commit Minuten später grün war.
+    """
+    from app.server import MANUAL_MIN_GAP_S, Scheduler
+
+    settings = Settings(data=tmp_path, polling=tmp_path / "missing")
+    scheduler = Scheduler(settings)
+    assert scheduler.last_start == {}
+
+    # Junge Uptime simulieren: monotonic() liegt *unter* dem Mindestabstand.
+    import app.server as server_mod
+
+    monkey_like = [0.0]
+
+    def young_monotonic():
+        return monkey_like[0] + 5.0
+
+    original = server_mod.time.monotonic
+    server_mod.time.monotonic = young_monotonic
+    try:
+        assert young_monotonic() < MANUAL_MIN_GAP_S
+        assert scheduler.manual("models") == {"status": "queued", "job": "models"}
+        assert scheduler.wake["models"].is_set()
+        # Der Webhook-Pfad genauso: kein erfundener Debounce ohne Start.
+        scheduler.wake["models"].clear()
+        assert scheduler.admit_trigger("models", None) == "run"
+    finally:
+        server_mod.time.monotonic = original
+
+
 def test_scheduler_manual_request_runs_the_job(tmp_path, monkeypatch):
     import threading
 

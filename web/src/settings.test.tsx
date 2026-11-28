@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
-// C4 (weitergezogen): Fahrzeug-Felder wohnen in „Einstellungen → Fahrzeug“
+// Einstellungen (0.78.0): **eine** Ansicht für Fahrzeug, Belege/Bilanz und
+// App-Kontext. Fahrzeug-Felder wohnen in „Einstellungen → Fahrzeug“
 // (VehiclePanel), Kontext/Schwellen/Darstellung/Daten in „Einstellungen → App“
-// (SettingsPanel).
+// (SettingsPanel); die Buchhaltung liegt als eingeklapptes `<details>` darunter
+// (Tests unten: „Einstellungen: Aufbau“ bis „O30“).
 //
 // Die Schwellen-Tabelle zeigt ausschließlich Server-Werte: die Tests
 // prüfen, dass alle neun Schwellen der Engine (app/thresholds.py
@@ -12,9 +14,12 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  mostUsedStation,
   SettingsPanel,
+  SettingsView,
   VehiclePanel,
   type SettingsPanelProps,
+  type SettingsViewProps,
   type VehiclePanelProps,
 } from "./views/Settings";
 import {
@@ -28,6 +33,11 @@ import {
   thresholdSampleLine,
   thresholdStatusLine,
   thresholdValueLabel,
+  type BalanceRow,
+  type Fill,
+  type FillDraftCheck,
+  type FillsSummary,
+  type Fuel,
   type Profiles,
   type ResourceState,
   type StatsSummary,
@@ -283,9 +293,7 @@ describe("Einstellungen → Fahrzeug (VehiclePanel)", () => {
       <VehiclePanel {...vehicleProps({ activeProfileName: "Mein Auto" })} />,
     );
     expect(withProfile).toContain("Profil „Mein Auto“ — gilt haushaltsweit");
-    const without = renderToStaticMarkup(
-      <VehiclePanel {...vehicleProps()} />,
-    );
+    const without = renderToStaticMarkup(<VehiclePanel {...vehicleProps()} />);
     expect(without).toContain("nur dieses Gerät");
   });
 });
@@ -457,8 +465,7 @@ describe("Einstellungen → App (SettingsPanel)", () => {
       dark.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
     );
     expect(
-      darkGroup.indexOf('aria-pressed="true"') <
-        darkGroup.indexOf("Dunkel"),
+      darkGroup.indexOf('aria-pressed="true"') < darkGroup.indexOf("Dunkel"),
     ).toBe(true);
 
     const light = renderToStaticMarkup(
@@ -468,8 +475,7 @@ describe("Einstellungen → App (SettingsPanel)", () => {
       light.indexOf('aria-label="Darstellung (dunkel oder hell)"'),
     );
     expect(
-      lightGroup.indexOf('aria-pressed="true"') >
-        lightGroup.indexOf("Dunkel"),
+      lightGroup.indexOf('aria-pressed="true"') > lightGroup.indexOf("Dunkel"),
     ).toBe(true);
   });
 
@@ -515,5 +521,478 @@ describe("Theme-Logik (data.ts)", () => {
         .querySelector('meta[name="theme-color"]')
         ?.getAttribute("content"),
     ).toBe(APP_THEME_META_COLOR.dark);
+  });
+});
+
+// ---- Fixtures für die Buchhaltung (aus `views/Ich.test.tsx`) --------------
+const noop = () => {};
+
+const vehicle: VehiclePanelProps = {
+  liters: 40,
+  setLiters: noop,
+  consumption: 7,
+  setConsumption: noop,
+  tankCapacity: 50,
+  setTankCapacity: noop,
+  tankPercent: null,
+  setTankPercent: noop,
+  activeProfileName: null,
+  speed: 45,
+  setSpeed: noop,
+  timeValue: 0,
+  setTimeValue: noop,
+  timeValueUsed: 10,
+  autoZ: { z: 10, isPeak: false },
+  detourMode: "onroute",
+  setDetourMode: noop,
+  profilesRes: {
+    data: { profiles: [], active: null },
+    error: false,
+    errorCode: null,
+    pending: false,
+    receivedAt: 0,
+  } as ResourceState<Profiles>,
+  activeProfileId: "",
+  onActivateProfile: noop,
+  profilesBusy: false,
+  onOpenProfileManager: noop,
+};
+
+const settings: SettingsPanelProps = {
+  data: null,
+  activeCity: "Frankfurt",
+  setCity: noop,
+  fuel: "e10" as Fuel,
+  setFuel: noop,
+  statsSummaryRes: {
+    data: null,
+    error: false,
+    errorCode: null,
+    pending: false,
+    receivedAt: 0,
+  },
+  refreshNow: noop,
+  theme: "dark",
+  setTheme: noop,
+  pinnedStations: [],
+  togglePin: noop,
+  version: "0.78.0",
+  onOpenGlossary: noop,
+};
+
+// Übernommen aus `views/Ich.test.tsx` (0.78.0: der Bereich ist aufgegangen).
+// Die Buchhaltung liegt hinter einem `<details>`; die Tests rendern sie offen.
+// ======================================================================
+
+const quickDraft: FillDraftCheck = {
+  litersError: null,
+  priceError: null,
+  stationMissing: true,
+  ok: false,
+};
+
+const baseProps: SettingsViewProps = {
+  vehicle,
+  settings,
+  fillsOpen: true,
+  onFillsOpenChange: noop,
+  balance: {
+    fillsSummary: {
+      data: null,
+      error: false,
+      errorCode: null,
+      pending: false,
+      receivedAt: 0,
+    },
+    onRetry: noop,
+  },
+  fills: {
+    pinnedFirstStations: [],
+    quickStationId: "",
+    setQuickStationId: noop,
+    quickLitersStr: "40",
+    setQuickLitersStr: noop,
+    quickPriceStr: "",
+    setQuickPriceStr: noop,
+    quickDraft,
+    priceOf: () => null,
+    fillSubmitting: false,
+    onQuickFill: noop,
+    actionFeedback: null,
+    fillList: [],
+    visibleFills: [],
+    voidedCount: 0,
+    showVoidedFills: false,
+    setShowVoidedFills: noop,
+    voidNote: null,
+    voidBusy: false,
+    onVoidFill: noop,
+  },
+};
+
+function render(overrides: Partial<SettingsViewProps> = {}) {
+  const props = { ...baseProps, ...overrides } as SettingsViewProps;
+  return renderToStaticMarkup(<SettingsView {...props} />);
+}
+
+describe("Einstellungen: Aufbau", () => {
+  it("steuert die Unterseiten als ARIA-Tabs", () => {
+    const html = render();
+    expect(html).toContain('role="tablist"');
+    // Zwei dauerhafte Teile — die Buchhaltung ist ein `<details>`, kein Tab.
+    expect(html).toContain("Fahrzeug");
+    expect(html).toContain("App");
+    // Default ist „Fahrzeug“ — es ist ausgewählt.
+    const vehicleTab = html.match(
+      /<button[^>]*role="tab"[^>]*aria-selected="true"[^>]*>[\s\S]*?<\/button>/,
+    );
+    expect(vehicleTab?.[0]).toContain("Fahrzeug");
+  });
+
+  it("alle Fahrzeug-Fields stehen an einem Ort (Einstellungen ist ersetzt)", () => {
+    const html = render();
+    for (const id of [
+      "liters",
+      "consumption",
+      "timeValue",
+      "speed",
+      "detourMode",
+      "tankCapacity",
+    ]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    // Kraftstoff/Stadt liegen im App-Kontext.
+    expect(html).toContain("Kraftstoff und Stadt liegen unter „App“");
+  });
+});
+
+describe("Einstellungen: Leerzustände", () => {
+  it("Belege: ohne Buchungen der ehrliche Hinweis statt leeren Fläche", () => {
+    const html = render();
+    expect(html).toContain("Noch keine Belege");
+    expect(html).toContain("Noch keine Station eingerichtet");
+  });
+
+  it("Bilanz: ohne Belege füllt sie sich mit der Buchung", () => {
+    const html = render();
+    expect(html).toContain(
+      "Noch keine Belege — die Bilanz füllt sich mit jedem erfassten",
+    );
+  });
+});
+
+// O32 — Die Belegmaske zeigt den Live-Preis neben dem Feld.
+//
+// Befund: Zwischen Empfehlung und Erfassung vergehen Minuten bis Stunden
+// (Offline-Queue). Der Nutzer sah eine vorbefüllte Zahl ohne Vergleich. Der
+// Render-Test hält fest, dass die Zeile wirklich in der Maske steht — die
+// Regeln des Satzes selbst liegen in `fills.test.ts`.
+describe("Einstellungen → Belege und Bilanz: Live-Preis an der Maske (O32)", () => {
+  function station(overrides: Partial<Station> = {}): Station {
+    return {
+      station_id: "nord",
+      city: "Frankfurt",
+      name: "Demo-Tank Nord",
+      brand: "Demo",
+      fuel: "e10" as Fuel,
+      maps_url: null,
+      price: 1.719,
+      last_price: 1.719,
+      status: "open",
+      fresh: true,
+      observed_at: "2026-09-18T18:57:00+02:00",
+      age_minutes: 3,
+      ...overrides,
+    };
+  }
+  const maskProps = {
+    pinnedFirstStations: [station()],
+    quickStationId: "nord",
+    priceOf: (row: Station) => row.price,
+    now: Date.parse("2026-09-18T19:00:00+02:00"),
+  };
+
+  it("nennt Live-Preis und Alter neben dem Preisfeld", () => {
+    const html = render({
+      fills: { ...baseProps.fills, ...maskProps, quickPriceStr: "1,719" },
+    });
+    expect(html).toContain(
+      "Jetzt an der Station: 1,719 €/L, gemeldet vor 3 Minuten.",
+    );
+  });
+
+  it("markiert eine Abweichung über der Schwelle", () => {
+    const html = render({
+      fills: { ...baseProps.fills, ...maskProps, quickPriceStr: "1,769" },
+    });
+    expect(html).toContain("5,0 ct/L über dem gemeldeten Preis");
+  });
+
+  it("schweigt, wenn die Station keinen frischen Preis hat", () => {
+    const html = render({
+      fills: {
+        ...baseProps.fills,
+        ...maskProps,
+        pinnedFirstStations: [station({ price: null })],
+        quickPriceStr: "1,719",
+      },
+    });
+    expect(html).not.toContain("Jetzt an der Station:");
+  });
+});
+
+describe("Einstellungen: App-Kontext am Wirkungsort", () => {
+  it("Stadt, Darstellung und Über — ohne Eingabefelder für die Schwellen", () => {
+    const html = render({ initialSection: "app" });
+    expect(html).toContain('id="settings-city"');
+    // Seit der neuen GUI ist „Hell (Standard)“ der Default, „Dunkel“ die Option.
+    expect(html).toContain("Hell (Standard)");
+    expect(html).toContain("Dunkel");
+  });
+});
+
+describe("mostUsedStation (zweiter Maßstab unter dem Median)", () => {
+  const fill = (id: string, overrides: Partial<Fill> = {}): Fill => ({
+    id: `f-${id}`,
+    station_id: id,
+    station_name: `Station ${id}`,
+    liters: 40,
+    price_paid: 1.7,
+    fuel: "e10",
+    ...overrides,
+  });
+
+  it("zählt die Station mit den meisten (nicht stornierten) Belegen", () => {
+    expect(mostUsedStation([fill("a"), fill("b"), fill("a")])).toEqual({
+      name: "Station a",
+      count: 2,
+    });
+  });
+
+  it("unter zwei Belegen an derselben Station: null (keine Erfindung)", () => {
+    expect(mostUsedStation([fill("a"), fill("b")])).toBeNull();
+    expect(mostUsedStation([])).toBeNull();
+  });
+
+  it("stornierte Belege zählen nicht", () => {
+    expect(
+      mostUsedStation([fill("a"), fill("a", { voided: true })]),
+    ).toBeNull();
+    expect(
+      mostUsedStation([fill("a"), fill("a"), fill("a", { voided: true })]),
+    ).toEqual({ name: "Station a", count: 2 });
+  });
+
+  it("erscheint als Maßstab-Zeile unter der Beleg-Tabelle", () => {
+    const fills = [fill("a"), fill("b"), fill("a")];
+    const html = render({
+      fills: { ...baseProps.fills, fillList: fills, visibleFills: fills },
+    });
+    expect(html).toContain("Maßstab: der Median deines Sets (Standard)");
+    expect(html).toContain("meistgenutzte Station: Station a");
+  });
+
+  it("trägt die Belege mobil als Karte und ab sm als Tabelle", () => {
+    // Nutzer-Feedback 16.09.2026 („verschiedene Dinge die scrollen müssen“):
+    // Die Belegliste war eine Tabelle mit 560 px Mindestbreite und musste auf
+    // dem Handy seitlich geschoben werden. Mobil trägt sie jetzt eine Karte
+    // (zwei Zeilen, kein Querlauf), ab `sm` unverändert die Tabelle. Beide
+    // Fassungen lesen dieselben Werte aus `fillRows()`.
+    const fills = [
+      fill("a", { saved_vs_always_now_eur: 3.2 }),
+      fill("b", { voided: true }),
+    ];
+    const html = render({
+      fills: { ...baseProps.fills, fillList: fills, visibleFills: fills },
+    });
+    expect(html).toContain('class="divide-y divide-slate-800/60 sm:hidden"');
+    expect(html).toContain('class="hidden overflow-x-auto sm:block"');
+    // Karte und Tabelle zeigen dieselben Werte — je zweimal im Markup.
+    expect(html.split("3,20 € günstiger").length - 1).toBe(2);
+    expect(html.split("Station a").length - 1).toBe(2);
+    // Der Storno-Knopf steht nur beim nicht stornierten Beleg.
+    expect(html.split(">Stornieren<").length - 1).toBe(2);
+  });
+});
+
+describe("Ich: Prognosepreis (O17)", () => {
+  const fill = (id: string, overrides: Partial<Fill> = {}): Fill => ({
+    id: `f-${id}`,
+    station_id: id,
+    station_name: `Station ${id}`,
+    liters: 40,
+    price_paid: 1.7,
+    fuel: "e10",
+    ...overrides,
+  });
+
+  it("kennzeichnet Prognosepreis-Belege in Karte und Tabelle", () => {
+    const fills = [
+      fill("a", { price_source: "prognose" }),
+      fill("b", { price_source: "live" }),
+    ];
+    const html = render({
+      fills: { ...baseProps.fills, fillList: fills, visibleFills: fills },
+    });
+    // Karte und Tabelle zeigen denselben Hinweis — je einmal im Markup.
+    expect(html.split("Prognosepreis — kein gezahlter Preis").length - 1).toBe(
+      2,
+    );
+  });
+
+  it("zeigt die verifizierte Ersparnis als zweite, benannte Spalte", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 2,
+      liters: 80,
+      total_eur: 136,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 8,
+      saved_verified_eur: 2,
+      n_prognosis_price: 1,
+      baseline_eur: 144,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 2,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 5.5 },
+    };
+    const html = render({
+      balance: {
+        fillsSummary: {
+          data: summary,
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 1,
+        },
+        onRetry: noop,
+      },
+    });
+    expect(html).toContain("Ohne Prognosepreis:");
+    expect(html).toContain("+2,00 €");
+    expect(html).toContain("1 Beleg zählt nicht mit");
+    expect(html).toContain("verifiziert +2,00 € (ohne Prognosepreis-Belege)");
+  });
+
+  it("schweigt ohne Prognosepreis-Belege (keine zweite Spalte)", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 1,
+      liters: 40,
+      total_eur: 68,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 2,
+      saved_verified_eur: 2,
+      n_prognosis_price: 0,
+      baseline_eur: 70,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 1,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 2.8 },
+    };
+    const html = render({
+      balance: {
+        fillsSummary: {
+          data: summary,
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 1,
+        },
+        onRetry: noop,
+      },
+    });
+    expect(html).not.toContain("Ohne Prognosepreis:");
+    expect(html).not.toContain("ohne Prognosepreis-Belege");
+  });
+
+  it("O30: nennt netto nach Umweg neben dem Brutto-Wert", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 2,
+      liters: 80,
+      total_eur: 136,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 8,
+      saved_net_eur: 6.34,
+      detour_cost_eur: 1.66,
+      n_detour_fills: 1,
+      n_detour_estimated: 1,
+      saved_verified_eur: 8,
+      n_prognosis_price: 0,
+      baseline_eur: 144,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 2,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 5.5 },
+    };
+    const html = render({
+      balance: {
+        fillsSummary: {
+          data: summary,
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 1,
+        },
+        onRetry: noop,
+      },
+    });
+    // Beide Zeilen benannt: brutto …
+    expect(html).toContain("· brutto");
+    expect(html).toContain("+8,00 €");
+    // … und netto nach den bekannten Umwegkosten.
+    expect(html).toContain("Nach Umweg:");
+    expect(html).toContain("+6,34 €");
+    expect(html).toContain("Umwegkosten 1,66 € bei 1 Beleg");
+    expect(html).toContain("davon 1 mit geschätzter Strecke");
+  });
+
+  it("O30: ohne Umweg bleibt die Zahl gleich und sagt das", () => {
+    const row: BalanceRow = {
+      key: "2026-09",
+      fills: 1,
+      liters: 40,
+      total_eur: 68,
+      avg_eur_per_fill: 68,
+      avg_eur_per_liter: 1.7,
+      saved_eur: 2,
+      saved_net_eur: 2,
+      detour_cost_eur: 0,
+      n_detour_fills: 0,
+      n_detour_estimated: 0,
+      saved_verified_eur: 2,
+      n_prognosis_price: 0,
+      baseline_eur: 70,
+    };
+    const summary: FillsSummary = {
+      n_fills_total: 1,
+      months: [row],
+      years: [],
+      overall: { ...row, n_without_date: 0, saved_pct: 2.8 },
+    };
+    const html = render({
+      balance: {
+        fillsSummary: {
+          data: summary,
+          error: false,
+          errorCode: null,
+          pending: false,
+          receivedAt: 1,
+        },
+        onRetry: noop,
+      },
+    });
+    expect(html).toContain("Nach Umweg: dieselbe Zahl — kein Beleg mit Umweg.");
+    expect(html).not.toContain("Umwegkosten");
   });
 });

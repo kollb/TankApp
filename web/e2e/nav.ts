@@ -36,3 +36,28 @@ export async function clickArea(page: Page, label: string): Promise<void> {
   }
   await page.getByRole("button", { name: label, exact: true }).click();
 }
+
+/**
+ * Öffnet „Einstellungen → Belege und Bilanz“ (0.78.0).
+ *
+ * Seit der UI-Konsolidierung ist die Buchhaltung kein eigener Tab mehr,
+ * sondern ein eingeklapptes `<details>` am Wirkungsort. Der Bereich heißt
+ * weiter „Tanken erfassen“; die Legacy-URL `?tab=ich` führt auf dieselbe
+ * Seite. Der Beleg-Poll startet erst mit dem geöffneten Blatt.
+ */
+export async function openReceipts(page: Page): Promise<void> {
+  const summary = page.getByText("Belege und Bilanz", { exact: true });
+  await expect(
+    summary,
+    "„Belege und Bilanz“ steht nicht in den Einstellungen.",
+  ).toBeVisible();
+  const region = page.getByRole("region", { name: "Tanken erfassen" });
+  if (!(await region.isVisible().catch(() => false))) {
+    await summary.click();
+  }
+  await expect(
+    region,
+    "Das Belegformular („Tanken erfassen“) öffnet sich nicht.",
+  ).toBeVisible();
+  return;
+}

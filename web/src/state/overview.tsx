@@ -123,7 +123,10 @@ type AssumptionsState = {
   latestBy: string | null;
   timeValue: number | null;
 };
-import type { ActionFeedback, FeedbackTone } from "../components/FeedbackBanner";
+import type {
+  ActionFeedback,
+  FeedbackTone,
+} from "../components/FeedbackBanner";
 
 function useOverviewState() {
   // A6: Share-URL beim Start lesen — einmalig vor allen Preferences. Eine
@@ -157,16 +160,15 @@ function useOverviewState() {
   const [laborFocus, setLaborFocus] = useState<LabSectionId | null>(() =>
     share.tab === "labor"
       ? (sectionFromUrlId(share.section) ??
-        sectionFromLegacySubTab(new URLSearchParams(window.location.search).get("subtab")))
+        sectionFromLegacySubTab(
+          new URLSearchParams(window.location.search).get("subtab"),
+        ))
       : null,
   );
   // U4 + B5: Bereich wechseln heißt auch URL wechseln — pushState, damit der
   // Browser-Zurück-Knopf die Ansichten in umgekehrter Reihenfolge abfährt.
   // Die übrige Query (Stadt, Kraftstoff, Station …) bleibt erhalten.
-  const gotoTab = (
-    next: TabId,
-    section: LabSectionId | null = laborFocus,
-  ) => {
+  const gotoTab = (next: TabId, section: LabSectionId | null = laborFocus) => {
     setTab(next);
     if (next === "labor" && section) setLaborFocus(section);
     try {
@@ -183,11 +185,11 @@ function useOverviewState() {
       /* History darf scheitern (Sandbox) — die Ansicht wechselt trotzdem. */
     }
   };
-  // Unterseite für externe Einstiege (z. B. Belegbuchung aus Stationen);
-  // ohne Einstieg landet „Einstellungen“ bei „Fahrzeug“.
-  const [settingsSection, setSettingsSection] = useState<
-    "vehicle" | "fills" | "balance" | "settings"
-  >("vehicle");
+  // Buchhaltung in „Einstellungen“ ist ein eingeklapptes `<details>`, kein
+  // Tab mehr. Der Zustand liegt hier, weil zwei Einstiege ihn öffnen müssen
+  // (Stationen „Buchen“ → `onNavigate("fills")`, Übersicht ohne Live-Preis)
+  // und weil erst das offene Blatt seine Polls startet.
+  const [settingsFillsOpen, setSettingsFillsOpen] = useState(false);
   const [assumptions, setAssumptions] = useState<AssumptionsState>({
     liters: null,
     latestBy: null,
@@ -323,8 +325,12 @@ function useOverviewState() {
 
   const feedback = (tone: FeedbackTone, text: string, ms = 5000) => {
     setActionFeedback({ tone, text });
-    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = window.setTimeout(() => setActionFeedback(null), ms);
+    if (feedbackTimer.current !== null)
+      window.clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = window.setTimeout(
+      () => setActionFeedback(null),
+      ms,
+    );
   };
 
   // A6: Rückmeldung des „Ansicht teilen“-Knopfs (Kopfzeile).
@@ -426,7 +432,7 @@ function useOverviewState() {
       setLaborFocus(
         next === "labor"
           ? (sectionFromUrlId(params.get("section")) ??
-            sectionFromLegacySubTab(params.get("subtab")))
+              sectionFromLegacySubTab(params.get("subtab")))
           : null,
       );
     };
@@ -459,7 +465,10 @@ function useOverviewState() {
     null,
     (value) =>
       value === null ||
-      (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100),
+      (typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= 0 &&
+        value <= 100),
   );
   // C2: Stamm-Stationen — bewusst lokal (localStorage), kein Account nötig.
   const [pinnedIds, setPinnedIds] = usePreference<string[]>(
@@ -486,7 +495,11 @@ function useOverviewState() {
 
   // A1: Profil-Liste holen (langsam pollen; nach jedem Schreibvorgang
   // zählt `refresh` die Liste sofort neu).
-  const profilesRes = useResource<Profiles>("/api/v1/profiles", 120000, refresh);
+  const profilesRes = useResource<Profiles>(
+    "/api/v1/profiles",
+    120000,
+    refresh,
+  );
   const [profilesBusy, setProfilesBusy] = useState(false);
   const [profileManagerOpen, setProfileManagerOpen] = useState(false);
   const [profileNote, setProfileNote] = useState<string | null>(null);
@@ -494,7 +507,10 @@ function useOverviewState() {
   const noteProfile = (text: string) => {
     setProfileNote(text);
     if (profileNoteTimer.current) window.clearTimeout(profileNoteTimer.current);
-    profileNoteTimer.current = window.setTimeout(() => setProfileNote(null), 6000);
+    profileNoteTimer.current = window.setTimeout(
+      () => setProfileNote(null),
+      6000,
+    );
   };
 
   const activeProfile = useMemo(
@@ -544,7 +560,8 @@ function useOverviewState() {
       detour_mode: activeProfile.detour_mode,
       tank_capacity_l: activeProfile.tank_capacity_l,
     };
-    if (!profileFieldsDiffer(profileFields(prefsRef.current), fromProfile)) return;
+    if (!profileFieldsDiffer(profileFields(prefsRef.current), fromProfile))
+      return;
     setFuel(activeProfile.fuel);
     setLiters(activeProfile.liters);
     setConsumption(activeProfile.consumption);
@@ -560,7 +577,15 @@ function useOverviewState() {
   // Profileinstellung folgt, gilt sie auf allen Geräten im Haushalt.
   useEffect(() => {
     if (!activeProfile) return;
-    const current = profileFields({ fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity });
+    const current = profileFields({
+      fuel,
+      liters,
+      consumption,
+      timeValue,
+      speed,
+      detourMode,
+      tankCapacity,
+    });
     const fromProfile: ProfileFields = {
       fuel: activeProfile.fuel,
       liters: activeProfile.liters,
@@ -573,9 +598,15 @@ function useOverviewState() {
     if (!profileFieldsDiffer(current, fromProfile)) return;
     const timer = window.setTimeout(() => {
       void (async () => {
-        const res = await profileRequest(`/${activeProfile.id}`, "PUT", current);
+        const res = await profileRequest(
+          `/${activeProfile.id}`,
+          "PUT",
+          current,
+        );
         if (!res.ok) {
-          noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+          noteProfile(
+            profileErrorText(res.data?.error_code as string | undefined),
+          );
           return;
         }
         setRefresh((value) => value + 1);
@@ -583,7 +614,16 @@ function useOverviewState() {
     }, 800);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fuel, liters, consumption, timeValue, speed, detourMode, tankCapacity, activeProfile]);
+  }, [
+    fuel,
+    liters,
+    consumption,
+    timeValue,
+    speed,
+    detourMode,
+    tankCapacity,
+    activeProfile,
+  ]);
 
   // A1 Handler der Verwaltung: anlegen, aktivieren, umbenennen, löschen.
   const handleCreateProfile = async (name: string) => {
@@ -614,7 +654,9 @@ function useOverviewState() {
         { active: id },
       );
       if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        noteProfile(
+          profileErrorText(res.data?.error_code as string | undefined),
+        );
         return;
       }
       lastAppliedRef.current = null;
@@ -634,7 +676,9 @@ function useOverviewState() {
     try {
       const res = await profileRequest(`/${id}`, "PUT", { name });
       if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        noteProfile(
+          profileErrorText(res.data?.error_code as string | undefined),
+        );
         return;
       }
       noteProfile("Profilname gespeichert.");
@@ -648,7 +692,9 @@ function useOverviewState() {
     try {
       const res = await profileRequest(`/${id}`, "DELETE");
       if (!res.ok) {
-        noteProfile(profileErrorText(res.data?.error_code as string | undefined));
+        noteProfile(
+          profileErrorText(res.data?.error_code as string | undefined),
+        );
         return;
       }
       if (activeProfileId === id) {
@@ -700,8 +746,12 @@ function useOverviewState() {
   const data = usableStations(prices.data);
   // Readiness is observed through the successful NAS stations contract,
   // not navigator.onLine. Recovery must not remount the shell or lose drafts.
-  const nasReady = browserOnline && !!data && prices.failStreak === 0 &&
-    data.nas_status !== "offline" && !data.connection_error;
+  const nasReady =
+    browserOnline &&
+    !!data &&
+    prices.failStreak === 0 &&
+    data.nas_status !== "offline" &&
+    !data.connection_error;
   const wasNasReady = useRef<boolean | null>(null);
   useEffect(() => {
     const recovered = wasNasReady.current === false && nasReady;
@@ -718,14 +768,20 @@ function useOverviewState() {
   // Während Fuel-Switch E10→Diesel bleibt data stale (fuel mismatch) und
   // pending true — online darf dann nicht als „frisch“ gelten, sonst zeigt
   // der Header alte Counts statt „lädt …“.
-  const online = !prices.error && !!data && !data.connection_error && !isStaleFuel;
+  const online =
+    !prices.error && !!data && !data.connection_error && !isStaleFuel;
   const elapsed = Math.max(0, now - prices.receivedAt) / 60000;
   const price = (row: Station) => currentPrice(row, online, elapsed);
   // Die Atlas-Referenz ist ein einziger Vertrag mit dem Server: selected →
   // gepinnt → nächste Station, jeweils nur mit frischem Preis. Dieselbe ID
   // wird im Stations-Overview an /decide übergeben; sonstige Bereiche behalten
   // ihren eigenen Vergleichsanker.
-  const atlasReference = referenceStation(stations, price, selectedId, pinnedIds);
+  const atlasReference = referenceStation(
+    stations,
+    price,
+    selectedId,
+    pinnedIds,
+  );
   const fresh = isStaleFuel
     ? []
     : stations
@@ -783,11 +839,11 @@ function useOverviewState() {
       ? (worstPrice - bestPrice) * liters
       : null;
   // GUI-Neuentwurf: frische Set-Preise (für die Einordnung nach dem Buchen
-  // und für „Einstellungen → Belege“) + gewählte Stations zuerst in der Beleg-Auswahl
+  // und für „Einstellungen → Belege und Bilanz“) + gewählte Stations zuerst in der Beleg-Auswahl
   // (gepinnte Stationen rücken nach vorn — dieselbe Reihenfolge wie Karte).
-  const freshPrices = fresh.map((row) => price(row)!).filter(
-    (value) => value !== null,
-  );
+  const freshPrices = fresh
+    .map((row) => price(row)!)
+    .filter((value) => value !== null);
   const pinnedFirstStations = [...stations].sort((a, b) => {
     const aPin = pinnedIds.includes(a.station_id) ? 0 : 1;
     const bPin = pinnedIds.includes(b.station_id) ? 0 : 1;
@@ -833,9 +889,7 @@ function useOverviewState() {
             "Link kopiert — teilt diese Sicht (Bereich, Stadt, Kraftstoff, Station, Tankmenge, Heatmap-Einstellungen).",
           ),
         )
-        .catch(() =>
-          note(SHARE_URL_LINE),
-        );
+        .catch(() => note(SHARE_URL_LINE));
     } else {
       note(SHARE_URL_LINE);
     }
@@ -843,7 +897,8 @@ function useOverviewState() {
 
   // H1/B6: Server ist einzige Quelle für Umweg-Strecke und Verdict — keine lokale haversine×1,3-Rechnung mehr.
   // Die What-if-Ökonomie (Verbrauch, Tempo, Zeitwert, Modus) läuft über /api/v1/decide, die GUI zeigt exakt die Server-Zahlen.
-  const decisionStation = tab === "stations" ? atlasReference?.station ?? null : selected;
+  const decisionStation =
+    tab === "stations" ? (atlasReference?.station ?? null) : selected;
   const identity = selected
     ? new URLSearchParams({
         city: activeCity,
@@ -899,14 +954,13 @@ function useOverviewState() {
     pending: false,
     receivedAt: 0,
   });
-  const decideRes =
-    overviewTab
-      ? overviewPart<DecideResult>(
-          // Prices may remain visible on a failed poll. Action grants may
-          // not: hide on the FIRST failure, not the banner's second-failure debounce.
-          nasReady && overview.failStreak === 0 ? overview.data?.decide : null,
-        )
-      : emptyResource<DecideResult>();
+  const decideRes = overviewTab
+    ? overviewPart<DecideResult>(
+        // Prices may remain visible on a failed poll. Action grants may
+        // not: hide on the FIRST failure, not the banner's second-failure debounce.
+        nasReady && overview.failStreak === 0 ? overview.data?.decide : null,
+      )
+    : emptyResource<DecideResult>();
 
   const statsSummaryPoll = useResource<StatsSummary>(
     // Die Güte-Kacheln im System-Tab, das Labor und die Schwellen-Tabelle
@@ -929,9 +983,10 @@ function useOverviewState() {
   const asStatsResource = (
     source: ResourceState<StatsSummary>,
   ): ResourceState<StatsSummary> => {
-    const raw = source.data as
-      | { error_code?: string; quality_metrics?: unknown }
-      | null;
+    const raw = source.data as {
+      error_code?: string;
+      quality_metrics?: unknown;
+    } | null;
     if (
       raw &&
       typeof raw === "object" &&
@@ -946,12 +1001,9 @@ function useOverviewState() {
     ? asStatsResource(overviewPart<StatsSummary>(overview.data?.stats_summary))
     : asStatsResource(statsSummaryPoll);
 
-  const dueEpisodesRes =
-    overviewTab
-      ? overviewPart<{ count: number; episodes: any[] }>(
-          overview.data?.episodes,
-        )
-      : emptyResource<{ count: number; episodes: any[] }>();
+  const dueEpisodesRes = overviewTab
+    ? overviewPart<{ count: number; episodes: any[] }>(overview.data?.episodes)
+    : emptyResource<{ count: number; episodes: any[] }>();
 
   // A3/A6: Wallet-Verlauf (Liste der Belege) für Storno + Export.
   //
@@ -961,17 +1013,19 @@ function useOverviewState() {
   // Beleg im Speicher und zeigte „Noch keine Belege“, obwohl der Ledger
   // gefüllt war. Unter „Einstellungen“ holt die Liste sich ihren Stand jetzt selbst —
   // dieselbe Route `GET /api/v1/fills`, dieselbe Form (B7-Muster).
+  // Erst mit offenem Blatt — die Einstellungen-Seite allein braucht die
+  // Belegliste nicht (0.78.0: kein Poll für eine Ansicht, die sie nicht zeigt).
+  const fillsWanted = tab === "settings" && settingsFillsOpen;
   const walletFills = useResource<Fills>(
-    tab === "settings" ? "/api/v1/fills" : null,
+    fillsWanted ? "/api/v1/fills" : null,
     120000,
     refresh,
   );
-  const fillsRes =
-    tab === "settings"
-      ? walletFills
-      : overviewTab
-        ? overviewPart<Fills>(overview.data?.fills)
-        : emptyResource<Fills>();
+  const fillsRes = fillsWanted
+    ? walletFills
+    : tab !== "settings" && overviewTab
+      ? overviewPart<Fills>(overview.data?.fills)
+      : emptyResource<Fills>();
 
   const history = useResource<
     { points: Point[]; error_code: string | null } & DataReach
@@ -985,19 +1039,19 @@ function useOverviewState() {
   // GUI-Neuentwurf §5.2: Verlauf der Stationen-View (eigener Poll nur für
   // die gewählte Station — „Verlauf schlägt Moment“). Der Zeitraum ist
   // derselbe Umschalter wie im Stations-Labor (24 h / 3 Tage / 7 Tage).
-  const series7d = useResource<
-    { points: Point[]; error_code: string | null } | null
-  >(
+  const series7d = useResource<{
+    points: Point[];
+    error_code: string | null;
+  } | null>(
     (tab === "stations" || tab === "jetzt") && identity
       ? `/api/v1/series?${identity}&hours=${tab === "jetzt" ? Math.max(72, stationsSpanHours) : stationsSpanHours}`
       : null,
     60000,
     refresh,
   );
-  const dayStrip =
-    overviewTab
-      ? overviewPart<Overview["day"]>(overview.data?.day)
-      : emptyResource<Overview["day"]>();
+  const dayStrip = overviewTab
+    ? overviewPart<Overview["day"]>(overview.data?.day)
+    : emptyResource<Overview["day"]>();
   const forecast = useResource<Forecast>(
     tab === "labor" && identity ? `/api/v1/forecast?${identity}` : null,
     300000,
@@ -1027,11 +1081,10 @@ function useOverviewState() {
     120000,
     refresh,
   );
-  // A4: Monats-/Jahresbilanz — die Summen-Kacheln stehen im Alltag, die
-  // volle Monats-/Jahres-Sicht in „Einstellungen → Bilanz“. Seit Phase 3 lesen nur
-  // noch „Einstellungen“ diese Antwort; die alte Werkstatt-Kachel ist entfallen.
+  // A4: Monats-/Jahresbilanz — dieselbe Bedingung wie die Liste: nur das
+  // offene Belege-und-Bilanz-Blatt in „Einstellungen“ liest sie.
   const fillsSummary = useResource<FillsSummary>(
-    tab === "settings" ? "/api/v1/fills/summary" : null,
+    fillsWanted ? "/api/v1/fills/summary" : null,
     120000,
     refresh,
   );
@@ -1091,7 +1144,8 @@ function useOverviewState() {
           ? "Ein Eintrag ist lokal vorgemerkt und geht raus, sobald die Verbindung steht."
           : `${queueSummary.open} Einträge sind lokal vorgemerkt und gehen raus, sobald die Verbindung steht.`;
     const age =
-      queueSummary.oldestOpenMs != null && queueSummary.oldestOpenMs >= 60 * 60 * 1000
+      queueSummary.oldestOpenMs != null &&
+      queueSummary.oldestOpenMs >= 60 * 60 * 1000
         ? ` Der älteste wartet seit ${ageWord(
             Math.floor(queueSummary.oldestOpenMs / 60000),
           )}.`
@@ -1162,7 +1216,9 @@ function useOverviewState() {
   // Entscheidungsantwort.
   const nowPricesAt = useMemo(() => {
     const stamps = fresh
-      .map((row) => (row.observed_at ? Date.parse(row.observed_at) : Number.NaN))
+      .map((row) =>
+        row.observed_at ? Date.parse(row.observed_at) : Number.NaN,
+      )
       .filter((ms) => Number.isFinite(ms));
     if (!stamps.length) return data?.generated_at ?? null;
     return new Date(Math.max(...stamps)).toISOString();
@@ -1177,10 +1233,9 @@ function useOverviewState() {
     if (target === "overview") gotoTab("jetzt");
     else if (target === "stations") gotoTab("stations");
     else if (target === "vehicle") {
-      setSettingsSection("vehicle");
       gotoTab("settings");
     } else if (target === "fills") {
-      setSettingsSection("fills");
+      setSettingsFillsOpen(true);
       gotoTab("settings");
     } else if (target === "labor") gotoTab("labor");
     else gotoTab("system");
@@ -1199,9 +1254,7 @@ function useOverviewState() {
   const m7Line = statsSummaryRes.data ? m7GateLine(liveAdvice) : null;
   // A21-B5.1: Gültigkeitsbereich der M7-Freigabe benennen — historische
   // Güte, Vertragsfreigabe und Aktionsfreigabe bleiben getrennt sichtbar.
-  const m7ScopeLine = statsSummaryRes.data
-    ? m7GateScopeLine(liveAdvice)
-    : null;
+  const m7ScopeLine = statsSummaryRes.data ? m7GateScopeLine(liveAdvice) : null;
   const transitionLine = transitionRuleLine(livePhase);
   // Hint für leere Güte-Kacheln im System-Tab: erklärt die fehlende
   // Live-Abdeckung, ohne eine Tageszahl zu erfinden.
@@ -1226,7 +1279,7 @@ function useOverviewState() {
     dueEpisode?.last_snapshot?.station_id || selected?.station_id || null;
   const dueFillPrice = promptFillPrice(dueFillStationId, stations, price);
 
-  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Einstellungen → Belege“
+  // E2/E3: die Sofort-Validierung des Belegs lebt jetzt in „Einstellungen → Belege und Bilanz“
   // (quickDraft), dieselben Grenzen wie der Server (app/feedback.py).
 
   // B4: Alarme aus /health für den roten/grünen Punkt im Header.
@@ -1255,7 +1308,7 @@ function useOverviewState() {
     if (livePrice === null || !fillStationId) {
       if (fillStationId) setQuickStationId(fillStationId);
       setQuickPriceStr("");
-      setSettingsSection("fills");
+      setSettingsFillsOpen(true);
       gotoTab("settings");
       feedback("warn", NO_LIVE_PRICE_LINE, 6000);
       return;
@@ -1281,7 +1334,10 @@ function useOverviewState() {
       return;
     }
     if (res?.error_code) {
-      feedback("error", saveFailedNote(problem(res.error_code) || res.error_code));
+      feedback(
+        "error",
+        saveFailedNote(problem(res.error_code) || res.error_code),
+      );
       return;
     }
     feedback("ok", FILL_BOOKED_LINE, 4000);
@@ -1306,7 +1362,9 @@ function useOverviewState() {
         "error",
         quickDraft.stationMissing
           ? "Ohne Station kein Beleg — bitte zuerst eine Station wählen."
-          : quickDraft.litersError ?? quickDraft.priceError ?? "Eingabe prüfen.",
+          : (quickDraft.litersError ??
+              quickDraft.priceError ??
+              "Eingabe prüfen."),
       );
       return;
     }
@@ -1332,7 +1390,10 @@ function useOverviewState() {
       return;
     }
     if (res?.error_code) {
-      feedback("error", saveFailedNote(problem(res.error_code) || res.error_code));
+      feedback(
+        "error",
+        saveFailedNote(problem(res.error_code) || res.error_code),
+      );
       return;
     }
     // GUI-Neuentwurf: Einordnung des gerade gebuchten Preises gegen den
@@ -1415,8 +1476,8 @@ function useOverviewState() {
     setLaborFocus,
     openLabor,
     handleNowNavigate,
-    settingsSection,
-    setSettingsSection,
+    settingsFillsOpen,
+    setSettingsFillsOpen,
     searchFocusSignal,
     // Share
     shareNote,
@@ -1611,7 +1672,9 @@ export function OverviewProvider(props: {
 function LiveOverviewProvider({ children }: { children: ReactNode }) {
   const state = useOverviewState();
   return (
-    <OverviewContext.Provider value={state}>{children}</OverviewContext.Provider>
+    <OverviewContext.Provider value={state}>
+      {children}
+    </OverviewContext.Provider>
   );
 }
 

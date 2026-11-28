@@ -22,7 +22,7 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
   "state/overview.tsx": {
     count: 1,
     reason:
-      "Vorbelegung des Beleg-Preises (Einstellungen → Belege): Punkt wie beim Tippen (commaToDot)",
+      "Vorbelegung des Beleg-Preises (Einstellungen → Belege und Bilanz): Punkt wie beim Tippen (commaToDot)",
   },
   "components/LineChart.tsx": {
     count: 6,
@@ -32,12 +32,6 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
 
 /** Dateien, die sichtbar formatieren und deshalb sauber sein müssen. */
 const CLEAN = [
-  "concept/App.tsx",
-  "concept/ConceptPanel.tsx",
-  "concept/ExploreScreens.tsx",
-  "concept/LabScreen.tsx",
-  "concept/PhoneApp.tsx",
-  "concept/ui.tsx",
   "Dashboard.tsx",
   "components/AppHeader.tsx",
   "components/CellError.tsx",
@@ -63,7 +57,6 @@ const CLEAN = [
   "views/Jetzt.tsx",
   "views/Stationen.tsx",
   "views/Woche.tsx",
-  "views/Ich.tsx",
   "lab.ts",
   "views/Labor.tsx",
   "system.ts",

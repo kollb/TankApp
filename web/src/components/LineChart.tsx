@@ -1,4 +1,5 @@
-// Adapted from sample/good statistic gui: retain SVG geometry, palette and axes.
+// SVG-Geometrie, Palette und Achsen folgen der Chart-Vorlage aus
+// `docs/produkt/GUI-VORLAGEN.md`.
 
 import React, { useId, useState } from "react";
 import { compressedAxis, euro, gapBands } from "../data";

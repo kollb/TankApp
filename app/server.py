@@ -323,6 +323,25 @@ class Scheduler:
         # B6: Startwunsch aus dem GUI (POST /api/v1/jobs/{job}/run).
         self.manual_flags: set[str] = set()
 
+    def _since_start(self, name: str) -> float | None:
+        """Sekunden seit dem letzten Start — ``None``, wenn es keinen gab.
+
+        ``time.monotonic()`` zählt ab Systemstart (Linux: Bootzeit), nicht ab
+        Prozessstart. Ein Sentinel ``0.0`` für „nie gestartet“ machte damit
+        jeden noch nie gelaufenen Job auf einem frisch gebooteten Rechner zu
+        einem „gerade eben gelaufen“: Auf einem CI-Runner mit < 60 s Uptime
+        fiel der manuelle Start still in den Debounce (Befund 28.11.2026 —
+        der Push-Lauf von 0.78.0 scheiterte genau daran, während derselbe
+        Commit Minuten später grün war).
+        """
+        started = self.last_start.get(name)
+        return None if started is None else time.monotonic() - started
+
+    @staticmethod
+    def _due_in(waited: float | None, gap: float) -> float:
+        """Restzeit bis zum nächsten erlaubten Start (0.0 = sofort)."""
+        return 0.0 if waited is None else max(0.0, gap - waited)
+
     def start(self):
         for name in INTERVALS:
             thread = threading.Thread(target=self.loop, args=(name,), daemon=True)
@@ -355,8 +374,8 @@ class Scheduler:
             process = self.processes.get(name)
             if process is not None and process.poll() is None:
                 return {"status": "running", "job": name}
-        waited = time.monotonic() - self.last_start.get(name, 0.0)
-        if waited < MANUAL_MIN_GAP_S:
+        waited = self._since_start(name)
+        if waited is not None and waited < MANUAL_MIN_GAP_S:
             return {
                 "status": "debounced",
                 "job": name,
@@ -385,7 +404,8 @@ class Scheduler:
     def admit_trigger(self, name, watermark):
         """Entscheidet über einen Webhook-Trigger: Debounce + Idempotenz."""
         gap = TRIGGER_MIN_GAP_S.get(name, DEFAULT_TRIGGER_GAP_S)
-        if time.monotonic() - self.last_start.get(name, 0.0) < gap:
+        waited = self._since_start(name)
+        if waited is not None and waited < gap:
             return "debounced"
         state = self.job_state(name)
         if (
@@ -481,7 +501,7 @@ class Scheduler:
             state = self.job_state(name)
             if leftover is not None:
                 gap = TRIGGER_MIN_GAP_S.get(name, DEFAULT_TRIGGER_GAP_S)
-                remaining = gap - (time.monotonic() - self.last_start.get(name, 0.0))
+                remaining = self._due_in(self._since_start(name), gap)
                 follow_delay = min(self.next_delay(name, state), max(0.0, remaining))
                 # Kein wake.set(): sonst kehrt wait() sofort zurück, admit_trigger
                 # debounce't, und die Pending-Marke liegt bis zum Intervall.

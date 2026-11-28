@@ -1,4 +1,5 @@
 import { test, expect, type Response } from "@playwright/test";
+import { openReceipts } from "./nav";
 
 // E2E **ohne Mocks** gegen den Demo-Stack (`ops/quality/demo_server.py`).
 //
@@ -238,14 +239,14 @@ test("Revalidierung im Browser: Aktualisieren schickt das ETag mit", async ({
 // Der Ein-Tipp-Beleg des Fällig-Prompts („Ja, wie empfohlen“) ist mit 0.73.0
 // ersatzlos gestrichen (Entscheidung 04.10.2026). Die Zusage bleibt, nur ihr
 // Ort wechselt: Bestätigt wird dort, wo Belege gepflegt werden — in
-// „Einstellungen → Belege → Tanken erfassen“. Der Legacy-Link `?tab=ich`
-// führt dorthin. Geprüft wird am echten Demo-Server, dass der eingetragene
+// „Einstellungen → Belege und Bilanz → Tanken erfassen“. Der Legacy-Link
+// `?tab=ich` führt dorthin. Geprüft wird am echten Demo-Server, dass der eingetragene
 // Preis unverändert im Beleg landet (`price_source: „manuell“`).
 test("O17: der Beleg trägt den eingetragenen Preis, nie die Prognose", async ({
   page,
 }) => {
   await page.goto("/?tab=ich");
-  await page.getByRole("tab", { name: "Belege", exact: true }).click();
+  await openReceipts(page);
   const form = page.getByRole("region", { name: "Tanken erfassen" });
   await form.getByRole("textbox").nth(0).fill("37.5");
   await form.getByRole("textbox").nth(1).fill("1.777");
