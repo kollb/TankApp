@@ -14,6 +14,10 @@ export function euros(value: number | null | undefined, decimals = 2): string {
   return value == null || !Number.isFinite(value) ? "—" : `${numberFormat(decimals).format(value)} €`;
 }
 
+export function kilometers(value: number | null | undefined, decimals = 1): string {
+  return value == null || !Number.isFinite(value) ? "—" : `${numberFormat(decimals).format(value)} km`;
+}
+
 export function countLabel(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "—" : Math.round(value).toLocaleString("de-DE");
 }

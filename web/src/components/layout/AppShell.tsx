@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { api } from "../../api/client";
+import type { Station, StationsResponse } from "../../api/types";
+import { useAppContext } from "../../state/AppContext";
+import { OverviewPage } from "../../features/overview/OverviewPage";
+import { StationsPage } from "../../features/stations/StationsPage";
+import "../../features/overview/overview.css";
 import { BookOpen, FlaskConical, Home, MapPin, Menu, Server, Settings } from "lucide-react";
 import { Sheet } from "../ui/Sheet";
 import { TopBar } from "./TopBar";
@@ -39,7 +45,16 @@ function NavButton({ id, label, Icon, active, onClick }: { id?: TabId; label: st
 export function AppShell() {
   const [tab, setTab] = useState<TabId>(() => routeFromUrl());
   const [menuOpen, setMenuOpen] = useState(false);
+  const { city, fuel, refreshKey } = useAppContext();
   const overview = useOverview();
+  const [stations, setStations] = useState<Station[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams({ fuel });
+    if (city) query.set("city", city);
+    api.get<StationsResponse>(`stations?${query}`, controller.signal).then((payload) => setStations(Array.isArray(payload.stations) ? payload.stations : [])).catch(() => { if (!controller.signal.aborted) setStations([]); });
+    return () => controller.abort();
+  }, [city, fuel, refreshKey]);
   useEffect(() => {
     const initial = routeFromUrl();
     setTab(initial);
@@ -71,10 +86,8 @@ export function AppShell() {
       <TopBar health={overview.health} generatedAt={dataAge} offline={overview.offline} refresh={overview.refresh} />
       <main className="page-content">
         <h1 className="page-heading">{selected.label}</h1>
-        {overview.error && <div className="panel" role="status" style={{ marginBottom: 14, color: "var(--accent-neutral)" }}>{overview.error}</div>}
-        <section className="panel placeholder-panel" aria-live="polite" aria-busy={overview.loading}>
-          <div><strong>{selected.label}</strong><p style={{ margin: "8px 0 0" }}>{tab === "overview" ? overview.loading ? "Daten werden geladen …" : overview.overview ? "Datenstand geladen" : "Warte auf Backend-Daten" : "Ansicht wird im nächsten Umsetzungspaket aufgebaut."}</p></div>
-        </section>
+        {overview.error && tab !== "overview" && tab !== "stationen" && <div className="panel" role="status" style={{ marginBottom: 14, color: "var(--accent-neutral)" }}>{overview.error}</div>}
+        {tab === "overview" ? <OverviewPage data={overview} stations={stations} navigate={(next) => go(next)} /> : tab === "stationen" ? <StationsPage /> : <section className="panel placeholder-panel"><div><strong>{selected.label}</strong><p style={{ margin: "8px 0 0" }}>Ansicht wird im nächsten Umsetzungspaket aufgebaut.</p></div></section>}
       </main>
       <nav className="mobile-nav" aria-label="Mobile Navigation">
         {mainNav.map(({ id, label, Icon }) => <NavButton key={id} id={id} label={label} Icon={Icon} active={tab === id} onClick={() => go(id)} />)}
