@@ -13,6 +13,21 @@ const DB_NAME = "tankapp-outbox-v2";
 const STORE_NAME = "entries";
 let database: Promise<IDBDatabase> | null = null;
 
+function newEntryId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      return `fill_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+    }
+  } catch {
+    // Older/insecure browser contexts can still queue a non-secret id below.
+  }
+  return `fill_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") return Promise.reject(new Error("IndexedDB ist nicht verfügbar"));
   if (database) return database;
@@ -46,7 +61,7 @@ async function transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectSt
 }
 
 export async function enqueueFill(payload: Record<string, unknown>): Promise<OutboxEntry> {
-  const entry: OutboxEntry = { id: crypto.randomUUID(), kind: "fill", payload, createdAt: new Date().toISOString(), attempts: 0 };
+  const entry: OutboxEntry = { id: newEntryId(), kind: "fill", payload, createdAt: new Date().toISOString(), attempts: 0 };
   await transaction("readwrite", (store) => store.add(entry));
   return entry;
 }

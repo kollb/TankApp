@@ -61,10 +61,13 @@ analysis/     Offline-Selektion und Analysewerkzeuge
 web/          React-GUI sowie Unit- und Browser-Tests
 rp2/          NAS-Proxy, Prognose-Cache und Fallback-GUI
 ops/          Deployment, Backup und Qualitätsmessung
-sample/       GUI-Vorlagen; bleiben als Design-Basis erhalten
 tests/        Python-Tests
 docs/         Thematische Dokumentation; Einstieg: docs/README.md
 ```
+
+Die früheren `sample/`-GUI-Prototypen wurden in 0.78.0 entfernt; die
+Entscheidung und Verweise stehen in
+[GUI-VORLAGEN.md](docs/produkt/GUI-VORLAGEN.md).
 
 `AGENTS.md`, `tankapp.py`, `pyproject.toml`, `requirements-dev.txt` und die
 Git-/Docker-Konfiguration bleiben wegen ihrer technischen Funktion im Root.

@@ -1,59 +1,31 @@
-// Bereichs-Routing: kanonische URLs und Abwärtskompatibilität für alte Links.
-
 import { describe, expect, it } from "vitest";
-import {
-  queryWithTab,
-  sectionFromUrlId,
-  tabFromUrlId,
-  tabToUrlId,
-} from "./routing";
+import { routeFromSearch, urlForTab } from "./routing";
 
-describe("Bereich in der URL", () => {
-  it("kanonische Bereiche haben deutsche URL-Namen und zurück", () => {
-    expect(tabToUrlId("jetzt")).toBe("jetzt");
-    expect(tabToUrlId("stations")).toBe("stationen");
-    expect(tabToUrlId("settings")).toBe("einstellungen");
-    expect(tabToUrlId("glossary")).toBe("glossar");
-    expect(tabFromUrlId("stationen")).toBe("stations");
-    expect(tabFromUrlId("einstellungen")).toBe("settings");
-    expect(tabFromUrlId("glossar")).toBe("glossary");
+describe("App-Bereichs-Routing", () => {
+  it("öffnet ohne tab, bei unbekannten Werten und bei alten Wochenlinks die Übersicht", () => {
+    expect(routeFromSearch("")).toBe("overview");
+    expect(routeFromSearch("?tab=unknown")).toBe("overview");
+    expect(routeFromSearch("?tab=woche")).toBe("overview");
+    expect(routeFromSearch("?tab=week")).toBe("overview");
   });
 
-  it("alte Woche- und Ich-Links landen auf den aktuellen Zielen", () => {
-    expect(tabFromUrlId("woche")).toBe("jetzt");
-    expect(tabFromUrlId("week")).toBe("jetzt");
-    expect(tabFromUrlId("ich")).toBe("settings");
-    expect(tabFromUrlId("settings")).toBe("settings");
-    expect(tabFromUrlId("alltag")).toBe("jetzt");
-    expect(tabFromUrlId("werkstatt")).toBe("labor");
+  it("führt den alten Ich-Link zu Einstellungen und akzeptiert aktuelle Bereiche", () => {
+    expect(routeFromSearch("?tab=ich")).toBe("einstellungen");
+    expect(routeFromSearch("?tab=stationen")).toBe("stationen");
+    expect(routeFromSearch("?tab=LABOR")).toBe("labor");
+    expect(routeFromSearch("?tab=system")).toBe("system");
+    expect(routeFromSearch("?tab=glossar")).toBe("glossar");
   });
 
-  it("fehlende und unbekannte Werte landen im Einstieg — nie im Fehler", () => {
-    expect(tabFromUrlId(null)).toBe("jetzt");
-    expect(tabFromUrlId(undefined)).toBe("jetzt");
-    expect(tabFromUrlId("")).toBe("jetzt");
-    expect(tabFromUrlId("unbekannt")).toBe("jetzt");
+  it("ändert nur den Bereich und erhält Filter, Abschnitt und Hash", () => {
+    expect(urlForTab("/?fuel=e5&section=prognose#details", "labor"))
+      .toBe("/?fuel=e5&section=prognose&tab=labor#details");
+    expect(urlForTab("/?tab=ich&fuel=diesel", "einstellungen"))
+      .toBe("/?tab=einstellungen&fuel=diesel");
   });
 
-  it("der Labor-Abschnitt wird nur akzeptiert, wenn es ihn gibt", () => {
-    expect(sectionFromUrlId("sicherheit")).toBe("sicherheit");
-    expect(sectionFromUrlId("prognose")).toBe("prognose");
-    expect(sectionFromUrlId("unbekannt")).toBeNull();
-    expect(sectionFromUrlId(null)).toBeNull();
-  });
-
-  it("der Bereichswechsel erhält die übrige Query und schreibt aktuelle Namen", () => {
-    expect(queryWithTab("?city=Kiel&fuel=e10", "settings")).toBe(
-      "city=Kiel&fuel=e10&tab=einstellungen",
-    );
-    expect(queryWithTab("?city=Kiel&tab=woche", "jetzt")).toBe("city=Kiel");
-    expect(queryWithTab("?tab=ich", "settings")).toBe("tab=einstellungen");
-    // `section` gilt nur im Labor; anderswo wird es abgeräumt.
-    expect(queryWithTab("?tab=labor&section=prognose", "labor", "sicherheit")).toBe(
-      "tab=labor&section=sicherheit",
-    );
-    expect(queryWithTab("?tab=labor&section=prognose", "settings")).toBe(
-      "tab=einstellungen",
-    );
+  it("lässt die kanonische Übersichts-Startseite ohne überflüssigen tab", () => {
+    expect(urlForTab("/tankapp?fuel=e10#oben", "overview")).toBe("/tankapp?fuel=e10#oben");
+    expect(urlForTab("/?tab=week", "overview")).toBe("/?tab=overview");
   });
 });

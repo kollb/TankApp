@@ -1,421 +1,179 @@
-import { test, expect, type Page } from "@playwright/test";
-import { clickArea, openReceipts } from "./nav";
+import { expect, test, type Page } from "@playwright/test";
+import { mockApi } from "./mockApi";
 
-// Alltagsnavigation: Übersicht und Stationen sind die Haupteinstiege;
-// Einstellungen, Labor, System und Glossar liegen im Studio. Alte Woche- und
-// Ich-Links bleiben als Weiterleitungen erhalten. Mobil liegt das Studio im
-// „Mehr“-Blatt — `clickArea` führt in beiden Rastern zum Bereich.
-
-test("honest setup state and all views", async ({ page }) => {
-  // Auf einem frischen Server ohne Polling-Set zeigt die „Übersicht“ den
-  // grauen S0-Zustand: Grund plus nächster Schritt — kein erfundener Preis,
-  // keine leere Fläche.
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Übersicht", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Einrichten in drei Schritten" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Einrichtung starten" }),
-  ).toBeVisible();
-  // „Stationen“ zeigt auf dem frischen Server die ehrliche Set-Karte —
-  // kein roter Fehler, obwohl /decide ohne Set einen
-  // error_code zurückliefert (Konsequenz fehlender Daten, kein Defekt).
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Erst Stationen einrichten, dann der Atlas" }),
-  ).toBeVisible();
-  // „Labor“ (der ehemalige Werkstatt-Tab) beantwortet seit Batch 2 drei
-  // Fragen: Kann ich vertrauen? · Wie gut ist die Prognose? · Wie rechnet
-  // die App? Ohne abgerechnete Empfehlung nennt Block 1 ehrlich den
-  // Lernstand, statt einen Prozentwert zu erfinden.
-  // B4: mobil ein Tipper tiefer (Studio-Blatt) — `clickArea` in beiden
-  // Rastern.
-  await clickArea(page, "Labor");
-  await expect(
-    page.getByRole("heading", { name: "Stimmt das?", exact: true }),
-  ).toBeVisible();
-  await page.getByText("Warum & Rechenweg", { exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Kann ich vertrauen?", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("die ersten Empfehlungen sind Lern-Fälle", { exact: false }).first(),
-  ).toBeVisible();
-  await clickArea(page, "System");
-  await expect(
-    page.getByRole("heading", {
-      name: "Einmal einrichten. Weiterlaufen lassen.",
-    }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByText("Das gemeinsame Polling-Set fehlt auf diesem Server.")
-      .first(),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBeTruthy();
-});
-
-test("city/fuel changes never mix prices, closures never win", async ({
-  page,
-}) => {
-  // Isolated request fixtures only; no test data is ever written to the running app or InfluxDB.
-  await page.route("**/api/v1/stations?*", async (route) => {
-    const fuel = new URL(route.request().url()).searchParams.get("fuel")!;
-    const record = (
-      id: string,
-      city: string,
-      name: string,
-      value: number | null,
-      status = "open",
-    ) => ({
-      station_id: id,
-      city,
-      name,
-      brand: "Test",
-      fuel,
-      price: value,
-      last_price: value,
-      status,
-      fresh: true,
-      age_minutes: 2,
-      observed_at: new Date().toISOString(),
-      maps_url: null,
-    });
-    const rows =
-      fuel === "e10"
-        ? [
-            record("a", "Frankfurt", "F-Station", 1.709),
-            record("closed", "Frankfurt", "Closed-Station", null, "closed"),
-            record("b", "Gütersloh", "G-Station", 1.689),
-          ]
-        : [
-            record("a", "Frankfurt", "F-Station", null),
-            record("b", "Gütersloh", "G-Station", null),
-          ];
-    await route.fulfill({
-      json: {
-        generated_at: new Date().toISOString(),
-        cities: ["Frankfurt", "Gütersloh"],
-        fuel,
-        stations: rows,
-        connection_error: null,
-        fresh_prices: 2,
-      },
-    });
-  });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  // Die offene F-Station ist die Referenz; die geschlossene Station verliert
-  // nie die Auswahl.
-  const fRow = page.getByRole("button", {
-    name: "F-Station als Referenz und Detail wählen",
-  });
-  await expect(fRow).toBeVisible();
-  await expect(fRow).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
-  await page.getByLabel("Stadt", { exact: true }).selectOption("Gütersloh");
-  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
-  const gRow = page.getByRole("button", {
-    name: "G-Station als Referenz und Detail wählen",
-  });
-  await expect(gRow).toBeVisible();
-  await expect(page.getByText("F-Station", { exact: true })).toHaveCount(0);
-  // C4 (weitergezogen): Die Tankmenge ist ein Default — der Eingabeort ist
-  // jetzt „Einstellungen → Fahrzeug“; die App rechnet haushaltsweit damit weiter.
-  await clickArea(page, "Einstellungen");
-  await page.locator("#liters").fill("55");
-  await expect(page.locator("#liters")).toHaveAttribute(
-    "aria-valuetext",
-    "55 Liter",
-  );
-  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
-  await page.getByRole("button", { name: "Diesel", exact: true }).click();
-  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
-  await expect(page.getByText("1,689", { exact: false })).toHaveCount(0);
-  await page.reload();
-  // Nach dem Reload startet die App wieder in „Übersicht“ — für die
-  // Stationsnamen erneut dorthin wechseln.
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  await page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" }).click();
-  await expect(page.getByLabel("Stadt", { exact: true })).toHaveValue(
-    "Gütersloh",
-  );
-  await expect(page.getByText("Noch kein frischer Preis")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Diesel", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Auswahl übernehmen" }).click();
-  // Die Tankmenge übersteht den Reload (geräte-lokal gespeichert).
-  await clickArea(page, "Einstellungen");
-  await expect(page.locator("#liters")).toHaveValue("55");
-});
-
-test("Einstellungen: Fahrzeug-Defaults, Schwellen read-only, Dark/Light", async ({
-  page,
-}) => {
-  // Fahrzeug, App-Kontext, Entscheidungsschwellen und Darstellung wohnen
-  // gemeinsam im Bereich „Einstellungen“. Die Serverinstanz absichtlich ohne
-  // Polling-Set bekommt eine isolierte Summary-Response für die Schwellen.
-  await page.route("**/api/v1/stats/summary?*", async (route) => {
-    await route.fulfill({
-      json: {
-        generated_at: new Date().toISOString(),
-        fuel: "e10",
-        city: "Frankfurt",
-        thresholds: {
-          wait_eur_high: 2,
-          wait_p_high: 0.5,
-          wait_eur_mid: 1,
-          wait_p_mid: 0.4,
-          elsewhere_net_eur: 1.5,
-          elsewhere_p: 0.5,
-          elsewhere_borderline_eur: 0.5,
-          now_eur: 1,
-          now_p: 0.5,
-        },
-        threshold_tuning: null,
-        error_code: null,
-      },
-    });
-  });
-  await page.goto("/");
-  await clickArea(page, "Einstellungen");
-  // Unterseiten-Segment-Steuerung: ARIA-Tabs (kein Button-Rollenspiel).
-  await page.getByRole("tab", { name: "Fahrzeug", exact: true }).click();
-
-  // Alle Defaults an einem Ort — die Eingabeorte, die im alten
-  // Einstellungen-Tab verteilt lagen (Tankmenge, Verbrauch, Zeitwert,
-  // Tempo, Fahrtcharakter) plus Tankgröße.
-  await expect(page.locator("#liters")).toBeVisible();
-  await expect(page.locator("#consumption")).toBeVisible();
-  await expect(page.locator("#timeValue")).toBeVisible();
-  await expect(page.locator("#speed")).toBeVisible();
-  await expect(page.locator("#detourMode")).toBeVisible();
-  await expect(page.locator("#tankCapacity")).toBeVisible();
-
-  await page
-    .getByRole("tab", { name: "App", exact: true })
-    .click();
-  // Kontext: Stadt und Kraftstoff am Wirkungsort.
-  await expect(page.locator("#settings-city")).toBeVisible();
-
-  // Aktive Schwellen-Tabelle aus /api/v1/stats/summary — schreibgeschützt,
-  // Startwerte der Engine (ohne Daten keine Abweichung möglich). Der
-  // Endpunkt steht im Tooltip, nicht im Fließtext (MICROCOPY §6).
-  // exact: dieselbe Wort steht auch im sr-only-Caption der Tabelle.
-  const source = page.getByText("schreibgeschützt", { exact: true });
-  await expect(source).toBeVisible();
-  await expect(source).toHaveAttribute(
-    "title",
-    "Quelle: /api/v1/stats/summary",
-  );
-  const table = page.locator("table").filter({ hasText: "Mindest-Ersparnis" });
-  await expect(
-    table.locator("tr", { hasText: "Warten (blau)" }).first(),
-  ).toContainText("2,00 €");
-  await expect(
-    table.locator("tr", { hasText: "Mindest-Trefferquote" }).first(),
-  ).toContainText("50 %");
-  // Read-only: kein einziges Eingabefeld in der Schwellen-Tabelle.
-  await expect(table.locator("input")).toHaveCount(0);
-
-  // Dark/Light-Umschaltung — wird auf <html> angewendet und übersteht
-  // einen Reload (Bootstrap-Script in index.html, localStorage).
-  // Seit GUI v2 ist „Hell (Standard)“ der Default, „Dunkel“ die Option —
-  // die Prüfung läuft spiegelbildlich zur früheren dunklen Basis.
-  await page
-    .getByRole("button", { name: "Dunkel", exact: true })
-    .click();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.reload();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  // Zurück auf den Default (hell), damit andere Tests nicht von dieser
-  // Ansicht abhängen. Nach dem Reload startet die App in „Übersicht“.
-  await clickArea(page, "Einstellungen");
-  await page
-    .getByRole("tab", { name: "App", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Hell (Standard)", exact: true })
-    .click();
-  await expect(page.locator("html")).toHaveClass(/light/);
-});
-
-// ---------------------------------------------------------------------------
-// GUI-UX-BEFUND U4: Jede Ansicht ist eine URL.
-//
-// Vorher kannte die Adresse keinen Bereich: Lesezeichen landeten immer auf
-// „Übersicht“, der Browser-Zurück-Knopf vergaß die Tabs, und der Teilen-Knopf
-// teilte Filter statt Antwort. Jetzt reist der Bereich als `?tab=…` mit —
-// ein Test pro Bereich: Link öffnen → richtiger Bereich.
-// ---------------------------------------------------------------------------
-const AREA_URLS: Array<{ url: string; heading: string }> = [
-  { url: "/", heading: "Übersicht" },
-  { url: "/?tab=stationen", heading: "Erst Stationen einrichten, dann der Atlas" },
-  { url: "/?tab=woche", heading: "Übersicht" },
-  { url: "/?tab=ich", heading: "Einstellungen" },
-  { url: "/?tab=einstellungen", heading: "Einstellungen" },
-  { url: "/?tab=labor", heading: "Stimmt das?" },
-  { url: "/?tab=system", heading: "Einmal einrichten. Weiterlaufen lassen." },
-  { url: "/?tab=glossar", heading: "Glossar" },
-];
-
-for (const area of AREA_URLS) {
-  test(`U4: ${area.url || "/"} öffnet den Bereich „${area.heading}“`, async ({
-    page,
-  }) => {
-    await page.goto(area.url);
-    await expect(
-      page.getByRole("heading", { name: area.heading, exact: true }),
-    ).toBeVisible();
-  });
-}
-
-test("U4: Labor-Link mit Abschnitt öffnet den Block", async ({ page }) => {
-  await page.goto("/?tab=labor&section=sicherheit");
-  await expect(
-    page.getByRole("heading", { name: "Stimmt das?", exact: true }),
-  ).toBeVisible();
-  // Der Abschnitt ist sichtbar — ohne `section` gäbe es denselben Block,
-  // aber ohne Sprung. Der Beweis-Block trägt die Zählung.
-  await expect(page.locator("#labor-sicherheit")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Kann ich vertrauen?", exact: true }),
-  ).toBeVisible();
-});
-
-test("U4: Browser-Zurück fährt die Bereiche rückwärts ab", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Übersicht", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Stationen", exact: true }).click();
-  await expect(
-    page.getByRole("heading", {
-      name: "Erst Stationen einrichten, dann der Atlas",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await page.goBack();
-  await expect(
-    page.getByRole("heading", { name: "Übersicht", exact: true }),
-  ).toBeVisible();
-});
-
-test("U4/Nachbesserung: „/?tab=ich“ direkt öffnen zeigt den Belegverlauf", async ({
-  page,
-}) => {
-  // Befund aus der Mobil-Messung (mobile.spec): Der Verlauf kam als Teil der
-  // Overview-Antwort, die nur für Übersicht/Stationen bereitgestellt wird.
-  // Der Legacy-Link `?tab=ich` zeigte deshalb „Noch keine Belege“, selbst wenn
-  // der Ledger gefüllt war — der geteilte Link führte auf
-  // eine leere Liste. Seit 0.78.0 holt „Belege und Bilanz“ seinen Stand selbst
-  // über `GET /api/v1/fills` — aber erst, wenn das Blatt offen ist; die
-  // Attrappe hält genau diese Route fest.
-  await page.route("**/api/v1/fills", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        generated_at: "2026-09-16T09:00:00+00:00",
-        count: 1,
-        fills: [
-          {
-            id: "beleg-kaltstart",
-            episode_id: null,
-            station_id: "00000000-0000-0000-0000-0000000000d1",
-            station_name: "Kaltstart-Tank Nord",
-            tanked_at: "2026-09-15T18:30:00+02:00",
-            clock_hour: 18.5,
-            liters: 41.2,
-            price_paid: 1.729,
-            price_source: "explicit",
-            fuel: "e10",
-            source: "manual",
-            compliance: "unrelated",
-            saved_vs_always_now_eur: 0.8,
-          },
-        ],
-        error_code: null,
-      }),
-    });
-  });
-  await page.goto("/?tab=ich");
-  await openReceipts(page);
-  // Karte (mobil) und Tabelle (ab `sm`) tragen denselben Namen — die
-  // verdeckte Fassung darf den Treffer nicht bestimmen.
-  await expect(
-    page
-      .getByText("Kaltstart-Tank Nord", { exact: false })
-      .filter({ visible: true })
-      .first(),
-  ).toBeVisible();
-});
-
-test("Kontext-Sheet: Escape und Tastaturfokus kehren zum Auslöser zurück", async ({ page }) => {
-  await page.goto("/");
-  const trigger = page.getByRole("button", { name: "Stadt und Kraftstoff auswählen" });
-  await trigger.click();
-  const sheet = page.getByRole("dialog", { name: "Stadt und Kraftstoff", exact: true });
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Stadt und Kraftstoff schließen" })).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(sheet.getByRole("button", { name: "Auswahl übernehmen" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(sheet).toBeHidden();
-  await expect(trigger).toBeFocused();
-});
-
-test("Kompakte Kopfzeile: Profil und Aktionen bleiben per Blatt erreichbar", async ({ page }) => {
-  await page.goto("/");
+async function navigateTo(page: Page, label: string): Promise<void> {
   const width = page.viewportSize()?.width ?? 1440;
-  const trigger = page.getByRole("button", { name: "Fahrzeug-Profil und Aktionen" });
-  const visibleProfile = page.getByLabel("Fahrzeug-Profil", { exact: true }).filter({ visible: true });
-  const visibleShare = page.getByRole("button", { name: "Ansicht als Link teilen" }).filter({ visible: true });
-  const visibleRefresh = page.getByRole("button", { name: "Daten aktualisieren" }).filter({ visible: true });
-
-  if (width >= 1280) {
-    await expect(trigger).toBeHidden();
-    await expect(visibleProfile).toHaveCount(1);
-    await expect(visibleShare).toHaveCount(1);
-    await expect(visibleRefresh).toHaveCount(1);
+  if (width < 1024) {
+    const mobile = page.getByRole("navigation", { name: "Mobile Navigation" });
+    if (label === "Übersicht" || label === "Stationen") {
+      await mobile.getByRole("button", { name: label, exact: true }).click();
+      return;
+    }
+    await mobile.getByRole("button", { name: "Menü", exact: true }).click();
+    await page.getByRole("dialog", { name: "Bereiche" })
+      .getByRole("button", { name: label, exact: true }).click();
     return;
   }
+  await page.getByRole("complementary", { name: "Hauptnavigation" })
+    .getByRole("button", { name: label, exact: true }).click();
+}
 
-  await expect(trigger).toBeVisible();
-  await expect(visibleProfile).toHaveCount(0);
-  await expect(visibleShare).toHaveCount(0);
-  await expect(visibleRefresh).toHaveCount(0);
-  await trigger.click();
+test("current routes retain aliases, browser history, and active navigation", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?tab=ich");
+  await expect(page.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBe("einstellungen");
 
-  const sheet = page.getByRole("dialog", { name: "Profil und Aktionen", exact: true });
+  await navigateTo(page, "Stationen");
+  await expect(page.getByRole("heading", { level: 1, name: "Stationen", exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBe("stationen");
+  const stationNav = (page.viewportSize()?.width ?? 1440) < 1024
+    ? page.getByRole("navigation", { name: "Mobile Navigation" }).getByRole("button", { name: "Stationen", exact: true })
+    : page.getByRole("complementary", { name: "Hauptnavigation" }).getByRole("button", { name: "Stationen", exact: true });
+  await expect(stationNav).toHaveAttribute("aria-current", "page");
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Einstellungen", exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBe("einstellungen");
+  const settingsNav = (page.viewportSize()?.width ?? 1440) < 1024
+    ? page.getByRole("navigation", { name: "Mobile Navigation" }).getByRole("button", { name: "Menü", exact: true })
+    : page.getByRole("complementary", { name: "Hauptnavigation" }).getByRole("button", { name: "Einstellungen", exact: true });
+  await expect(settingsNav).toHaveAttribute("aria-current", "page");
+});
+
+test("the overview renders current prices and never releases a blocked action", async ({ page }) => {
+  await mockApi(page, { blocked: true });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Übersicht", exact: true })).toBeVisible();
+  await expect(page.locator(".decision-card h2")).toHaveText("Preisvergleich");
+  await expect(page.locator(".decision-metric")).toHaveText("1,699 €/L");
+  await expect(page.getByRole("status")).toContainText("Kalibrierungsfreigabe steht aus.");
+  await expect(page.getByText(/Erwarteter Vorteil/)).toHaveCount(0);
+  await expect(page.locator(".price-curve[role='img']")).toBeVisible();
+});
+
+test("activating a profile also updates the selected fuel for station requests", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/?tab=einstellungen");
+  await page.getByRole("tab", { name: "Profile", exact: true }).click();
+  await page.getByRole("combobox", { name: "Aktives Profil" }).selectOption("diesel-car");
+
+  await expect(page.getByRole("combobox", { name: "Kraftstoff" }).first()).toHaveValue("diesel");
+  await expect.poll(() => api.activeProfileId).toBe("diesel-car");
+  await expect.poll(() => api.requests.some((request) => request.includes("stations?fuel=diesel"))).toBe(true);
+  await expect(page.getByRole("status")).toContainText("Gespeichert.");
+
+  await page.getByRole("combobox", { name: "Stadt" }).selectOption("Frankfurt");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("tankapp.v2.city"))).toBe('"Frankfurt"');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("tankapp.v2.fuel"))).toBe('"diesel"');
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Stadt" })).toHaveValue("Frankfurt");
+  await expect(page.getByRole("combobox", { name: "Kraftstoff" }).first()).toHaveValue("diesel");
+  await page.getByRole("tab", { name: "Profile", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Aktives Profil" })).toHaveValue("diesel-car");
+});
+
+test("the lab renders the server reliability-bin contract", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?tab=labor");
+  await expect(page.getByRole("heading", { name: "Empirische Güte" })).toBeVisible();
+  await expect(page.locator(".bin-chart > div").first()).toHaveAttribute(
+    "title",
+    "0,0–0,2: Prognose 0,1, gemessen 0,5, n=2",
+  );
+  await expect(page.getByText("Keine Kalibrierungs-Bins verfügbar.")).toHaveCount(0);
+});
+
+test("mobile navigation is labelled, keyboard-dismissible, and has no page overflow", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1440) >= 1024, "Responsive navigation is only shown below 1024 px.");
+  await mockApi(page);
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Mobile Navigation" });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole("button")).toHaveText(["Übersicht", "Stationen", "Menü"]);
+
+  const menu = nav.getByRole("button", { name: "Menü", exact: true });
+  await menu.click();
+  const sheet = page.getByRole("dialog", { name: "Bereiche" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Profil und Aktionen schließen" })).toBeFocused();
-  await expect(sheet.locator('select[aria-label="Fahrzeug-Profil"]')).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Fahrzeug-Profile verwalten" })).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Ansicht als Link teilen" })).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Daten aktualisieren" })).toBeVisible();
-
   await page.keyboard.press("Escape");
-  await expect(sheet).toBeHidden();
-  await expect(trigger).toBeFocused();
+  await expect(sheet).toHaveCount(0);
+  await expect(menu).toBeFocused();
+  const overflow = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    offenders: Array.from(document.body.querySelectorAll("*"))
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        className: typeof element.className === "string" ? element.className : "",
+        text: (element.textContent ?? "").trim().replace(/\\s+/g, " ").slice(0, 60),
+        left: Math.round(element.getBoundingClientRect().left),
+        right: Math.round(element.getBoundingClientRect().right),
+        overflowX: getComputedStyle(element).overflowX,
+      }))
+      .filter((element) => element.right > window.innerWidth + 1 && element.left >= 0)
+      .slice(0, 12),
+  }));
+  expect(overflow.document, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.viewport);
+});
 
-  await trigger.click();
-  await sheet.getByRole("button", { name: "Fahrzeug-Profile verwalten" }).click();
-  await expect(sheet).toBeHidden();
-  const manager = page.getByRole("dialog", { name: "Fahrzeug-Profile", exact: true });
-  await expect(manager).toBeVisible();
-  await manager.getByRole("button", { name: "Profil-Verwaltung schließen" }).click();
-  await expect(manager).toBeHidden();
+test("every current page fits the narrow mobile viewport", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1440) >= 1024, "Responsive layouts are only shown below 1024 px.");
+  await mockApi(page);
+  const views = [
+    { tab: "overview", title: "Übersicht", ready: ".decision-card" },
+    { tab: "stationen", title: "Stationen", ready: ".station-list-card" },
+    { tab: "labor", title: "Labor", ready: ".feature-stack" },
+    { tab: "system", title: "System", ready: ".feature-stack" },
+    { tab: "einstellungen", title: "Einstellungen", ready: ".segmented" },
+    { tab: "glossar", title: "Glossar", ready: ".table-scroll" },
+  ];
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: width === 320 ? 720 : 844 });
+    for (const view of views) {
+      await page.goto(`/?tab=${view.tab}`);
+      await expect(page.locator("h1.page-heading")).toHaveText(view.title);
+      await expect(page.locator(view.ready).first()).toBeVisible();
+      const overflow = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+        layout: [".page-content", ".feature-stack", ".feature-grid", ".feature-grid > .panel", ".metric-grid"]
+          .map((selector) => {
+            const element = document.querySelector(selector);
+            if (!element) return { selector, missing: true };
+            const style = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            return { selector, left: Math.round(box.left), right: Math.round(box.right), width: Math.round(box.width), minWidth: style.minWidth, gridColumns: style.gridTemplateColumns };
+          }),
+        offenders: Array.from(document.body.querySelectorAll("*"))
+          .map((element) => ({
+            tag: element.tagName.toLowerCase(),
+            className: typeof element.className === "string" ? element.className : "",
+            text: (element.textContent ?? "").trim().replace(/\\s+/g, " ").slice(0, 60),
+            left: Math.round(element.getBoundingClientRect().left),
+            right: Math.round(element.getBoundingClientRect().right),
+            overflowX: getComputedStyle(element).overflowX,
+          }))
+          .filter((element) => element.right > window.innerWidth + 1 && element.left >= 0)
+          .slice(0, 8),
+      }));
+      expect(overflow.document, `${view.tab} overflows at ${width}px: ${JSON.stringify(overflow)}`)
+        .toBeLessThanOrEqual(overflow.viewport);
+    }
+  }
+});
+
+test("refresh revalidates the cached overview with its ETag", async ({ page }) => {
+  await mockApi(page);
+  const responses: number[] = [];
+  page.on("response", (response) => {
+    if (response.url().includes("/api/v1/overview")) responses.push(response.status());
+  });
+  await page.goto("/");
+  await expect(page.locator(".decision-card h2")).toHaveText("Jetzt tanken");
+  await expect.poll(() => responses).toContain(200);
+  await page.getByRole("button", { name: "Daten aktualisieren" }).click();
+  await expect.poll(() => responses).toContain(304);
+  await expect(page.locator(".decision-card h2")).toHaveText("Jetzt tanken");
 });

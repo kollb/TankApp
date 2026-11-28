@@ -10,6 +10,7 @@ import { Card } from "../../components/ui/Card";
 import { Badge } from "../../components/ui/Badge";
 import { euroPerLiter, centsPerLiter, euros, kilometers, ageLabel } from "../../utils/format";
 import { StationLeafletMap } from "./StationLeafletMap";
+import { referenceStationId } from "./logic";
 
 type NearbyAlternative = NonNullable<DecisionResponse["alternatives_nearby"]>[number] & { net_eur?: number; ref_price_fresh?: boolean; price_fresh?: boolean };
 const selectedKey = "tankapp.v2.stations.selected";
@@ -33,6 +34,7 @@ export function StationsPage() {
   const [pinned, setPinned] = useState(stored(pinnedKey));
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyFresh, setOnlyFresh] = useState(false);
   const [compareA, setCompareA] = useState("");
@@ -40,20 +42,36 @@ export function StationsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
+    setDecisionError(null);
+    setPayload(null);
+    setDecision(null);
     const query = queryString(city, fuel);
-    void Promise.all([api.get<StationsResponse>(`stations?${query}`, controller.signal), api.get<DecisionResponse>(`decide?${query}`, controller.signal)])
-      .then(([stations, result]) => { setPayload(stations); setDecision(result); })
-      .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Stationen konnten nicht geladen werden"); })
-      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    void Promise.allSettled([
+      api.get<StationsResponse>(`stations?${query}`, controller.signal),
+      api.get<DecisionResponse>(`decide?${query}`, controller.signal),
+    ]).then(([stationsResult, decisionResult]) => {
+      if (controller.signal.aborted) return;
+      if (stationsResult.status === "fulfilled") {
+        setPayload(stationsResult.value);
+      } else {
+        setError(stationsResult.reason instanceof Error
+          ? stationsResult.reason.message
+          : "Stationen konnten nicht geladen werden");
+      }
+      if (decisionResult.status === "fulfilled") {
+        setDecision(decisionResult.value);
+      } else {
+        setDecisionError("Nettovergleich gerade nicht verfügbar.");
+      }
+      setBusy(false);
+    });
     return () => controller.abort();
   }, [city, fuel, refreshKey]);
 
   const stations = payload?.stations ?? [];
-  const ordered = useMemo(() => [...stations].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)), [stations]);
-  const referenceId = selected && stations.some((station) => station.station_id === selected) ? selected
-    : pinned && stations.some((station) => station.station_id === pinned) ? pinned
-      : ordered.find((station) => station.fresh && station.price != null)?.station_id ?? "";
+  const referenceId = referenceStationId(stations, selected, pinned);
   const reference = stations.find((station) => station.station_id === referenceId) ?? null;
   const nearby = useMemo(() => stations.filter((station) => (!onlyFresh || (station.fresh && station.price != null)) && `${station.name} ${station.brand ?? ""}`.toLowerCase().includes(search.toLowerCase())), [stations, onlyFresh, search]);
   const alternatives = (decision?.alternatives_nearby ?? []) as NearbyAlternative[];
@@ -63,9 +81,13 @@ export function StationsPage() {
   const togglePin = () => { const next = pinned === referenceId ? "" : referenceId; setPinned(next); try { localStorage.setItem(pinnedKey, next); } catch { /* memory only */ } };
 
   useEffect(() => {
-    if (!referenceId) { setDecision(null); return; }
+    if (!referenceId) { setDecision(null); setDecisionError(null); return; }
     const controller = new AbortController();
-    void api.get<DecisionResponse>(`decide?${queryString(city, fuel, referenceId, liters)}`, controller.signal).then(setDecision).catch(() => { /* Keep overview fallback for reference context. */ });
+    void api.get<DecisionResponse>(`decide?${queryString(city, fuel, referenceId, liters)}`, controller.signal)
+      .then((result) => { setDecision(result); setDecisionError(null); })
+      .catch(() => {
+        if (!controller.signal.aborted) setDecisionError("Nettovergleich gerade nicht verfügbar.");
+      });
     return () => controller.abort();
   }, [referenceId, city, fuel, liters, refreshKey]);
 
@@ -76,6 +98,7 @@ export function StationsPage() {
 
   return <div className="stations-page">
     {error && <div className="status-banner" role="alert">{error}</div>}
+    {decisionError && <p className="muted-line" role="status">{decisionError}</p>}
     <div className="stations-toolbar"><label className="sr-only" htmlFor="station-search">Station suchen</label><input id="station-search" className="text-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Station suchen" />
       <button type="button" className={`filter-button ${onlyFresh ? "selected" : ""}`} aria-pressed={onlyFresh} onClick={() => setOnlyFresh((value) => !value)}>Nur frische Preise</button>
       <button type="button" className="icon-button" onClick={refresh} aria-label="Stationen aktualisieren"><RefreshCw size={16} /></button>

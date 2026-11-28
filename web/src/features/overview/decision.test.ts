@@ -30,9 +30,25 @@ describe("Übersicht: Entscheidungszustände", () => {
     const close = stations.map((station) => ({ ...station, price: 1.70 }));
     expect(getDecisionView(response("no_advice"), false, close).state).toBe("close");
   });
-  it("zeigt fehlende Daten als Prognosezustand statt erfundenem Nullpreis", () => {
+  it("veröffentlicht bei gesperrter Entscheidung weder Handlung noch erwartete Ersparnis", () => {
+    const blocked = getDecisionView(response("wait", {
+      decision_ready: false,
+      blocking_reasons: ["Zu wenig belastbare Daten"],
+    }), false, stations);
+    expect(blocked).toMatchObject({
+      state: "compare",
+      title: "Preisvergleich",
+      price: 1.70,
+      stationName: "A",
+      validUntil: null,
+      saving: null,
+    });
+    expect(blocked.title).not.toBe("Warten");
+  });
+  it("erfindet aus einem gesperrten oder fehlenden Datensatz keinen Preis", () => {
     expect(getDecisionView(null, false).state).toBe("forecast");
-    expect(getDecisionView(response("no_advice"), false, []).price).toBe(1.70);
+    const blocked = getDecisionView(response("no_advice"), false, []);
+    expect(blocked).toMatchObject({ state: "forecast", price: null, stationName: null, saving: null });
   });
 });
 

@@ -31,27 +31,20 @@ export function UpdateBannerView({
   onDismiss: () => void;
 }) {
   return (
-    <div
-      role="status"
-      className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100"
-    >
-      <RefreshCw size={18} className="shrink-0 text-sky-300" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{notice.text}</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-sky-200/80">
-          {notice.note}
-        </p>
+    <div role="status" className="update-banner">
+      <RefreshCw size={18} aria-hidden="true" />
+      <div className="update-banner-copy">
+        <p className="update-banner-title">{notice.text}</p>
+        <p className="update-banner-note">{notice.note}</p>
       </div>
-      <button
-        onClick={onReload}
-        className="m3-btn-relaxed rounded-full px-4 py-2 text-xs font-bold transition"
-      >
+      <button type="button" onClick={onReload} className="update-banner-action">
         {notice.action}
       </button>
       <button
+        type="button"
         onClick={onDismiss}
         aria-label={notice.dismiss}
-        className="rounded-lg px-2 py-2 text-sky-200/80 transition hover:text-slate-100"
+        className="update-banner-dismiss"
       >
         <X size={16} aria-hidden="true" />
       </button>
