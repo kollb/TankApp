@@ -25,7 +25,7 @@ import { FreshnessChip } from "../components/FreshnessChip";
 import { GuideBanner } from "../components/GuideBanner";
 import { LineChart } from "../components/LineChart";
 import { useChartPalette } from "../chartTheme";
-import { weekRanking } from "../week";
+import { calendarHintLines, weekRanking } from "../week";
 import { atlasRows } from "../stations";
 import { Level1Sheet } from "../components/Level1Sheet";
 import { LoadError } from "../components/LoadError";
@@ -199,6 +199,8 @@ export function JetztView(props: JetztViewProps) {
   };
   const answer = nowAnswer(input);
   const why = nowWhy(input);
+  const reasonLines = (decide?.reason_codes ?? []).map((reason) => reason.text);
+  const calendarLines = calendarHintLines(decide?.calendar_hints, now);
   const day = nowDayRow(stripCells);
   const freshness = nowFreshness({ pricesAt, forecastAt, now });
   const validity = nowValidity(answer, now);
@@ -432,6 +434,11 @@ export function JetztView(props: JetztViewProps) {
             ]} xTicks={autoTimeTicks(points[0].x, points[points.length - 1].x)} yFmt={(value) => euro(value, 3)} ariaLabel="Preisverlauf der gewählten Station" />
             {best.price !== null && <p className="mt-2 text-xs text-slate-400">Gestrichelt: aktueller Bestpreis {euroPerLiter(best.price)}</p>}
           </> : <p className="text-sm text-slate-400">{series7d?.pending ? "Verlauf wird geladen." : "Noch nicht genügend Preismeldungen für den Verlauf."}</p>)}
+          {timeView === "week" && calendarLines.length > 0 && (
+            <ul className="mb-3 space-y-1 rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs leading-relaxed text-slate-300" aria-label="Feiertage und Brückentage">
+              {calendarLines.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          )}
           {timeView === "week" && (week.length ? <>
             <LineChart series={[{ name: "Erwarteter Preis", color: colors.accent, pts: weekPoints }]} yFmt={(value) => euro(value, 3)} ariaLabel="Beste Zeitfenster der Woche" />
             <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -473,6 +480,12 @@ export function JetztView(props: JetztViewProps) {
           sentences={why.lines}
           source={why.source}
           labHint={why.labHint}
+          visual={reasonLines.length ? (
+            <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-300">
+              {reasonLines.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          ) : null}
+          visualLabel={reasonLines.length ? "Dazu zählt in dieser Entscheidung:" : undefined}
           onDeepen={(section) => {
             setSheetOpen(false);
             onDeepen(section);

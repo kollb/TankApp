@@ -4,6 +4,28 @@ Alle nennenswerten Änderungen ab jetzt. Format lose an
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) angelehnt;
 Version folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.79.0] – 2026-11-28
+
+**Preisrealismus, Begründungscodes und Feiertagshinweise**
+
+- **Schließende Stationen werden herabgestuft, nicht gelöscht.** Eine Station,
+  die bald schließt, bleibt in den Alternativen sichtbar, sortiert nach hinten
+  und trägt `closing_soon`. Die Entscheidung wählt sie nicht mehr aus.
+- **Stabilitätsabschlag (höchstens 1 ct/L).** Stationen mit stabilem Preisverlauf
+  bekommen einen kleinen Abschlag auf den Netto-Preis (`stability`,
+  `risk_discount_eur`, `effective_net_eur`). Ohne Daten gibt es keinen Abschlag;
+  der Status ist „unknown“ oder „insufficient“.
+- **Begründungscodes.** Entscheidungen liefern `reason_codes` (z. B.
+  `EVENING_DROP_EXPECTED`, `UPWARD_MARKET_DRIFT`, `LOW_TANK_RESERVE`,
+  `DETOUR_UNFAVORABLE`, `CLOSING_SOON_FILTERED`, `HYSTERESIS_HOLD`). Push und
+  Web zeigen dieselben Texte.
+- **Haltebereich statt Hysterese.** Der Nutzertext heißt jetzt „Haltebereich“;
+  „no_advice“ zählt nicht als Haltezustand.
+- **Reserve-Regel.** Ist der Tank knapp, greift die Reserve-Physik auch bei
+  „wait“ und „refuel_now“.
+- **Feiertags- und Brückentagshinweise.** `calendar_hints` nutzt das Bundesland
+  der Stadt (Standard HE) und weist auf Brückentage in den nächsten 7 Tagen hin.
+
 ## [0.78.0] – 2026-11-28
 
 **Eine Oberfläche, zwei Ansichten weniger — und ein Startbildschirm, der sich

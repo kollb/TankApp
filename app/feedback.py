@@ -1670,6 +1670,12 @@ def record_snapshot(
             "regime_scenario_pending": bool(
                 snapshot_data.get("regime_scenario_pending")
             ),
+            # P4: strukturierte Begründung (dieselben Codes wie Web und Push).
+            "reason_codes": [
+                code
+                for code in (snapshot_data.get("reason_codes") or [])
+                if isinstance(code, dict) and code.get("code")
+            ],
         }
 
         if not ep:

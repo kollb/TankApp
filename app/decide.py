@@ -29,8 +29,32 @@ from .read_state import ReadBundle, load_bundle
 from .feedback import (
     M7_MIN_RECOMMENDATIONS,
     WH_MIN_FILLS,
+    load_store,
     record_snapshot,
     select_gate_cohort,
+)
+from .station_realism import (
+    closing_buffer_status,
+    stability_discount_eur,
+)
+from engine.holidays import calendar_hints
+from .reason_codes import (
+    CLOSING_SOON_FILTERED,
+    DETOUR_UNFAVORABLE,
+    EVENING_DROP_EXPECTED,
+    HYSTERESIS_HOLD,
+    LOW_TANK_RESERVE,
+    UPWARD_MARKET_DRIFT,
+    reason_entry,
+)
+from .decision_policy import (
+    HYSTERESIS_EUR,
+    policy_summary,
+    hysteresis,
+    risk_adjusted_saving,
+    risk_weight,
+    tank_fraction,
+    worst_case_saving,
 )
 from .gate_context import (
     forecast_calibration_mode,
@@ -1130,6 +1154,19 @@ def _detour_km(
     return 0.0, "unavailable"
 
 
+def _closes_at(cand: dict[str, Any]) -> dt.datetime | None:
+    """Schließzeit einer Station, falls die Quelle eine liefert (ISO, mit Zone)."""
+    raw = cand.get("closes_at")
+    if isinstance(raw, dt.datetime):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
 def _alternatives(
     station_list: list[dict[str, Any]],
     chosen_station: dict[str, Any],
@@ -1143,6 +1180,7 @@ def _alternatives(
     home: tuple[float, float] | None = None,
     nowcasts: dict[str, list[float]] | None = None,
     fresh_threshold_minutes: float = FRESH_PRICE_FALLBACK_MINUTES,
+    now: dt.datetime | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """F2-Liste: Netto-€ je Alternative (Konzept §4.2, Umweg-Ökonomie §10).
 
@@ -1164,6 +1202,9 @@ def _alternatives(
     alternatives = []
     best = None
     ref_nowcast = nowcasts.get(chosen_station["station_id"]) if nowcasts else None
+    # P3: Schließzeit-Puffer und Stabilitäts-Abschlag. Ohne Schließzeit je
+    # Station bleibt „unknown“ und nichts wird herabgestuft.
+    clock = now or dt.datetime.now(dt.timezone.utc)
 
     # M5 beidseitig: frische Live-Preise als Konstante, nur stale Seite trägt Draws.
     is_ref_fresh = _is_price_fresh(chosen_station, fresh_threshold_minutes)
@@ -1191,6 +1232,12 @@ def _alternatives(
         gross_eur = economics["gross_eur"]
         net_eur = economics["net_eur"]
         alt_nowcast = nowcasts.get(cand["station_id"]) if nowcasts else None
+        # P3: Anfahrtszeit aus dem Umweg (Reisegeschwindigkeit des Modells).
+        travel_min = (total_km / max(1.0, speed)) * 60.0
+        closing = closing_buffer_status(_closes_at(cand), clock, travel_min)
+        closing_soon = closing["status"] == "closing_soon"
+        discount = stability_discount_eur(cand.get("stability"))
+        effective_net = round(net_eur - discount, 2)
 
         is_alt_fresh = _is_price_fresh(cand, fresh_threshold_minutes)
         alt_price_cond = cand_price if is_alt_fresh else None
@@ -1261,17 +1308,28 @@ def _alternatives(
                 "speed_kmh": speed,
                 "time_value_eur_h": z_used,
             },
-            "worth_it": net_eur >= worth_th,
+            "worth_it": net_eur >= worth_th and not closing_soon,
             "verdict": verdict,
             "p_lohnt": p_lohnt_val,
+            # P3: Schließzeit-Puffer (herabgestuft, nie beste Alternative)
+            # und dezenter Stabilitätsabschlag im Vergleich.
+            "closing": closing,
+            "closing_soon": closing_soon,
+            "risk_discount_eur": discount,
+            "effective_net_eur": effective_net,
+            "stability": cand.get("stability"),
             "maps_url": cand.get("maps_url"),
             "price_fresh": is_alt_fresh,
             "ref_price_fresh": is_ref_fresh,
         }
         alternatives.append(entry)
-        if best is None or net_eur > best["net_eur"]:
+        if not closing_soon and (
+            best is None or effective_net > best["effective_net_eur"]
+        ):
             best = entry
-    alternatives.sort(key=lambda a: a["net_eur"], reverse=True)
+    # Herabgestuft statt gelöscht: „Schließt bald“ bleibt sichtbar, steht aber
+    # hinter allen offenen Stationen.
+    alternatives.sort(key=lambda a: (a["closing_soon"], -a["effective_net_eur"]))
     # `primary.station.id` is the shared reference contract: these are the
     # five best alternatives *in addition to* that station. Keep the existing
     # candidate eligibility (fresh `price` or a flagged `last_price` fallback)
@@ -1493,6 +1551,32 @@ def _forecast_calibration_state(forecast: dict[str, Any]) -> str:
     Vertragskontexts (``app/gate_context.py``) — eine Wahrheit.
     """
     return forecast_calibration_mode(forecast)
+
+
+def _calendar_subdiv(settings, city: str | None) -> str:
+    """Bundesland für Feiertagshinweise: Stadt-Konfiguration, sonst Hessen."""
+    configured = dict(getattr(settings, "city_subdivs", {}) or {})
+    return str(configured.get(city or "", "") or "HE")
+
+
+def _previous_recommendation_action(settings) -> str | None:
+    """Letzte gespeicherte Empfehlung (offene Episode) für die Hysterese.
+
+    Die Hysterese braucht den Stand des Tagebuchs, nicht den der Anzeige:
+    gespeichert wird genau das, was zuletzt angezeigt wurde. Fehlt der Store
+    oder ist er defekt, gibt es keine Vorgeschichte — dann greift keine
+    Hysterese (ehrlich, statt einen Zustand zu erfinden).
+    """
+    try:
+        store = load_store(settings)
+    except Exception:
+        return None
+    for episode in store.get("episodes", []) or []:
+        if episode.get("status") in ("open", "waiting", "due"):
+            snap = episode.get("last_snapshot") or {}
+            action = snap.get("action")
+            return action if isinstance(action, str) else None
+    return None
 
 
 def evaluate_decide(
@@ -1823,6 +1907,7 @@ def evaluate_decide(
             home,
             nowcasts,
             fresh_threshold_minutes=fresh_threshold,
+            now=clock_now,
         )
     else:
         alternatives_nearby, best_alt = [], None
@@ -1884,10 +1969,32 @@ def evaluate_decide(
     rolling = (forecast_data.get("rolling_picp_7d") or {}).get("current") or {}
     rolling_badge = rolling.get("badge")
     quality_gate = "picp" if rolling_badge == "red" else None
+    # P2 (Konzept: Worst-Case & Hysterese): Das 10-%-Quantil der ungünstigen
+    # Pfade geht mit dem Tankstand-Gewicht in die Warte-Ersparnis ein. Ohne
+    # Tankangabe oder ohne Fensterdraws bleibt die Ersparnis unverändert.
+    policy_fraction = tank_fraction(
+        tank_percent, range_km_input, tank_capacity, consumption
+    )
+    policy_weight = risk_weight(policy_fraction)
+    policy_worst = (
+        worst_case_saving(
+            rec_minima,
+            _block_for_window(rec_draw_view, rec_block_key),
+            anchor,
+            liters,
+        )
+        if rec_draw_view is not None and rec_block_key and anchor is not None
+        else None
+    )
+    policy_adjusted = (
+        risk_adjusted_saving(expected_saving_eur, policy_worst, policy_weight)
+        if policy_worst is not None and policy_weight > 0
+        else expected_saving_eur
+    )
     table_action, badge, reason, reason_code = _table_action(
         anchor,
         expected_price_later,
-        expected_saving_eur,
+        policy_adjusted,
         best_alt,
         p_better_own,
         thresholds,
@@ -1895,13 +2002,46 @@ def evaluate_decide(
         quality_gate,
         saving_median_eur=expected_saving_median_eur,
     )
+    # P2 Hysterese: gegen die zuletzt gespeicherte Empfehlung ein Deadband
+    # von HYSTERESIS_EUR um die Warte-Schwelle. Die Tabelle bleibt Grundlage;
+    # gehalten wird nur bei einem €-getriebenen Wechsel.
+    policy_previous = _previous_recommendation_action(live_data.settings)
+    table_action, policy_hysteresis = hysteresis(
+        table_action,
+        policy_previous,
+        policy_adjusted,
+        wait_eur_mid=thresholds["wait_eur_mid"],
+        wait_p_mid=thresholds["wait_p_mid"],
+        p_besser=p_better_own,
+    )
+    if policy_hysteresis["held"]:
+        if table_action == "refuel_now":
+            reason = (
+                "Bleibt bei „jetzt tanken“ — Warten lohnt erst ab "
+                f"{_eur(thresholds['wait_eur_mid'] + HYSTERESIS_EUR)} € Vorteil "
+                "(Haltebereich gegen Hin und Her)."
+            )
+        else:
+            reason = (
+                "Bleibt bei „warten“ — der Vorteil liegt im Haltebereich "
+                f"(±{_eur(HYSTERESIS_EUR)} €), Empfehlung wird nicht gekippt."
+            )
+        badge = "medium"
+        reason_code = None
     # A2: Physik vor Fenster. Sagt die Tabelle „warten“, der Tank ist aber im
     # Reservebereich, gewinnt der Tankstand — „bestes Fenster morgen“ wäre
     # hier eine gefährliche Antwort. Die Tabelle selbst bleibt unangetastet
     # (Güte-Gate, Shadow-Messung); nur die angezeigte Aktion kippt, und der
     # Ledger bekommt die Aktion, die wirklich angezeigt wurde — sonst würde
     # ein befolgtes „jetzt tanken (Reserve)“ später als „ignoriert“ zählen.
-    if tank is not None and tank["blocks_wait"] and table_action == "wait":
+    # P2: Im Reservebereich ist „jetzt tanken“ Physik (auch wenn die Tabelle
+    # durch das Tankstand-Risiko schon dorthin gekippt ist) — die Begründung
+    # bleibt die Reserve-Meldung mit hoher Sicherheit.
+    if (
+        tank is not None
+        and tank["blocks_wait"]
+        and table_action in ("wait", "refuel_now")
+    ):
         action_base = "refuel_now"
         badge = "high"  # Physik, keine Modellobschätzung
         reason = tank["message"]
@@ -1994,6 +2134,36 @@ def evaluate_decide(
         else None
     )
 
+    # P4: strukturierte Begründungs-Codes — dieselben für Web und Push. Jeder
+    # Code folgt aus einer Messgröße dieser Entscheidung, nie aus Text.
+    reason_codes_out: list[dict[str, Any]] = []
+    if action == "wait" and start_hour_later is not None and start_hour_later >= 17:
+        reason_codes_out.append(reason_entry(EVENING_DROP_EXPECTED))
+    if (
+        anchor is not None
+        and expected_price_later is not None
+        and expected_price_later > anchor + 0.005
+    ):
+        reason_codes_out.append(
+            reason_entry(UPWARD_MARKET_DRIFT, value=expected_price_later - anchor)
+        )
+    if (
+        tank is not None and tank.get("state") in ("empty", "low")
+    ) or policy_weight > 0:
+        reason_codes_out.append(reason_entry(LOW_TANK_RESERVE, value=policy_fraction))
+    if (
+        best_alt is not None
+        and action in ("wait", "refuel_now")
+        and best_alt["net_eur"] < thresholds["elsewhere_borderline_eur"]
+    ):
+        reason_codes_out.append(
+            reason_entry(DETOUR_UNFAVORABLE, value=best_alt["net_eur"])
+        )
+    if any(alt.get("closing_soon") for alt in alternatives_nearby):
+        reason_codes_out.append(reason_entry(CLOSING_SOON_FILTERED))
+    if policy_hysteresis["held"]:
+        reason_codes_out.append(reason_entry(HYSTERESIS_HOLD))
+
     # Snapshot im Feedback-Store erfassen (Tabellen-Aktion + Fenster-ISO).
     # p_besser ist die Verteilungs-P, die Brier gegen das Settlement misst —
     # dieselbe Zahl, die nach dem M7-Gate im UI erscheint.
@@ -2057,6 +2227,13 @@ def evaluate_decide(
         "gate_context": gate_context,
         "regime_scenario_pending": gate_context.get("_scenario_pending"),
         "benefit_contract": benefit_contract,
+        "reason_codes": reason_codes_out,
+        # P4: Feiertage und Brückentage der nächsten 7 Tage (Hessen als Vorgabe,
+        # sonst das konfigurierte Bundesland der Stadt).
+        "calendar_hints": calendar_hints(
+            clock_now.astimezone(BERLIN_TZ).replace(tzinfo=None),
+            _calendar_subdiv(live_data.settings, station_city),
+        ),
     }
 
     # M5: Verfügbarkeit der Entscheidung zählen (rollierendes Fenster) —
@@ -2122,6 +2299,16 @@ def evaluate_decide(
         # unabhängig von der Ampel (Physik, kein Modellwert). ``None``,
         # wenn keine Tankstand-Eingabe vorliegt.
         "tank": tank,
+        "reason_codes": reason_codes_out,
+        # P2: transparente Hysterese- und Risiko-Auskunft (zusätzlich, additiv).
+        "decision_policy": policy_summary(
+            hysteresis_info=policy_hysteresis,
+            fraction=policy_fraction,
+            weight=policy_weight,
+            expected_eur=expected_saving_eur,
+            worst_eur=policy_worst,
+            adjusted_eur=policy_adjusted,
+        ),
         # A21-B4.3: requested, usable and hypothetical amounts are never
         # collapsed into one unlabeled ``liters`` value.
         "quantity": quantity,

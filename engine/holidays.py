@@ -9,6 +9,8 @@ Konvention.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -79,3 +81,83 @@ def holiday_flags(
     else:
         flags = zeros.copy()
     return flags, f"holidays:{subdiv}"
+
+
+# P4: Feiertage und Brückentage für die Wochenansicht (Hessen / DE).
+# Brückentag = Freitag nach einem Donnerstag-Feiertag bzw. Montag vor einem
+# Dienstag-Feiertag. Die Regel ist eine Faustregel für Hinweise, kein Gesetz.
+BRIDGE_HINT_DAYS = 7
+
+
+def _holiday_names(
+    subdiv: str, first: int, last: int
+) -> dict[pd.Timestamp, str] | None:
+    """Feiertage mit Bezeichnung (ohne Uhrzeit); ``None`` = nicht verfügbar."""
+    if _holidays is None:
+        return None
+    try:
+        calendar = _holidays.Germany(
+            subdiv=subdiv.upper(), years=range(first, last + 1)
+        )
+    except (NotImplementedError, KeyError, TypeError, ValueError):
+        return None
+    return {
+        pd.Timestamp(date).normalize(): str(name) for date, name in calendar.items()
+    }
+
+
+def calendar_hints(
+    today: pd.Timestamp,
+    subdiv: str | None = "HE",
+    timezone: str = "Europe/Berlin",
+    days: int = BRIDGE_HINT_DAYS,
+) -> dict:
+    """Feiertage und Brückentage in den nächsten ``days`` Kalendertagen.
+
+    ``today`` ist der lokale Startzeitpunkt. Ohne Paket oder Bundesland liefert
+    die Funktion eine leere Liste mit ``source="none"`` — kein erfundener Tag.
+    Rückgabe: ``{"source", "subdiv", "items": [{"date", "kind", "name"}]}``,
+    ``kind`` ist ``holiday`` oder ``bridge``.
+    """
+    empty = {"source": "none", "subdiv": None, "items": []}
+    if not subdiv or _holidays is None:
+        return empty
+    subdiv = subdiv.strip().upper()
+    local = pd.Timestamp(today)
+    if local.tzinfo is not None:
+        local = local.tz_convert(timezone).tz_localize(None)
+    start = local.normalize()
+    names = _holiday_names(subdiv, start.year - 1, start.year + 1)
+    if names is None:
+        return empty
+    items: list[dict[str, Any]] = []
+    for offset in range(days):
+        day = start + pd.Timedelta(days=offset)
+        if day in names:
+            items.append(
+                {
+                    "date": day.strftime("%Y-%m-%d"),
+                    "kind": "holiday",
+                    "name": names[day],
+                }
+            )
+            continue
+        before = day - pd.Timedelta(days=1)
+        after = day + pd.Timedelta(days=1)
+        if day.dayofweek == 4 and before in names and before.dayofweek == 3:
+            items.append(
+                {
+                    "date": day.strftime("%Y-%m-%d"),
+                    "kind": "bridge",
+                    "name": names[before],
+                }
+            )
+        elif day.dayofweek == 0 and after in names and after.dayofweek == 1:
+            items.append(
+                {
+                    "date": day.strftime("%Y-%m-%d"),
+                    "kind": "bridge",
+                    "name": names[after],
+                }
+            )
+    return {"source": f"holidays:{subdiv}", "subdiv": subdiv, "items": items}

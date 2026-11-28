@@ -778,6 +778,25 @@ export type FillsSummary = {
   error_code?: string | null;
 };
 
+/** P4: ein strukturierter Grund (Code, Satz, optional ein Wert). */
+export type ReasonCode = { code: string; text: string; value?: number };
+
+/** P4: Feiertage/Brückentage (kind: holiday | bridge). */
+export type CalendarHints = {
+  source: string;
+  subdiv: string | null;
+  items: Array<{ date: string; kind: "holiday" | "bridge"; name: string | null }>;
+};
+
+/** P3: Preis-Stabilität aus der Historie (Anteile 0–1, `null` ohne Basis). */
+export type StationStability = {
+  status: "measured" | "insufficient";
+  phases: number;
+  held_share: number | null;
+  avg_hold_min: number | null;
+  flicker_share: number | null;
+};
+
 export type DecideResult = {
   primary: {
     action: AdviceAction;
@@ -835,7 +854,17 @@ export type DecideResult = {
     price_fresh?: boolean;
     /** Freshness of the reference price used for this comparison. */
     ref_price_fresh?: boolean;
+    /** P3: Schließzeit reicht nicht für Anfahrt + Puffer — herabgestuft. */
+    closing_soon?: boolean;
+    /** P3: Abschlag für flackernde Preise (€/L), nur im Vergleich. */
+    risk_discount_eur?: number;
+    /** P3: Preis-Stabilität aus der Historie, wenn die Quelle sie liefert. */
+    stability?: StationStability | null;
   }>;
+  /** P4: strukturierte Gründe — dieselben Sätze wie im Push. */
+  reason_codes?: ReasonCode[];
+  /** P4: Feiertage und Brückentage der nächsten 7 Tage. */
+  calendar_hints?: CalendarHints;
   thresholds?: {
     active: Record<string, number>;
     auto_apply: boolean;
